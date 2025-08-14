@@ -4,8 +4,9 @@ import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { LogOut, FileText } from 'lucide-react';
+import { LogOut, FileText, Plus } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import { useToast } from '@/hooks/use-toast';
 
 interface Factura {
   id: string;
@@ -21,8 +22,10 @@ interface Factura {
 
 export default function Dashboard() {
   const { user, signOut, loading } = useAuth();
+  const { toast } = useToast();
   const [facturas, setFacturas] = useState<Factura[]>([]);
   const [loadingFacturas, setLoadingFacturas] = useState(true);
+  const [generatingData, setGeneratingData] = useState(false);
 
   // Redirigir a login si no está autenticado
   if (!user && !loading) {
@@ -52,14 +55,28 @@ export default function Dashboard() {
   };
 
   const generateSampleData = async () => {
+    setGeneratingData(true);
     try {
       const { error } = await supabase.rpc('insert_sample_facturas');
+      
       if (error) throw error;
       
-      // Refrescar la lista de facturas
-      await fetchFacturas();
+      toast({
+        title: "Datos generados",
+        description: "Se han agregado 5 facturas de prueba",
+      });
+      
+      // Recargar las facturas
+      fetchFacturas();
     } catch (error) {
       console.error('Error generating sample data:', error);
+      toast({
+        title: "Error",
+        description: "No se pudieron generar los datos de prueba",
+        variant: "destructive",
+      });
+    } finally {
+      setGeneratingData(false);
     }
   };
 
@@ -120,16 +137,16 @@ export default function Dashboard() {
                 <CardTitle className="text-2xl bg-gradient-primary bg-clip-text text-transparent">
                   Facturas Recibidas
                 </CardTitle>
-                {facturas.length === 0 && (
-                  <Button 
-                    onClick={generateSampleData}
-                    variant="outline"
-                    size="sm"
-                    className="transition-all duration-300 hover:scale-105"
-                  >
-                    Generar datos de prueba
-                  </Button>
-                )}
+                <Button 
+                  onClick={generateSampleData}
+                  variant="outline"
+                  size="sm"
+                  disabled={generatingData}
+                  className="transition-all duration-300 hover:scale-105"
+                >
+                  <Plus className="w-4 h-4 mr-2" />
+                  {generatingData ? 'Generando...' : 'Datos de prueba'}
+                </Button>
               </div>
             </CardHeader>
             <CardContent>
