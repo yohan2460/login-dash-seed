@@ -4,7 +4,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { LogOut, FileText, Package, CreditCard } from 'lucide-react';
+import { LogOut, FileText, Package, CreditCard, Calculator, Receipt, Minus } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { FacturasTable } from '@/components/FacturasTable';
@@ -20,6 +20,13 @@ interface Factura {
   pdf_file_path: string | null;
   clasificacion?: string | null;
   created_at: string;
+  factura_iva?: number | null;
+  factura_iva_porcentaje?: number | null;
+  descripcion?: string | null;
+  tiene_retencion?: boolean | null;
+  monto_retencion?: number | null;
+  porcentaje_pronto_pago?: number | null;
+  numero_serie?: string | null;
 }
 export default function Dashboard() {
   const {
@@ -75,6 +82,26 @@ export default function Dashboard() {
     if (type === null) return facturas.filter(f => !f.clasificacion);
     return facturas.filter(f => f.clasificacion === type);
   };
+
+  // Funciones para calcular totales
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('es-CO', {
+      style: 'currency',
+      currency: 'COP'
+    }).format(amount);
+  };
+
+  const calcularTotalImpuestos = () => {
+    return facturas.reduce((total, factura) => total + (factura.factura_iva || 0), 0);
+  };
+
+  const calcularTotalFacturas = () => {
+    return facturas.reduce((total, factura) => total + factura.total_a_pagar, 0);
+  };
+
+  const calcularTotalRetenciones = () => {
+    return facturas.reduce((total, factura) => total + (factura.monto_retencion || 0), 0);
+  };
   if (loading) {
     return <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background to-muted">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
@@ -126,6 +153,58 @@ export default function Dashboard() {
                     </p>
                   </div>
                 ) : (
+                  <>
+                    {/* Tarjetas de Resumen */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                      <Card className="border-l-4 border-l-red-500">
+                        <CardContent className="p-4">
+                          <div className="flex items-center space-x-3">
+                            <div className="p-2 bg-red-100 rounded-lg">
+                              <Receipt className="w-5 h-5 text-red-600" />
+                            </div>
+                            <div>
+                              <p className="text-sm text-muted-foreground">Total Impuestos</p>
+                              <p className="text-xl font-bold text-red-600">
+                                {formatCurrency(calcularTotalImpuestos())}
+                              </p>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+
+                      <Card className="border-l-4 border-l-blue-500">
+                        <CardContent className="p-4">
+                          <div className="flex items-center space-x-3">
+                            <div className="p-2 bg-blue-100 rounded-lg">
+                              <Calculator className="w-5 h-5 text-blue-600" />
+                            </div>
+                            <div>
+                              <p className="text-sm text-muted-foreground">Total Facturas</p>
+                              <p className="text-xl font-bold text-blue-600">
+                                {formatCurrency(calcularTotalFacturas())}
+                              </p>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+
+                      <Card className="border-l-4 border-l-green-500">
+                        <CardContent className="p-4">
+                          <div className="flex items-center space-x-3">
+                            <div className="p-2 bg-green-100 rounded-lg">
+                              <Minus className="w-5 h-5 text-green-600" />
+                            </div>
+                            <div>
+                              <p className="text-sm text-muted-foreground">Total Retenciones</p>
+                              <p className="text-xl font-bold text-green-600">
+                                {formatCurrency(calcularTotalRetenciones())}
+                              </p>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    </div>
+
                   <Tabs defaultValue="sin-clasificar" className="w-full">
                     <TabsList className="grid w-full grid-cols-3">
                       <TabsTrigger value="sin-clasificar" className="flex items-center space-x-2">
@@ -184,6 +263,7 @@ export default function Dashboard() {
                       )}
                     </TabsContent>
                   </Tabs>
+                  </>
                 )}
               </CardContent>
             </Card>
