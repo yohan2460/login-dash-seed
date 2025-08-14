@@ -51,6 +51,18 @@ export default function Dashboard() {
     }
   };
 
+  const generateSampleData = async () => {
+    try {
+      const { error } = await supabase.rpc('insert_sample_facturas');
+      if (error) throw error;
+      
+      // Refrescar la lista de facturas
+      await fetchFacturas();
+    } catch (error) {
+      console.error('Error generating sample data:', error);
+    }
+  };
+
   const handleSignOut = async () => {
     await signOut();
   };
@@ -104,9 +116,21 @@ export default function Dashboard() {
         <div className="max-w-7xl mx-auto">
           <Card className="shadow-medium">
             <CardHeader>
-              <CardTitle className="text-2xl bg-gradient-primary bg-clip-text text-transparent">
-                Facturas Recibidas
-              </CardTitle>
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-2xl bg-gradient-primary bg-clip-text text-transparent">
+                  Facturas Recibidas
+                </CardTitle>
+                {facturas.length === 0 && (
+                  <Button 
+                    onClick={generateSampleData}
+                    variant="outline"
+                    size="sm"
+                    className="transition-all duration-300 hover:scale-105"
+                  >
+                    Generar datos de prueba
+                  </Button>
+                )}
+              </div>
             </CardHeader>
             <CardContent>
               {loadingFacturas ? (
