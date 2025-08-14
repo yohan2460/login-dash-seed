@@ -98,7 +98,10 @@ export default function Dashboard() {
 
   const filterFacturasByMercanciaState = (estado: string | null) => {
     const mercanciaFacturas = facturas.filter(f => f.clasificacion === 'mercancia');
-    if (estado === null) return mercanciaFacturas.filter(f => !f.estado_mercancia);
+    if (estado === null) {
+      // "Todas" should show mercancia invoices that are NOT paid
+      return mercanciaFacturas.filter(f => f.estado_mercancia !== 'pagada');
+    }
     return mercanciaFacturas.filter(f => f.estado_mercancia === estado);
   };
 
@@ -287,7 +290,7 @@ export default function Dashboard() {
                             value="todas-mercancia" 
                             className="data-[state=active]:bg-background data-[state=active]:shadow-sm font-medium"
                           >
-                            Todas ({filterFacturasByType('mercancia').length})
+                            Pendientes ({filterFacturasByMercanciaState(null).length})
                           </TabsTrigger>
                           <TabsTrigger 
                             value="pagada" 
@@ -298,14 +301,14 @@ export default function Dashboard() {
                         </TabsList>
 
                         <TabsContent value="todas-mercancia" className="mt-4">
-                          {filterFacturasByType('mercancia').length === 0 ? (
+                          {filterFacturasByMercanciaState(null).length === 0 ? (
                             <div className="text-center py-8">
                               <Package className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
-                              <p className="text-muted-foreground">No hay facturas de mercancía</p>
+                              <p className="text-muted-foreground">No hay facturas pendientes de pago</p>
                             </div>
                           ) : (
                             <FacturasTable
-                              facturas={filterFacturasByType('mercancia')}
+                              facturas={filterFacturasByMercanciaState(null)}
                               onClassifyClick={handleClassifyClick}
                               onPayClick={handlePayClick}
                             />
