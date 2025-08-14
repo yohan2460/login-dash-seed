@@ -15,6 +15,10 @@ interface Factura {
   created_at: string;
   factura_iva?: number | null;
   factura_iva_porcentaje?: number | null;
+  descripcion?: string | null;
+  tiene_retencion?: boolean | null;
+  monto_retencion?: number | null;
+  porcentaje_pronto_pago?: number | null;
 }
 
 interface FacturasTableProps {
@@ -90,6 +94,9 @@ export function FacturasTable({ facturas, onClassifyClick }: FacturasTableProps)
             <TableHead>Número de Factura</TableHead>
             <TableHead>Emisor</TableHead>
             <TableHead>Clasificación</TableHead>
+            <TableHead>Descripción</TableHead>
+            <TableHead>Retención</TableHead>
+            <TableHead>Pronto Pago</TableHead>
             <TableHead>IVA</TableHead>
             <TableHead>% IVA</TableHead>
             <TableHead>Total a Pagar</TableHead>
@@ -113,6 +120,37 @@ export function FacturasTable({ facturas, onClassifyClick }: FacturasTableProps)
               <TableCell>
                 {getClassificationBadge(factura.clasificacion) || (
                   <span className="text-sm text-muted-foreground">Sin clasificar</span>
+                )}
+              </TableCell>
+              <TableCell>
+                <div className="max-w-32 truncate" title={factura.descripcion || ''}>
+                  {factura.descripcion || '-'}
+                </div>
+              </TableCell>
+              <TableCell>
+                {factura.tiene_retencion ? (
+                  <div>
+                    <span className="text-xs text-green-600 font-medium">Sí</span>
+                    {factura.monto_retencion && (
+                      <div className="text-xs text-muted-foreground">
+                        {formatCurrency(factura.monto_retencion)}
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <span className="text-xs text-muted-foreground">No</span>
+                )}
+              </TableCell>
+              <TableCell>
+                {factura.porcentaje_pronto_pago ? (
+                  <div>
+                    <span className="text-xs font-medium">{factura.porcentaje_pronto_pago}%</span>
+                    <div className="text-xs text-green-600">
+                      -{formatCurrency((factura.total_a_pagar * factura.porcentaje_pronto_pago) / 100)}
+                    </div>
+                  </div>
+                ) : (
+                  <span className="text-xs text-muted-foreground">-</span>
                 )}
               </TableCell>
               <TableCell className="font-medium">

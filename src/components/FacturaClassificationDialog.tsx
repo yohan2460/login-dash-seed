@@ -15,6 +15,7 @@ interface Factura {
   id: string;
   numero_factura: string;
   emisor_nombre: string;
+  total_a_pagar: number;
   clasificacion?: string | null;
 }
 
@@ -34,7 +35,7 @@ export function FacturaClassificationDialog({
   const [classification, setClassification] = useState<string>('');
   const [descripcion, setDescripcion] = useState<string>('');
   const [tieneRetencion, setTieneRetencion] = useState<boolean>(false);
-  const [tipoDescuento, setTipoDescuento] = useState<string>('');
+  const [montoRetencion, setMontoRetencion] = useState<string>('');
   const [porcentajeProntoPago, setPorcentajeProntoPago] = useState<string>('');
   const [isUpdating, setIsUpdating] = useState(false);
   const { toast } = useToast();
@@ -48,7 +49,7 @@ export function FacturaClassificationDialog({
         clasificacion: classification,
         descripcion: descripcion || null,
         tiene_retencion: tieneRetencion,
-        tipo_descuento: tipoDescuento || null,
+        monto_retencion: tieneRetencion && montoRetencion ? parseFloat(montoRetencion) : 0,
         porcentaje_pronto_pago: porcentajeProntoPago && porcentajeProntoPago !== "0" ? parseFloat(porcentajeProntoPago) : null
       };
 
@@ -70,7 +71,7 @@ export function FacturaClassificationDialog({
       setClassification('');
       setDescripcion('');
       setTieneRetencion(false);
-      setTipoDescuento('');
+      setMontoRetencion('');
       setPorcentajeProntoPago('');
     } catch (error) {
       console.error('Error updating classification:', error);
@@ -82,6 +83,12 @@ export function FacturaClassificationDialog({
     } finally {
       setIsUpdating(false);
     }
+  };
+
+  // Calcular ahorro por pronto pago
+  const calcularAhorro = () => {
+    if (!factura || !porcentajeProntoPago || porcentajeProntoPago === "0") return 0;
+    return (factura.total_a_pagar * parseFloat(porcentajeProntoPago)) / 100;
   };
 
   return (
@@ -155,18 +162,21 @@ export function FacturaClassificationDialog({
                 </Label>
               </div>
 
-              <div>
-                <Label htmlFor="tipo_descuento" className="text-sm font-medium">
-                  Tipo de descuento (opcional)
-                </Label>
-                <Input
-                  id="tipo_descuento"
-                  value={tipoDescuento}
-                  onChange={(e) => setTipoDescuento(e.target.value)}
-                  placeholder="Ej: Descuento por volumen, Descuento comercial..."
-                  className="mt-1"
-                />
-              </div>
+              {tieneRetencion && (
+                <div>
+                  <Label htmlFor="monto_retencion" className="text-sm font-medium">
+                    Monto de retención
+                  </Label>
+                  <Input
+                    id="monto_retencion"
+                    type="number"
+                    value={montoRetencion}
+                    onChange={(e) => setMontoRetencion(e.target.value)}
+                    placeholder="Ingrese el monto de la retención..."
+                    className="mt-1"
+                  />
+                </div>
+              )}
 
               <div>
                 <Label htmlFor="porcentaje_pronto_pago" className="text-sm font-medium">
@@ -185,6 +195,11 @@ export function FacturaClassificationDialog({
                     <SelectItem value="5">5%</SelectItem>
                   </SelectContent>
                 </Select>
+                {porcentajeProntoPago && porcentajeProntoPago !== "0" && (
+                  <p className="text-sm text-muted-foreground mt-2">
+                    Ahorro estimado: ${calcularAhorro().toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </p>
+                )}
               </div>
             </div>
 

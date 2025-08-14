@@ -19,6 +19,10 @@ interface FacturaData {
   pdf_file_path?: string;
   factura_iva?: number;
   factura_iva_porcentaje?: number;
+  descripcion?: string;
+  tiene_retencion?: boolean;
+  monto_retencion?: number;
+  porcentaje_pronto_pago?: number;
 }
 
 // Función para generar nombre único de archivo
@@ -71,6 +75,10 @@ serve(async (req) => {
         factura_cufe: formData.get('factura_cufe') as string || undefined,
         factura_iva: formData.get('factura_iva') ? parseFloat(formData.get('factura_iva') as string) : 0,
         factura_iva_porcentaje: formData.get('factura_iva_porcentaje') ? parseFloat(formData.get('factura_iva_porcentaje') as string) : 0,
+        descripcion: formData.get('descripcion') as string || undefined,
+        tiene_retencion: formData.get('tiene_retencion') === 'true',
+        monto_retencion: formData.get('monto_retencion') ? parseFloat(formData.get('monto_retencion') as string) : 0,
+        porcentaje_pronto_pago: formData.get('porcentaje_pronto_pago') ? parseFloat(formData.get('porcentaje_pronto_pago') as string) : undefined,
       };
 
       // Extraer archivo PDF si existe
@@ -188,6 +196,10 @@ serve(async (req) => {
       pdf_file_path: pdfFilePath,
       factura_iva: facturaData.factura_iva || 0,
       factura_iva_porcentaje: facturaData.factura_iva_porcentaje || 0,
+      descripcion: facturaData.descripcion || null,
+      tiene_retencion: facturaData.tiene_retencion || false,
+      monto_retencion: facturaData.monto_retencion || 0,
+      porcentaje_pronto_pago: facturaData.porcentaje_pronto_pago || null,
     };
 
     // Insert factura into database

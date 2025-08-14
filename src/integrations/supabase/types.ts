@@ -25,13 +25,13 @@ export type Database = {
           factura_iva: number | null
           factura_iva_porcentaje: number | null
           id: string
+          monto_retencion: number | null
           nombre_carpeta_factura: string | null
           notas: string | null
           numero_factura: string
           pdf_file_path: string | null
           porcentaje_pronto_pago: number | null
           tiene_retencion: boolean | null
-          tipo_descuento: string | null
           total_a_pagar: number
           updated_at: string
           user_id: string
@@ -46,13 +46,13 @@ export type Database = {
           factura_iva?: number | null
           factura_iva_porcentaje?: number | null
           id?: string
+          monto_retencion?: number | null
           nombre_carpeta_factura?: string | null
           notas?: string | null
           numero_factura: string
           pdf_file_path?: string | null
           porcentaje_pronto_pago?: number | null
           tiene_retencion?: boolean | null
-          tipo_descuento?: string | null
           total_a_pagar: number
           updated_at?: string
           user_id: string
@@ -67,13 +67,13 @@ export type Database = {
           factura_iva?: number | null
           factura_iva_porcentaje?: number | null
           id?: string
+          monto_retencion?: number | null
           nombre_carpeta_factura?: string | null
           notas?: string | null
           numero_factura?: string
           pdf_file_path?: string | null
           porcentaje_pronto_pago?: number | null
           tiene_retencion?: boolean | null
-          tipo_descuento?: string | null
           total_a_pagar?: number
           updated_at?: string
           user_id?: string
