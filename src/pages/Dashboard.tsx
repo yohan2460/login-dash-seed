@@ -114,23 +114,31 @@ export default function Dashboard() {
   };
 
   const calcularTotalImpuestos = () => {
-    const mercanciaFacturas = facturas.filter(f => f.clasificacion === 'mercancia');
-    return mercanciaFacturas.reduce((total, factura) => total + (factura.factura_iva || 0), 0);
+    const mercanciaFacturasPendientes = facturas.filter(f => 
+      f.clasificacion === 'mercancia' && (f.estado_mercancia === 'pendiente' || !f.estado_mercancia)
+    );
+    return mercanciaFacturasPendientes.reduce((total, factura) => total + (factura.factura_iva || 0), 0);
   };
 
   const calcularTotalFacturas = () => {
-    const mercanciaFacturas = facturas.filter(f => f.clasificacion === 'mercancia');
-    return mercanciaFacturas.reduce((total, factura) => total + factura.total_a_pagar, 0);
+    const mercanciaFacturasPendientes = facturas.filter(f => 
+      f.clasificacion === 'mercancia' && (f.estado_mercancia === 'pendiente' || !f.estado_mercancia)
+    );
+    return mercanciaFacturasPendientes.reduce((total, factura) => total + factura.total_a_pagar, 0);
   };
 
   const calcularTotalRetenciones = () => {
-    const mercanciaFacturas = facturas.filter(f => f.clasificacion === 'mercancia');
-    return mercanciaFacturas.reduce((total, factura) => total + (factura.monto_retencion || 0), 0);
+    const mercanciaFacturasPendientes = facturas.filter(f => 
+      f.clasificacion === 'mercancia' && (f.estado_mercancia === 'pendiente' || !f.estado_mercancia)
+    );
+    return mercanciaFacturasPendientes.reduce((total, factura) => total + (factura.monto_retencion || 0), 0);
   };
 
   const calcularTotalAhorroProntoPago = () => {
-    const mercanciaFacturas = facturas.filter(f => f.clasificacion === 'mercancia');
-    return mercanciaFacturas.reduce((total, factura) => {
+    const mercanciaFacturasPendientes = facturas.filter(f => 
+      f.clasificacion === 'mercancia' && (f.estado_mercancia === 'pendiente' || !f.estado_mercancia)
+    );
+    return mercanciaFacturasPendientes.reduce((total, factura) => {
       if (factura.porcentaje_pronto_pago) {
         return total + ((factura.total_a_pagar * factura.porcentaje_pronto_pago) / 100);
       }
