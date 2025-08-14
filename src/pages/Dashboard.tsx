@@ -4,7 +4,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { LogOut, FileText, Plus } from 'lucide-react';
+import { LogOut, FileText, Plus, Eye, Download } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 
@@ -17,6 +17,7 @@ interface Factura {
   total_a_pagar: number;
   nombre_carpeta_factura: string;
   factura_cufe: string;
+  pdf_file_path: string | null;
   created_at: string;
 }
 
@@ -89,6 +90,71 @@ export default function Dashboard() {
       style: 'currency',
       currency: 'COP'
     }).format(amount);
+  };
+
+  const viewPDF = async (factura: Factura) => {
+    if (!factura.pdf_file_path) {
+      toast({
+        title: "PDF no disponible",
+        description: "Esta factura no tiene un archivo PDF asociado",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      const { data } = await supabase.storage
+        .from('facturas-pdf')
+        .createSignedUrl(factura.pdf_file_path, 60 * 60); // URL válida por 1 hora
+
+      if (data?.signedUrl) {
+        window.open(data.signedUrl, '_blank');
+      } else {
+        throw new Error('No se pudo generar la URL del PDF');
+      }
+    } catch (error) {
+      console.error('Error viewing PDF:', error);
+      toast({
+        title: "Error",
+        description: "No se pudo abrir el archivo PDF",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const downloadPDF = async (factura: Factura) => {
+    if (!factura.pdf_file_path) {
+      toast({
+        title: "PDF no disponible",
+        description: "Esta factura no tiene un archivo PDF asociado",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      const { data } = await supabase.storage
+        .from('facturas-pdf')
+        .createSignedUrl(factura.pdf_file_path, 60 * 60); // URL válida por 1 hora
+
+      if (data?.signedUrl) {
+        const link = document.createElement('a');
+        link.href = data.signedUrl;
+        link.download = `factura_${factura.numero_factura}.pdf`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      } else {
+        throw new Error('No se pudo generar la URL del PDF');
+      }
+    } catch (error) {
+      console.error('Error downloading PDF:', error);
+      toast({
+        title: "Error",
+        description: "No se pudo descargar el archivo PDF",
+        variant: "destructive",
+      });
+    }
   };
 
   if (loading) {
@@ -197,8 +263,33 @@ export default function Dashboard() {
                             {formatCurrency(factura.total_a_pagar)}
                           </TableCell>
                           <TableCell>
-                            <div className="text-sm text-muted-foreground">
-                              Acciones próximamente
+                            <div className="flex items-center space-x-2">
+                              {factura.pdf_file_path ? (
+                                <>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => viewPDF(factura)}
+                                    className="transition-all duration-200 hover:scale-105"
+                                  >
+                                    <Eye className="w-4 h-4 mr-1" />
+                                    Ver
+                                  </Button>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => downloadPDF(factura)}
+                                    className="transition-all duration-200 hover:scale-105"
+                                  >
+                                    <Download className="w-4 h-4 mr-1" />
+                                    Descargar
+                                  </Button>
+                                </>
+                              ) : (
+                                <div className="text-sm text-muted-foreground">
+                                  PDF no disponible
+                                </div>
+                              )}
                             </div>
                           </TableCell>
                         </TableRow>
