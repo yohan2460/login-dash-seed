@@ -4,7 +4,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { LogOut, FileText, Package, CreditCard, Calculator, Receipt, Minus } from 'lucide-react';
+import { LogOut, FileText, Package, CreditCard, Calculator, Receipt, Minus, Percent } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { FacturasTable } from '@/components/FacturasTable';
@@ -102,6 +102,15 @@ export default function Dashboard() {
   const calcularTotalRetenciones = () => {
     return facturas.reduce((total, factura) => total + (factura.monto_retencion || 0), 0);
   };
+
+  const calcularTotalAhorroProntoPago = () => {
+    return facturas.reduce((total, factura) => {
+      if (factura.porcentaje_pronto_pago) {
+        return total + ((factura.total_a_pagar * factura.porcentaje_pronto_pago) / 100);
+      }
+      return total;
+    }, 0);
+  };
   if (loading) {
     return <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background to-muted">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
@@ -185,7 +194,7 @@ export default function Dashboard() {
 
                     <TabsContent value="mercancia" className="mt-6">
                       {/* Tarjetas de Resumen - Solo en Mercancía */}
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
                         <Card className="border-l-4 border-l-red-500">
                           <CardContent className="p-4">
                             <div className="flex items-center space-x-3">
@@ -228,6 +237,22 @@ export default function Dashboard() {
                                 <p className="text-sm text-muted-foreground">Total Retenciones</p>
                                 <p className="text-xl font-bold text-green-600">
                                   {formatCurrency(calcularTotalRetenciones())}
+                                </p>
+                              </div>
+                            </div>
+                          </CardContent>
+                        </Card>
+
+                        <Card className="border-l-4 border-l-purple-500">
+                          <CardContent className="p-4">
+                            <div className="flex items-center space-x-3">
+                              <div className="p-2 bg-purple-100 rounded-lg">
+                                <Percent className="w-5 h-5 text-purple-600" />
+                              </div>
+                              <div>
+                                <p className="text-sm text-muted-foreground">Ahorro Pronto Pago</p>
+                                <p className="text-xl font-bold text-purple-600">
+                                  {formatCurrency(calcularTotalAhorroProntoPago())}
                                 </p>
                               </div>
                             </div>
