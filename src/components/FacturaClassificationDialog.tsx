@@ -206,14 +206,17 @@ export function FacturaClassificationDialog({
                     Estado de mercancía
                   </Label>
                   <Select value={estadoMercancia} onValueChange={setEstadoMercancia}>
-                    <SelectTrigger className="mt-1">
+                    <SelectTrigger className="mt-1 bg-background border-input">
                       <SelectValue placeholder="Seleccionar estado" />
                     </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="pendiente">Pendiente</SelectItem>
-                      <SelectItem value="pagada">Factura Pagada</SelectItem>
+                    <SelectContent className="bg-background border-input shadow-lg z-50">
+                      <SelectItem value="pendiente" className="hover:bg-accent">Pendiente de Pago</SelectItem>
+                      <SelectItem value="pagada" className="hover:bg-accent">Factura Pagada</SelectItem>
                     </SelectContent>
                   </Select>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {!estadoMercancia ? "Se asignará como 'Pendiente' por defecto" : ""}
+                  </p>
                 </div>
               )}
 
@@ -222,16 +225,16 @@ export function FacturaClassificationDialog({
                   Porcentaje de pronto pago
                 </Label>
                 <Select value={porcentajeProntoPago} onValueChange={setPorcentajeProntoPago}>
-                  <SelectTrigger className="mt-1">
+                  <SelectTrigger className="mt-1 bg-background border-input">
                     <SelectValue placeholder="Seleccionar porcentaje" />
                   </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="0">Sin descuento</SelectItem>
-                    <SelectItem value="1">1%</SelectItem>
-                    <SelectItem value="2">2%</SelectItem>
-                    <SelectItem value="3">3%</SelectItem>
-                    <SelectItem value="4">4%</SelectItem>
-                    <SelectItem value="5">5%</SelectItem>
+                  <SelectContent className="bg-background border-input shadow-lg z-50">
+                    <SelectItem value="0" className="hover:bg-accent">Sin descuento</SelectItem>
+                    <SelectItem value="1" className="hover:bg-accent">1%</SelectItem>
+                    <SelectItem value="2" className="hover:bg-accent">2%</SelectItem>
+                    <SelectItem value="3" className="hover:bg-accent">3%</SelectItem>
+                    <SelectItem value="4" className="hover:bg-accent">4%</SelectItem>
+                    <SelectItem value="5" className="hover:bg-accent">5%</SelectItem>
                   </SelectContent>
                 </Select>
                 {porcentajeProntoPago && porcentajeProntoPago !== "0" && (
