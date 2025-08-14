@@ -54,8 +54,8 @@ export function FacturaClassificationDialog({
         monto_retencion: tieneRetencion && montoRetencion ? parseFloat(montoRetencion) : 0,
         porcentaje_pronto_pago: porcentajeProntoPago && porcentajeProntoPago !== "0" ? parseFloat(porcentajeProntoPago) : null,
         numero_serie: classification === 'mercancia' ? numeroSerie || null : null,
-        // If classifying as mercancia, set default state to pendiente if no state is selected
-        estado_mercancia: classification === 'mercancia' ? (estadoMercancia || 'pendiente') : null
+        // Always set estado_mercancia to 'pendiente' for mercancia, null for gastos
+        estado_mercancia: classification === 'mercancia' ? 'pendiente' : null
       };
 
       const { error } = await supabase
@@ -200,25 +200,6 @@ export function FacturaClassificationDialog({
                 </div>
               )}
 
-              {classification === 'mercancia' && (
-                <div>
-                  <Label htmlFor="estado_mercancia" className="text-sm font-medium">
-                    Estado de mercancía
-                  </Label>
-                  <Select value={estadoMercancia} onValueChange={setEstadoMercancia}>
-                    <SelectTrigger className="mt-1 bg-background border-input">
-                      <SelectValue placeholder="Seleccionar estado" />
-                    </SelectTrigger>
-                    <SelectContent className="bg-background border-input shadow-lg z-50">
-                      <SelectItem value="pendiente" className="hover:bg-accent">Pendiente de Pago</SelectItem>
-                      <SelectItem value="pagada" className="hover:bg-accent">Factura Pagada</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    {!estadoMercancia ? "Se asignará como 'Pendiente' por defecto" : ""}
-                  </p>
-                </div>
-              )}
 
               <div>
                 <Label htmlFor="porcentaje_pronto_pago" className="text-sm font-medium">
