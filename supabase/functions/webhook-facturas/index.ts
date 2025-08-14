@@ -15,7 +15,7 @@ interface FacturaData {
   total_a_pagar: number;
   nombre_carpeta_factura?: string;
   factura_cufe?: string;
-  user_id: string; // n8n debe enviar el user_id del usuario
+  user_id: string; // Se generará automáticamente
 }
 
 serve(async (req) => {
@@ -44,8 +44,8 @@ serve(async (req) => {
     // Parse request body
     const body = await req.json();
     
-    // Validate required fields
-    const requiredFields = ['numero_factura', 'emisor_nombre', 'emisor_nit', 'total_a_pagar', 'user_id'];
+    // Validate required fields (user_id ya no es requerido)
+    const requiredFields = ['numero_factura', 'emisor_nombre', 'emisor_nit', 'total_a_pagar'];
     const missingFields = requiredFields.filter(field => !body[field]);
     
     if (missingFields.length > 0) {
@@ -68,34 +68,45 @@ serve(async (req) => {
       });
     }
 
-    // Validate UUID format for user_id
-    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    if (!uuidRegex.test(body.user_id)) {
-      return new Response(JSON.stringify({ 
-        error: 'user_id must be a valid UUID format',
-        received: body.user_id,
-        expected_format: 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx'
-      }), {
-        status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    // Buscar o crear usuario por defecto para facturas de n8n
+    const defaultUserEmail = 'facturas@n8n.system';
+    let defaultUserId: string;
+
+    // Intentar obtener el usuario por defecto existente
+    const { data: existingUsers } = await supabase.auth.admin.listUsers();
+    const defaultUser = existingUsers?.users?.find(user => user.email === defaultUserEmail);
+
+    if (defaultUser) {
+      defaultUserId = defaultUser.id;
+      console.log('Using existing default user:', defaultUserId);
+    } else {
+      // Crear usuario por defecto si no existe
+      const { data: newUser, error: createUserError } = await supabase.auth.admin.createUser({
+        email: defaultUserEmail,
+        email_confirm: true,
+        user_metadata: {
+          display_name: 'Sistema N8N - Facturas'
+        }
       });
+
+      if (createUserError || !newUser.user) {
+        console.error('Error creating default user:', createUserError);
+        return new Response(JSON.stringify({ 
+          error: 'Failed to create default user for facturas',
+          details: createUserError?.message 
+        }), {
+          status: 500,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      defaultUserId = newUser.user.id;
+      console.log('Created new default user:', defaultUserId);
     }
 
-    // Verify user exists
-    const { data: user, error: userError } = await supabase.auth.admin.getUserById(body.user_id);
-    
-    if (userError || !user) {
-      return new Response(JSON.stringify({ 
-        error: 'Invalid user_id' 
-      }), {
-        status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
-
-    // Prepare factura data
+    // Prepare factura data usando el user_id generado automáticamente
     const facturaData: Omit<FacturaData, 'id'> = {
-      user_id: body.user_id,
+      user_id: defaultUserId, // Usar el usuario por defecto generado automáticamente
       numero_factura: body.numero_factura,
       emisor_nombre: body.emisor_nombre,
       emisor_nit: body.emisor_nit,
