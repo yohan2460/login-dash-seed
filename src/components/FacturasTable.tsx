@@ -19,6 +19,7 @@ interface Factura {
   tiene_retencion?: boolean | null;
   monto_retencion?: number | null;
   porcentaje_pronto_pago?: number | null;
+  numero_serie?: string | null;
 }
 
 interface FacturasTableProps {
@@ -91,6 +92,7 @@ export function FacturasTable({ facturas, onClassifyClick }: FacturasTableProps)
       <Table>
         <TableHeader>
           <TableRow>
+            <TableHead>N° Serie</TableHead>
             <TableHead>Número de Factura</TableHead>
             <TableHead>Emisor</TableHead>
             <TableHead>Clasificación</TableHead>
@@ -106,6 +108,9 @@ export function FacturasTable({ facturas, onClassifyClick }: FacturasTableProps)
         <TableBody>
           {facturas.map(factura => (
             <TableRow key={factura.id} className="hover:bg-muted/50">
+              <TableCell className="font-medium">
+                {factura.numero_serie || '-'}
+              </TableCell>
               <TableCell className="font-medium">
                 {factura.numero_factura}
               </TableCell>

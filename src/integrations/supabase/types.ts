@@ -29,6 +29,7 @@ export type Database = {
           nombre_carpeta_factura: string | null
           notas: string | null
           numero_factura: string
+          numero_serie: string | null
           pdf_file_path: string | null
           porcentaje_pronto_pago: number | null
           tiene_retencion: boolean | null
@@ -50,6 +51,7 @@ export type Database = {
           nombre_carpeta_factura?: string | null
           notas?: string | null
           numero_factura: string
+          numero_serie?: string | null
           pdf_file_path?: string | null
           porcentaje_pronto_pago?: number | null
           tiene_retencion?: boolean | null
@@ -71,6 +73,7 @@ export type Database = {
           nombre_carpeta_factura?: string | null
           notas?: string | null
           numero_factura?: string
+          numero_serie?: string | null
           pdf_file_path?: string | null
           porcentaje_pronto_pago?: number | null
           tiene_retencion?: boolean | null

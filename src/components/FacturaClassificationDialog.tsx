@@ -37,6 +37,7 @@ export function FacturaClassificationDialog({
   const [tieneRetencion, setTieneRetencion] = useState<boolean>(false);
   const [montoRetencion, setMontoRetencion] = useState<string>('');
   const [porcentajeProntoPago, setPorcentajeProntoPago] = useState<string>('');
+  const [numeroSerie, setNumeroSerie] = useState<string>('');
   const [isUpdating, setIsUpdating] = useState(false);
   const { toast } = useToast();
 
@@ -50,7 +51,8 @@ export function FacturaClassificationDialog({
         descripcion: descripcion || null,
         tiene_retencion: tieneRetencion,
         monto_retencion: tieneRetencion && montoRetencion ? parseFloat(montoRetencion) : 0,
-        porcentaje_pronto_pago: porcentajeProntoPago && porcentajeProntoPago !== "0" ? parseFloat(porcentajeProntoPago) : null
+        porcentaje_pronto_pago: porcentajeProntoPago && porcentajeProntoPago !== "0" ? parseFloat(porcentajeProntoPago) : null,
+        numero_serie: classification === 'mercancia' ? numeroSerie || null : null
       };
 
       const { error } = await supabase
@@ -73,6 +75,7 @@ export function FacturaClassificationDialog({
       setTieneRetencion(false);
       setMontoRetencion('');
       setPorcentajeProntoPago('');
+      setNumeroSerie('');
     } catch (error) {
       console.error('Error updating classification:', error);
       toast({
@@ -173,6 +176,21 @@ export function FacturaClassificationDialog({
                     value={montoRetencion}
                     onChange={(e) => setMontoRetencion(e.target.value)}
                     placeholder="Ingrese el monto de la retención..."
+                    className="mt-1"
+                  />
+                </div>
+              )}
+
+              {classification === 'mercancia' && (
+                <div>
+                  <Label htmlFor="numero_serie" className="text-sm font-medium">
+                    Número de serie
+                  </Label>
+                  <Input
+                    id="numero_serie"
+                    value={numeroSerie}
+                    onChange={(e) => setNumeroSerie(e.target.value)}
+                    placeholder="Ingrese el número de serie..."
                     className="mt-1"
                   />
                 </div>
