@@ -189,10 +189,7 @@ export default function Dashboard() {
                 <CardTitle className="text-2xl bg-gradient-primary bg-clip-text text-transparent">
                   Facturas Recibidas
                 </CardTitle>
-                <Button onClick={generateSampleData} variant="outline" size="sm" disabled={generatingData} className="transition-all duration-300 hover:scale-105">
-                  <Plus className="w-4 h-4 mr-2" />
-                  {generatingData ? 'Generando...' : 'Datos de prueba'}
-                </Button>
+                
               </div>
             </CardHeader>
             <CardContent>
