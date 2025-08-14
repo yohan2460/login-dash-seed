@@ -3,20 +3,22 @@ import { Navigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { LogOut, FileText, Plus, Eye, Download } from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { LogOut, FileText, Package, CreditCard } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { FacturasTable } from '@/components/FacturasTable';
+import { FacturaClassificationDialog } from '@/components/FacturaClassificationDialog';
 interface Factura {
   id: string;
   numero_factura: string;
   emisor_nombre: string;
   emisor_nit: string;
-  notas: string;
   total_a_pagar: number;
   nombre_carpeta_factura: string;
   factura_cufe: string;
   pdf_file_path: string | null;
+  clasificacion?: string | null;
   created_at: string;
 }
 export default function Dashboard() {
@@ -30,7 +32,8 @@ export default function Dashboard() {
   } = useToast();
   const [facturas, setFacturas] = useState<Factura[]>([]);
   const [loadingFacturas, setLoadingFacturas] = useState(true);
-  const [generatingData, setGeneratingData] = useState(false);
+  const [selectedFactura, setSelectedFactura] = useState<Factura | null>(null);
+  const [isClassificationDialogOpen, setIsClassificationDialogOpen] = useState(false);
   useEffect(() => {
     if (user) {
       fetchFacturas();
@@ -57,100 +60,20 @@ export default function Dashboard() {
       setLoadingFacturas(false);
     }
   };
-  const generateSampleData = async () => {
-    setGeneratingData(true);
-    try {
-      const {
-        error
-      } = await supabase.rpc('insert_sample_facturas');
-      if (error) throw error;
-      toast({
-        title: "Datos generados",
-        description: "Se han agregado 5 facturas de prueba"
-      });
+  const handleClassifyClick = (factura: Factura) => {
+    setSelectedFactura(factura);
+    setIsClassificationDialogOpen(true);
+  };
 
-      // Recargar las facturas
-      fetchFacturas();
-    } catch (error) {
-      console.error('Error generating sample data:', error);
-      toast({
-        title: "Error",
-        description: "No se pudieron generar los datos de prueba",
-        variant: "destructive"
-      });
-    } finally {
-      setGeneratingData(false);
-    }
+  const handleClassificationUpdated = () => {
+    fetchFacturas();
   };
   const handleSignOut = async () => {
     await signOut();
   };
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('es-CO', {
-      style: 'currency',
-      currency: 'COP'
-    }).format(amount);
-  };
-  const viewPDF = async (factura: Factura) => {
-    if (!factura.pdf_file_path) {
-      toast({
-        title: "PDF no disponible",
-        description: "Esta factura no tiene un archivo PDF asociado",
-        variant: "destructive"
-      });
-      return;
-    }
-    try {
-      const {
-        data
-      } = await supabase.storage.from('facturas-pdf').createSignedUrl(factura.pdf_file_path, 60 * 60); // URL válida por 1 hora
-
-      if (data?.signedUrl) {
-        window.open(data.signedUrl, '_blank');
-      } else {
-        throw new Error('No se pudo generar la URL del PDF');
-      }
-    } catch (error) {
-      console.error('Error viewing PDF:', error);
-      toast({
-        title: "Error",
-        description: "No se pudo abrir el archivo PDF",
-        variant: "destructive"
-      });
-    }
-  };
-  const downloadPDF = async (factura: Factura) => {
-    if (!factura.pdf_file_path) {
-      toast({
-        title: "PDF no disponible",
-        description: "Esta factura no tiene un archivo PDF asociado",
-        variant: "destructive"
-      });
-      return;
-    }
-    try {
-      const {
-        data
-      } = await supabase.storage.from('facturas-pdf').createSignedUrl(factura.pdf_file_path, 60 * 60); // URL válida por 1 hora
-
-      if (data?.signedUrl) {
-        const link = document.createElement('a');
-        link.href = data.signedUrl;
-        link.download = `factura_${factura.numero_factura}.pdf`;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-      } else {
-        throw new Error('No se pudo generar la URL del PDF');
-      }
-    } catch (error) {
-      console.error('Error downloading PDF:', error);
-      toast({
-        title: "Error",
-        description: "No se pudo descargar el archivo PDF",
-        variant: "destructive"
-      });
-    }
+  const filterFacturasByType = (type: string | null) => {
+    if (type === null) return facturas.filter(f => !f.clasificacion);
+    return facturas.filter(f => f.clasificacion === type);
   };
   if (loading) {
     return <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background to-muted">
@@ -183,75 +106,94 @@ export default function Dashboard() {
       {/* Main Content */}
       <main className="container mx-auto px-4 py-8">
         <div className="max-w-7xl mx-auto">
-          <Card className="shadow-medium">
-            <CardHeader>
-              <div className="flex items-center justify-between">
+            <Card className="shadow-medium">
+              <CardHeader>
                 <CardTitle className="text-2xl bg-gradient-primary bg-clip-text text-transparent">
-                  Facturas Recibidas
+                  Gestión de Facturas
                 </CardTitle>
-                
-              </div>
-            </CardHeader>
-            <CardContent>
-              {loadingFacturas ? <div className="flex items-center justify-center py-8">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-                </div> : facturas.length === 0 ? <div className="text-center py-12">
-                  <FileText className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-                  <h3 className="text-lg font-medium mb-2">No hay facturas</h3>
-                  <p className="text-muted-foreground">
-                    Las facturas aparecerán aquí cuando lleguen por n8n
-                  </p>
-                </div> : <div className="rounded-md border">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Número de Factura</TableHead>
-                        <TableHead>Emisor</TableHead>
-                        <TableHead>Notas</TableHead>
-                        <TableHead>Total a Pagar</TableHead>
-                        <TableHead>Acciones</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {facturas.map(factura => <TableRow key={factura.id} className="hover:bg-muted/50">
-                          <TableCell className="font-medium">
-                            {factura.numero_factura}
-                          </TableCell>
-                          <TableCell>
-                            <div>
-                              <div className="font-medium">{factura.emisor_nombre}</div>
-                              <div className="text-sm text-muted-foreground">
-                                NIT: {factura.emisor_nit}
-                              </div>
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <div className="max-w-xs truncate" title={factura.notas}>
-                              {factura.notas || '-'}
-                            </div>
-                          </TableCell>
-                          <TableCell className="font-medium">
-                            {formatCurrency(factura.total_a_pagar)}
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex items-center space-x-2">
-                              {factura.pdf_file_path ? <>
-                                  <Button variant="outline" size="sm" onClick={() => viewPDF(factura)} className="transition-all duration-200 hover:scale-105">
-                                    <Eye className="w-4 h-4 mr-1" />
-                                    Ver
-                                  </Button>
-                                  
-                                </> : <div className="text-sm text-muted-foreground">
-                                  PDF no disponible
-                                </div>}
-                            </div>
-                          </TableCell>
-                        </TableRow>)}
-                    </TableBody>
-                  </Table>
-                </div>}
-            </CardContent>
-          </Card>
+              </CardHeader>
+              <CardContent>
+                {loadingFacturas ? (
+                  <div className="flex items-center justify-center py-8">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                  </div>
+                ) : facturas.length === 0 ? (
+                  <div className="text-center py-12">
+                    <FileText className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+                    <h3 className="text-lg font-medium mb-2">No hay facturas</h3>
+                    <p className="text-muted-foreground">
+                      Las facturas aparecerán aquí cuando lleguen por n8n
+                    </p>
+                  </div>
+                ) : (
+                  <Tabs defaultValue="sin-clasificar" className="w-full">
+                    <TabsList className="grid w-full grid-cols-3">
+                      <TabsTrigger value="sin-clasificar" className="flex items-center space-x-2">
+                        <FileText className="w-4 h-4" />
+                        <span>Sin Clasificar ({filterFacturasByType(null).length})</span>
+                      </TabsTrigger>
+                      <TabsTrigger value="mercancia" className="flex items-center space-x-2">
+                        <Package className="w-4 h-4" />
+                        <span>Mercancía ({filterFacturasByType('mercancia').length})</span>
+                      </TabsTrigger>
+                      <TabsTrigger value="gasto" className="flex items-center space-x-2">
+                        <CreditCard className="w-4 h-4" />
+                        <span>Gastos ({filterFacturasByType('gasto').length})</span>
+                      </TabsTrigger>
+                    </TabsList>
+
+                    <TabsContent value="sin-clasificar" className="mt-6">
+                      {filterFacturasByType(null).length === 0 ? (
+                        <div className="text-center py-8">
+                          <FileText className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
+                          <p className="text-muted-foreground">No hay facturas sin clasificar</p>
+                        </div>
+                      ) : (
+                        <FacturasTable
+                          facturas={filterFacturasByType(null)}
+                          onClassifyClick={handleClassifyClick}
+                        />
+                      )}
+                    </TabsContent>
+
+                    <TabsContent value="mercancia" className="mt-6">
+                      {filterFacturasByType('mercancia').length === 0 ? (
+                        <div className="text-center py-8">
+                          <Package className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
+                          <p className="text-muted-foreground">No hay facturas de mercancía</p>
+                        </div>
+                      ) : (
+                        <FacturasTable
+                          facturas={filterFacturasByType('mercancia')}
+                          onClassifyClick={handleClassifyClick}
+                        />
+                      )}
+                    </TabsContent>
+
+                    <TabsContent value="gasto" className="mt-6">
+                      {filterFacturasByType('gasto').length === 0 ? (
+                        <div className="text-center py-8">
+                          <CreditCard className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
+                          <p className="text-muted-foreground">No hay facturas de gastos</p>
+                        </div>
+                      ) : (
+                        <FacturasTable
+                          facturas={filterFacturasByType('gasto')}
+                          onClassifyClick={handleClassifyClick}
+                        />
+                      )}
+                    </TabsContent>
+                  </Tabs>
+                )}
+              </CardContent>
+            </Card>
+
+            <FacturaClassificationDialog
+              factura={selectedFactura}
+              isOpen={isClassificationDialogOpen}
+              onClose={() => setIsClassificationDialogOpen(false)}
+              onClassificationUpdated={handleClassificationUpdated}
+            />
         </div>
       </main>
     </div>;

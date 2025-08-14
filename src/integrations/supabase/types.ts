@@ -16,6 +16,7 @@ export type Database = {
     Tables: {
       facturas: {
         Row: {
+          clasificacion: string | null
           created_at: string
           emisor_nit: string
           emisor_nombre: string
@@ -30,6 +31,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          clasificacion?: string | null
           created_at?: string
           emisor_nit: string
           emisor_nombre: string
@@ -44,6 +46,7 @@ export type Database = {
           user_id: string
         }
         Update: {
+          clasificacion?: string | null
           created_at?: string
           emisor_nit?: string
           emisor_nombre?: string
