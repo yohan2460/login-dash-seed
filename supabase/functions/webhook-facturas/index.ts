@@ -68,6 +68,19 @@ serve(async (req) => {
       });
     }
 
+    // Validate UUID format for user_id
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(body.user_id)) {
+      return new Response(JSON.stringify({ 
+        error: 'user_id must be a valid UUID format',
+        received: body.user_id,
+        expected_format: 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx'
+      }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
     // Verify user exists
     const { data: user, error: userError } = await supabase.auth.admin.getUserById(body.user_id);
     
