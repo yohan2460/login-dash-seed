@@ -205,64 +205,64 @@ export default function Dashboard() {
                       </Card>
                     </div>
 
-                  <Tabs defaultValue="sin-clasificar" className="w-full">
-                    <TabsList className="grid w-full grid-cols-3">
-                      <TabsTrigger value="sin-clasificar" className="flex items-center space-x-2">
-                        <FileText className="w-4 h-4" />
-                        <span>Sin Clasificar ({filterFacturasByType(null).length})</span>
-                      </TabsTrigger>
-                      <TabsTrigger value="mercancia" className="flex items-center space-x-2">
-                        <Package className="w-4 h-4" />
-                        <span>Mercancía ({filterFacturasByType('mercancia').length})</span>
-                      </TabsTrigger>
-                      <TabsTrigger value="gasto" className="flex items-center space-x-2">
-                        <CreditCard className="w-4 h-4" />
-                        <span>Gastos ({filterFacturasByType('gasto').length})</span>
-                      </TabsTrigger>
-                    </TabsList>
+                    <Tabs defaultValue="sin-clasificar" className="w-full">
+                      <TabsList className="grid w-full grid-cols-3">
+                        <TabsTrigger value="sin-clasificar" className="flex items-center space-x-2">
+                          <FileText className="w-4 h-4" />
+                          <span>Sin Clasificar ({filterFacturasByType(null).length})</span>
+                        </TabsTrigger>
+                        <TabsTrigger value="mercancia" className="flex items-center space-x-2">
+                          <Package className="w-4 h-4" />
+                          <span>Mercancía ({filterFacturasByType('mercancia').length})</span>
+                        </TabsTrigger>
+                        <TabsTrigger value="gasto" className="flex items-center space-x-2">
+                          <CreditCard className="w-4 h-4" />
+                          <span>Gastos ({filterFacturasByType('gasto').length})</span>
+                        </TabsTrigger>
+                      </TabsList>
 
-                    <TabsContent value="sin-clasificar" className="mt-6">
-                      {filterFacturasByType(null).length === 0 ? (
-                        <div className="text-center py-8">
-                          <FileText className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
-                          <p className="text-muted-foreground">No hay facturas sin clasificar</p>
-                        </div>
-                      ) : (
-                        <FacturasTable
-                          facturas={filterFacturasByType(null)}
-                          onClassifyClick={handleClassifyClick}
-                        />
-                      )}
-                    </TabsContent>
+                      <TabsContent value="sin-clasificar" className="mt-6">
+                        {filterFacturasByType(null).length === 0 ? (
+                          <div className="text-center py-8">
+                            <FileText className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
+                            <p className="text-muted-foreground">No hay facturas sin clasificar</p>
+                          </div>
+                        ) : (
+                          <FacturasTable
+                            facturas={filterFacturasByType(null)}
+                            onClassifyClick={handleClassifyClick}
+                          />
+                        )}
+                      </TabsContent>
 
-                    <TabsContent value="mercancia" className="mt-6">
-                      {filterFacturasByType('mercancia').length === 0 ? (
-                        <div className="text-center py-8">
-                          <Package className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
-                          <p className="text-muted-foreground">No hay facturas de mercancía</p>
-                        </div>
-                      ) : (
-                        <FacturasTable
-                          facturas={filterFacturasByType('mercancia')}
-                          onClassifyClick={handleClassifyClick}
-                        />
-                      )}
-                    </TabsContent>
+                      <TabsContent value="mercancia" className="mt-6">
+                        {filterFacturasByType('mercancia').length === 0 ? (
+                          <div className="text-center py-8">
+                            <Package className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
+                            <p className="text-muted-foreground">No hay facturas de mercancía</p>
+                          </div>
+                        ) : (
+                          <FacturasTable
+                            facturas={filterFacturasByType('mercancia')}
+                            onClassifyClick={handleClassifyClick}
+                          />
+                        )}
+                      </TabsContent>
 
-                    <TabsContent value="gasto" className="mt-6">
-                      {filterFacturasByType('gasto').length === 0 ? (
-                        <div className="text-center py-8">
-                          <CreditCard className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
-                          <p className="text-muted-foreground">No hay facturas de gastos</p>
-                        </div>
-                      ) : (
-                        <FacturasTable
-                          facturas={filterFacturasByType('gasto')}
-                          onClassifyClick={handleClassifyClick}
-                        />
-                      )}
-                    </TabsContent>
-                  </Tabs>
+                      <TabsContent value="gasto" className="mt-6">
+                        {filterFacturasByType('gasto').length === 0 ? (
+                          <div className="text-center py-8">
+                            <CreditCard className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
+                            <p className="text-muted-foreground">No hay facturas de gastos</p>
+                          </div>
+                        ) : (
+                          <FacturasTable
+                            facturas={filterFacturasByType('gasto')}
+                            onClassifyClick={handleClassifyClick}
+                          />
+                        )}
+                      </TabsContent>
+                    </Tabs>
                   </>
                 )}
               </CardContent>
