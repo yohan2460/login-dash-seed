@@ -88,6 +88,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      get_system_user_id: {
+        Args: Record<PropertyKey, never>
+        Returns: string
+      }
       insert_sample_facturas: {
         Args: Record<PropertyKey, never>
         Returns: undefined
