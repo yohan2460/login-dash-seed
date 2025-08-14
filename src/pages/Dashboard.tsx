@@ -27,16 +27,16 @@ export default function Dashboard() {
   const [loadingFacturas, setLoadingFacturas] = useState(true);
   const [generatingData, setGeneratingData] = useState(false);
 
-  // Redirigir a login si no está autenticado
-  if (!user && !loading) {
-    return <Navigate to="/auth" replace />;
-  }
-
   useEffect(() => {
     if (user) {
       fetchFacturas();
     }
   }, [user]);
+
+  // Redirigir a login si no está autenticado
+  if (!user && !loading) {
+    return <Navigate to="/auth" replace />;
+  }
 
   const fetchFacturas = async () => {
     try {
