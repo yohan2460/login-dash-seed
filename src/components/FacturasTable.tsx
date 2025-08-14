@@ -99,6 +99,7 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick }: Factura
             <TableHead>Emisor</TableHead>
             <TableHead>Clasificación</TableHead>
             <TableHead>Descripción</TableHead>
+            <TableHead>Fecha</TableHead>
             <TableHead>Retención</TableHead>
             <TableHead>Pronto Pago</TableHead>
             <TableHead>IVA</TableHead>
@@ -132,6 +133,15 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick }: Factura
               <TableCell>
                 <div className="max-w-32 truncate" title={factura.descripcion || ''}>
                   {factura.descripcion || '-'}
+                </div>
+              </TableCell>
+              <TableCell>
+                <div className="text-sm">
+                  {new Date(factura.created_at).toLocaleDateString('es-CO', {
+                    day: '2-digit',
+                    month: '2-digit',
+                    year: 'numeric'
+                  })}
                 </div>
               </TableCell>
               <TableCell>

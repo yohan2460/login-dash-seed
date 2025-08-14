@@ -282,14 +282,17 @@ export default function Dashboard() {
 
                       {/* Pestañas anidadas para estados de Mercancía */}
                       <Tabs defaultValue="todas-mercancia" className="w-full">
-                        <TabsList className="grid w-full grid-cols-3 bg-muted/30">
-                          <TabsTrigger value="todas-mercancia" className="text-xs">
+                        <TabsList className="grid w-full grid-cols-2 bg-accent/20 border border-border/50 rounded-lg p-1">
+                          <TabsTrigger 
+                            value="todas-mercancia" 
+                            className="data-[state=active]:bg-background data-[state=active]:shadow-sm font-medium"
+                          >
                             Todas ({filterFacturasByType('mercancia').length})
                           </TabsTrigger>
-                          <TabsTrigger value="pendiente" className="text-xs">
-                            Pendientes ({filterFacturasByMercanciaState('pendiente').length})
-                          </TabsTrigger>
-                          <TabsTrigger value="pagada" className="text-xs">
+                          <TabsTrigger 
+                            value="pagada" 
+                            className="data-[state=active]:bg-background data-[state=active]:shadow-sm font-medium"
+                          >
                             Pagadas ({filterFacturasByMercanciaState('pagada').length})
                           </TabsTrigger>
                         </TabsList>
@@ -303,21 +306,6 @@ export default function Dashboard() {
                           ) : (
                             <FacturasTable
                               facturas={filterFacturasByType('mercancia')}
-                              onClassifyClick={handleClassifyClick}
-                              onPayClick={handlePayClick}
-                            />
-                          )}
-                        </TabsContent>
-
-                        <TabsContent value="pendiente" className="mt-4">
-                          {filterFacturasByMercanciaState('pendiente').length === 0 ? (
-                            <div className="text-center py-8">
-                              <Package className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
-                              <p className="text-muted-foreground">No hay facturas pendientes</p>
-                            </div>
-                          ) : (
-                            <FacturasTable
-                              facturas={filterFacturasByMercanciaState('pendiente')}
                               onClassifyClick={handleClassifyClick}
                               onPayClick={handlePayClick}
                             />
