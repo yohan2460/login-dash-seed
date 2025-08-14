@@ -1,6 +1,6 @@
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Eye, Tag } from 'lucide-react';
+import { Eye, Tag, CreditCard } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 
@@ -20,14 +20,16 @@ interface Factura {
   monto_retencion?: number | null;
   porcentaje_pronto_pago?: number | null;
   numero_serie?: string | null;
+  estado_mercancia?: string | null;
 }
 
 interface FacturasTableProps {
   facturas: Factura[];
   onClassifyClick: (factura: Factura) => void;
+  onPayClick?: (factura: Factura) => void;
 }
 
-export function FacturasTable({ facturas, onClassifyClick }: FacturasTableProps) {
+export function FacturasTable({ facturas, onClassifyClick, onPayClick }: FacturasTableProps) {
   const { toast } = useToast();
 
   const formatCurrency = (amount: number) => {
@@ -178,6 +180,18 @@ export function FacturasTable({ facturas, onClassifyClick }: FacturasTableProps)
                     <Tag className="w-4 h-4 mr-1" />
                     Clasificar
                   </Button>
+                  
+                  {factura.clasificacion === 'mercancia' && factura.estado_mercancia !== 'pagada' && onPayClick && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => onPayClick(factura)}
+                      className="transition-all duration-200 hover:scale-105 border-green-200 text-green-700 hover:bg-green-50"
+                    >
+                      <CreditCard className="w-4 h-4 mr-1" />
+                      Pagar
+                    </Button>
+                  )}
                   
                   {factura.pdf_file_path && (
                     <Button

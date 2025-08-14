@@ -9,6 +9,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { FacturasTable } from '@/components/FacturasTable';
 import { FacturaClassificationDialog } from '@/components/FacturaClassificationDialog';
+import { PaymentMethodDialog } from '@/components/PaymentMethodDialog';
 interface Factura {
   id: string;
   numero_factura: string;
@@ -42,6 +43,8 @@ export default function Dashboard() {
   const [loadingFacturas, setLoadingFacturas] = useState(true);
   const [selectedFactura, setSelectedFactura] = useState<Factura | null>(null);
   const [isClassificationDialogOpen, setIsClassificationDialogOpen] = useState(false);
+  const [selectedPaymentFactura, setSelectedPaymentFactura] = useState<Factura | null>(null);
+  const [isPaymentDialogOpen, setIsPaymentDialogOpen] = useState(false);
   useEffect(() => {
     if (user) {
       fetchFacturas();
@@ -74,6 +77,15 @@ export default function Dashboard() {
   };
 
   const handleClassificationUpdated = () => {
+    fetchFacturas();
+  };
+
+  const handlePayClick = (factura: Factura) => {
+    setSelectedPaymentFactura(factura);
+    setIsPaymentDialogOpen(true);
+  };
+
+  const handlePaymentProcessed = () => {
     fetchFacturas();
   };
   const handleSignOut = async () => {
@@ -195,6 +207,7 @@ export default function Dashboard() {
                         <FacturasTable
                           facturas={filterFacturasByType(null)}
                           onClassifyClick={handleClassifyClick}
+                          onPayClick={handlePayClick}
                         />
                       )}
                     </TabsContent>
@@ -291,6 +304,7 @@ export default function Dashboard() {
                             <FacturasTable
                               facturas={filterFacturasByType('mercancia')}
                               onClassifyClick={handleClassifyClick}
+                              onPayClick={handlePayClick}
                             />
                           )}
                         </TabsContent>
@@ -305,6 +319,7 @@ export default function Dashboard() {
                             <FacturasTable
                               facturas={filterFacturasByMercanciaState('pendiente')}
                               onClassifyClick={handleClassifyClick}
+                              onPayClick={handlePayClick}
                             />
                           )}
                         </TabsContent>
@@ -349,6 +364,13 @@ export default function Dashboard() {
               isOpen={isClassificationDialogOpen}
               onClose={() => setIsClassificationDialogOpen(false)}
               onClassificationUpdated={handleClassificationUpdated}
+            />
+
+            <PaymentMethodDialog
+              factura={selectedPaymentFactura}
+              isOpen={isPaymentDialogOpen}
+              onClose={() => setIsPaymentDialogOpen(false)}
+              onPaymentProcessed={handlePaymentProcessed}
             />
         </div>
       </main>
