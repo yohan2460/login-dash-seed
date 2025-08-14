@@ -27,6 +27,7 @@ interface Factura {
   monto_retencion?: number | null;
   porcentaje_pronto_pago?: number | null;
   numero_serie?: string | null;
+  estado_mercancia?: string | null;
 }
 export default function Dashboard() {
   const {
@@ -81,6 +82,12 @@ export default function Dashboard() {
   const filterFacturasByType = (type: string | null) => {
     if (type === null) return facturas.filter(f => !f.clasificacion);
     return facturas.filter(f => f.clasificacion === type);
+  };
+
+  const filterFacturasByMercanciaState = (estado: string | null) => {
+    const mercanciaFacturas = facturas.filter(f => f.clasificacion === 'mercancia');
+    if (estado === null) return mercanciaFacturas.filter(f => !f.estado_mercancia);
+    return mercanciaFacturas.filter(f => f.estado_mercancia === estado);
   };
 
   // Funciones para calcular totales
@@ -260,17 +267,62 @@ export default function Dashboard() {
                         </Card>
                       </div>
 
-                      {filterFacturasByType('mercancia').length === 0 ? (
-                        <div className="text-center py-8">
-                          <Package className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
-                          <p className="text-muted-foreground">No hay facturas de mercancía</p>
-                        </div>
-                      ) : (
-                        <FacturasTable
-                          facturas={filterFacturasByType('mercancia')}
-                          onClassifyClick={handleClassifyClick}
-                        />
-                      )}
+                      {/* Pestañas anidadas para estados de Mercancía */}
+                      <Tabs defaultValue="todas-mercancia" className="w-full">
+                        <TabsList className="grid w-full grid-cols-3 bg-muted/30">
+                          <TabsTrigger value="todas-mercancia" className="text-xs">
+                            Todas ({filterFacturasByType('mercancia').length})
+                          </TabsTrigger>
+                          <TabsTrigger value="pendiente" className="text-xs">
+                            Pendientes ({filterFacturasByMercanciaState('pendiente').length})
+                          </TabsTrigger>
+                          <TabsTrigger value="pagada" className="text-xs">
+                            Pagadas ({filterFacturasByMercanciaState('pagada').length})
+                          </TabsTrigger>
+                        </TabsList>
+
+                        <TabsContent value="todas-mercancia" className="mt-4">
+                          {filterFacturasByType('mercancia').length === 0 ? (
+                            <div className="text-center py-8">
+                              <Package className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
+                              <p className="text-muted-foreground">No hay facturas de mercancía</p>
+                            </div>
+                          ) : (
+                            <FacturasTable
+                              facturas={filterFacturasByType('mercancia')}
+                              onClassifyClick={handleClassifyClick}
+                            />
+                          )}
+                        </TabsContent>
+
+                        <TabsContent value="pendiente" className="mt-4">
+                          {filterFacturasByMercanciaState('pendiente').length === 0 ? (
+                            <div className="text-center py-8">
+                              <Package className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
+                              <p className="text-muted-foreground">No hay facturas pendientes</p>
+                            </div>
+                          ) : (
+                            <FacturasTable
+                              facturas={filterFacturasByMercanciaState('pendiente')}
+                              onClassifyClick={handleClassifyClick}
+                            />
+                          )}
+                        </TabsContent>
+
+                        <TabsContent value="pagada" className="mt-4">
+                          {filterFacturasByMercanciaState('pagada').length === 0 ? (
+                            <div className="text-center py-8">
+                              <Package className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
+                              <p className="text-muted-foreground">No hay facturas pagadas</p>
+                            </div>
+                          ) : (
+                            <FacturasTable
+                              facturas={filterFacturasByMercanciaState('pagada')}
+                              onClassifyClick={handleClassifyClick}
+                            />
+                          )}
+                        </TabsContent>
+                      </Tabs>
                     </TabsContent>
 
                     <TabsContent value="gasto" className="mt-6">

@@ -38,6 +38,7 @@ export function FacturaClassificationDialog({
   const [montoRetencion, setMontoRetencion] = useState<string>('');
   const [porcentajeProntoPago, setPorcentajeProntoPago] = useState<string>('');
   const [numeroSerie, setNumeroSerie] = useState<string>('');
+  const [estadoMercancia, setEstadoMercancia] = useState<string>('');
   const [isUpdating, setIsUpdating] = useState(false);
   const { toast } = useToast();
 
@@ -52,7 +53,8 @@ export function FacturaClassificationDialog({
         tiene_retencion: tieneRetencion,
         monto_retencion: tieneRetencion && montoRetencion ? parseFloat(montoRetencion) : 0,
         porcentaje_pronto_pago: porcentajeProntoPago && porcentajeProntoPago !== "0" ? parseFloat(porcentajeProntoPago) : null,
-        numero_serie: classification === 'mercancia' ? numeroSerie || null : null
+        numero_serie: classification === 'mercancia' ? numeroSerie || null : null,
+        estado_mercancia: classification === 'mercancia' ? estadoMercancia || null : null
       };
 
       const { error } = await supabase
@@ -76,6 +78,7 @@ export function FacturaClassificationDialog({
       setMontoRetencion('');
       setPorcentajeProntoPago('');
       setNumeroSerie('');
+      setEstadoMercancia('');
     } catch (error) {
       console.error('Error updating classification:', error);
       toast({
@@ -193,6 +196,23 @@ export function FacturaClassificationDialog({
                     placeholder="Ingrese el número de serie..."
                     className="mt-1"
                   />
+                </div>
+              )}
+
+              {classification === 'mercancia' && (
+                <div>
+                  <Label htmlFor="estado_mercancia" className="text-sm font-medium">
+                    Estado de mercancía
+                  </Label>
+                  <Select value={estadoMercancia} onValueChange={setEstadoMercancia}>
+                    <SelectTrigger className="mt-1">
+                      <SelectValue placeholder="Seleccionar estado" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="pendiente">Pendiente</SelectItem>
+                      <SelectItem value="pagada">Factura Pagada</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
               )}
 

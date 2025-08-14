@@ -21,6 +21,7 @@ export type Database = {
           descripcion: string | null
           emisor_nit: string
           emisor_nombre: string
+          estado_mercancia: string | null
           factura_cufe: string | null
           factura_iva: number | null
           factura_iva_porcentaje: number | null
@@ -43,6 +44,7 @@ export type Database = {
           descripcion?: string | null
           emisor_nit: string
           emisor_nombre: string
+          estado_mercancia?: string | null
           factura_cufe?: string | null
           factura_iva?: number | null
           factura_iva_porcentaje?: number | null
@@ -65,6 +67,7 @@ export type Database = {
           descripcion?: string | null
           emisor_nit?: string
           emisor_nombre?: string
+          estado_mercancia?: string | null
           factura_cufe?: string | null
           factura_iva?: number | null
           factura_iva_porcentaje?: number | null
