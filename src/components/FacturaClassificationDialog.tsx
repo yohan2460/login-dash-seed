@@ -49,7 +49,7 @@ export function FacturaClassificationDialog({
         descripcion: descripcion || null,
         tiene_retencion: tieneRetencion,
         tipo_descuento: tipoDescuento || null,
-        porcentaje_pronto_pago: porcentajeProntoPago ? parseFloat(porcentajeProntoPago) : null
+        porcentaje_pronto_pago: porcentajeProntoPago && porcentajeProntoPago !== "0" ? parseFloat(porcentajeProntoPago) : null
       };
 
       const { error } = await supabase
@@ -177,7 +177,7 @@ export function FacturaClassificationDialog({
                     <SelectValue placeholder="Seleccionar porcentaje" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">Sin descuento</SelectItem>
+                    <SelectItem value="0">Sin descuento</SelectItem>
                     <SelectItem value="1">1%</SelectItem>
                     <SelectItem value="2">2%</SelectItem>
                     <SelectItem value="3">3%</SelectItem>
