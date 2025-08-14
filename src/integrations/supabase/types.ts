@@ -14,6 +14,48 @@ export type Database = {
   }
   public: {
     Tables: {
+      facturas: {
+        Row: {
+          created_at: string
+          emisor_nit: string
+          emisor_nombre: string
+          factura_cufe: string | null
+          id: string
+          nombre_carpeta_factura: string | null
+          notas: string | null
+          numero_factura: string
+          total_a_pagar: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          emisor_nit: string
+          emisor_nombre: string
+          factura_cufe?: string | null
+          id?: string
+          nombre_carpeta_factura?: string | null
+          notas?: string | null
+          numero_factura: string
+          total_a_pagar: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          emisor_nit?: string
+          emisor_nombre?: string
+          factura_cufe?: string | null
+          id?: string
+          nombre_carpeta_factura?: string | null
+          notas?: string | null
+          numero_factura?: string
+          total_a_pagar?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           avatar_url: string | null
