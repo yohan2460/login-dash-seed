@@ -39,16 +39,7 @@ serve(async (req) => {
     
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Get webhook token for authentication
-    const webhookToken = req.headers.get('x-webhook-token');
-    const expectedToken = Deno.env.get('WEBHOOK_TOKEN');
-    
-    if (!webhookToken || webhookToken !== expectedToken) {
-      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
-        status: 401,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
+    // No authentication required - endpoint público para n8n
 
     // Parse request body
     const body = await req.json();
