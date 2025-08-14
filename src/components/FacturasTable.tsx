@@ -13,6 +13,8 @@ interface Factura {
   pdf_file_path: string | null;
   clasificacion?: string | null;
   created_at: string;
+  factura_iva?: number | null;
+  factura_iva_porcentaje?: number | null;
 }
 
 interface FacturasTableProps {
@@ -88,6 +90,8 @@ export function FacturasTable({ facturas, onClassifyClick }: FacturasTableProps)
             <TableHead>Número de Factura</TableHead>
             <TableHead>Emisor</TableHead>
             <TableHead>Clasificación</TableHead>
+            <TableHead>IVA</TableHead>
+            <TableHead>% IVA</TableHead>
             <TableHead>Total a Pagar</TableHead>
             <TableHead>Acciones</TableHead>
           </TableRow>
@@ -110,6 +114,12 @@ export function FacturasTable({ facturas, onClassifyClick }: FacturasTableProps)
                 {getClassificationBadge(factura.clasificacion) || (
                   <span className="text-sm text-muted-foreground">Sin clasificar</span>
                 )}
+              </TableCell>
+              <TableCell className="font-medium">
+                {factura.factura_iva ? formatCurrency(factura.factura_iva) : '-'}
+              </TableCell>
+              <TableCell className="font-medium">
+                {factura.factura_iva_porcentaje ? `${factura.factura_iva_porcentaje}%` : '-'}
               </TableCell>
               <TableCell className="font-medium">
                 {formatCurrency(factura.total_a_pagar)}
