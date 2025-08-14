@@ -24,6 +24,7 @@ export type Database = {
           nombre_carpeta_factura: string | null
           notas: string | null
           numero_factura: string
+          pdf_file_path: string | null
           total_a_pagar: number
           updated_at: string
           user_id: string
@@ -37,6 +38,7 @@ export type Database = {
           nombre_carpeta_factura?: string | null
           notas?: string | null
           numero_factura: string
+          pdf_file_path?: string | null
           total_a_pagar: number
           updated_at?: string
           user_id: string
@@ -50,6 +52,7 @@ export type Database = {
           nombre_carpeta_factura?: string | null
           notas?: string | null
           numero_factura?: string
+          pdf_file_path?: string | null
           total_a_pagar?: number
           updated_at?: string
           user_id?: string

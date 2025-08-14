@@ -15,7 +15,16 @@ interface FacturaData {
   total_a_pagar: number;
   nombre_carpeta_factura?: string;
   factura_cufe?: string;
-  user_id: string; // Se generará automáticamente
+  user_id: string;
+  pdf_file_path?: string;
+}
+
+// Función para generar nombre único de archivo
+function generateUniqueFileName(originalName: string): string {
+  const timestamp = Date.now();
+  const randomStr = Math.random().toString(36).substring(2, 8);
+  const extension = originalName.split('.').pop();
+  return `${timestamp}_${randomStr}.${extension}`;
 }
 
 serve(async (req) => {
@@ -39,14 +48,42 @@ serve(async (req) => {
     
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // No authentication required - endpoint público para n8n
+    const contentType = req.headers.get('content-type') || '';
+    let facturaData: Partial<FacturaData> = {};
+    let pdfFile: File | null = null;
 
-    // Parse request body
-    const body = await req.json();
+    // Determinar si es multipart/form-data o JSON
+    if (contentType.includes('multipart/form-data')) {
+      console.log('Processing multipart/form-data request');
+      
+      const formData = await req.formData();
+      
+      // Extraer datos de la factura
+      facturaData = {
+        numero_factura: formData.get('numero_factura') as string,
+        emisor_nombre: formData.get('emisor_nombre') as string,
+        emisor_nit: formData.get('emisor_nit') as string,
+        notas: formData.get('notas') as string || undefined,
+        total_a_pagar: parseFloat(formData.get('total_a_pagar') as string),
+        nombre_carpeta_factura: formData.get('nombre_carpeta_factura') as string || undefined,
+        factura_cufe: formData.get('factura_cufe') as string || undefined,
+      };
+
+      // Extraer archivo PDF si existe
+      const pdfFileEntry = formData.get('pdf_file');
+      if (pdfFileEntry && pdfFileEntry instanceof File) {
+        pdfFile = pdfFileEntry;
+        console.log('PDF file received:', pdfFile.name, 'Size:', pdfFile.size);
+      }
+    } else {
+      // Procesar como JSON (compatibilidad hacia atrás)
+      console.log('Processing JSON request');
+      facturaData = await req.json();
+    }
     
-    // Validate required fields (user_id ya no es requerido)
+    // Validate required fields
     const requiredFields = ['numero_factura', 'emisor_nombre', 'emisor_nit', 'total_a_pagar'];
-    const missingFields = requiredFields.filter(field => !body[field]);
+    const missingFields = requiredFields.filter(field => !facturaData[field as keyof FacturaData]);
     
     if (missingFields.length > 0) {
       return new Response(JSON.stringify({ 
@@ -59,9 +96,9 @@ serve(async (req) => {
     }
 
     // Validate data types
-    if (typeof body.total_a_pagar !== 'number') {
+    if (typeof facturaData.total_a_pagar !== 'number' || isNaN(facturaData.total_a_pagar)) {
       return new Response(JSON.stringify({ 
-        error: 'total_a_pagar must be a number' 
+        error: 'total_a_pagar must be a valid number' 
       }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -104,22 +141,53 @@ serve(async (req) => {
       console.log('Created new default user:', defaultUserId);
     }
 
-    // Prepare factura data usando el user_id generado automáticamente
-    const facturaData: Omit<FacturaData, 'id'> = {
-      user_id: defaultUserId, // Usar el usuario por defecto generado automáticamente
-      numero_factura: body.numero_factura,
-      emisor_nombre: body.emisor_nombre,
-      emisor_nit: body.emisor_nit,
-      notas: body.notas || null,
-      total_a_pagar: body.total_a_pagar,
-      nombre_carpeta_factura: body.nombre_carpeta_factura || null,
-      factura_cufe: body.factura_cufe || null,
+    // Subir archivo PDF si existe
+    let pdfFilePath: string | null = null;
+    if (pdfFile) {
+      const fileName = generateUniqueFileName(pdfFile.name);
+      const filePath = `facturas/${defaultUserId}/${fileName}`;
+      
+      console.log('Uploading PDF file to:', filePath);
+      
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('facturas-pdf')
+        .upload(filePath, pdfFile, {
+          contentType: 'application/pdf',
+          upsert: false
+        });
+
+      if (uploadError) {
+        console.error('Error uploading PDF:', uploadError);
+        return new Response(JSON.stringify({ 
+          error: 'Failed to upload PDF file',
+          details: uploadError.message 
+        }), {
+          status: 500,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      pdfFilePath = uploadData.path;
+      console.log('PDF uploaded successfully to:', pdfFilePath);
+    }
+
+    // Prepare factura data
+    const finalFacturaData: Omit<FacturaData, 'id'> = {
+      user_id: defaultUserId,
+      numero_factura: facturaData.numero_factura!,
+      emisor_nombre: facturaData.emisor_nombre!,
+      emisor_nit: facturaData.emisor_nit!,
+      notas: facturaData.notas || null,
+      total_a_pagar: facturaData.total_a_pagar!,
+      nombre_carpeta_factura: facturaData.nombre_carpeta_factura || null,
+      factura_cufe: facturaData.factura_cufe || null,
+      pdf_file_path: pdfFilePath,
     };
 
     // Insert factura into database
     const { data, error } = await supabase
       .from('facturas')
-      .insert(facturaData)
+      .insert(finalFacturaData)
       .select()
       .single();
 
@@ -138,7 +206,8 @@ serve(async (req) => {
     return new Response(JSON.stringify({ 
       success: true, 
       factura: data,
-      message: 'Factura created successfully'
+      message: 'Factura created successfully',
+      pdf_uploaded: !!pdfFile
     }), {
       status: 201,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
