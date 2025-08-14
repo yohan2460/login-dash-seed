@@ -2,7 +2,9 @@ import { useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { CreditCard, Building2 } from 'lucide-react';
+import { Label } from '@/components/ui/label';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { CreditCard, Building2, Percent } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 
@@ -34,10 +36,19 @@ interface PaymentMethodDialogProps {
 
 export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcessed }: PaymentMethodDialogProps) {
   const [processing, setProcessing] = useState(false);
+  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<string>('');
+  const [usedProntoPago, setUsedProntoPago] = useState<string>('');
   const { toast } = useToast();
 
-  const handlePayment = async (paymentMethod: string) => {
-    if (!factura) return;
+  const handlePayment = async () => {
+    if (!factura || !selectedPaymentMethod || !usedProntoPago) {
+      toast({
+        title: "Campos requeridos",
+        description: "Por favor selecciona el método de pago y si se aplicó pronto pago",
+        variant: "destructive"
+      });
+      return;
+    }
 
     setProcessing(true);
     try {
@@ -48,13 +59,18 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
 
       if (error) throw error;
 
+      const prontoPagoText = usedProntoPago === 'yes' ? ' con descuento pronto pago' : ' sin descuento pronto pago';
+      
       toast({
         title: "Factura pagada",
-        description: `Factura ${factura.numero_factura} marcada como pagada via ${paymentMethod}`,
+        description: `Factura ${factura.numero_factura} marcada como pagada via ${selectedPaymentMethod}${prontoPagoText}`,
       });
 
       onPaymentProcessed();
       onClose();
+      // Reset form
+      setSelectedPaymentMethod('');
+      setUsedProntoPago('');
     } catch (error) {
       console.error('Error updating payment status:', error);
       toast({
@@ -76,57 +92,92 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
           <DialogTitle>¿Cómo fue el pago?</DialogTitle>
         </DialogHeader>
         
-        <div className="space-y-4">
-          <div className="text-sm text-muted-foreground mb-4">
+        <div className="space-y-6">
+          <div className="text-sm text-muted-foreground mb-4 p-3 bg-muted/50 rounded-lg">
             <p><strong>Factura:</strong> {factura.numero_factura}</p>
             <p><strong>Emisor:</strong> {factura.emisor_nombre}</p>
             <p><strong>Total:</strong> {new Intl.NumberFormat('es-CO', {
               style: 'currency',
               currency: 'COP'
             }).format(factura.total_a_pagar)}</p>
+            {factura.porcentaje_pronto_pago && (
+              <p className="text-green-600 font-medium">
+                <strong>Descuento pronto pago disponible:</strong> {factura.porcentaje_pronto_pago}% 
+                (${new Intl.NumberFormat('es-CO').format((factura.total_a_pagar * factura.porcentaje_pronto_pago) / 100)})
+              </p>
+            )}
           </div>
 
-          <div className="grid grid-cols-1 gap-3">
-            <Card className="cursor-pointer hover:bg-accent transition-colors" onClick={() => handlePayment('Pago Banco')}>
-              <CardContent className="p-4">
-                <Button 
-                  variant="ghost" 
-                  className="w-full h-auto p-0 flex items-center space-x-3"
-                  disabled={processing}
-                >
-                  <div className="p-2 bg-blue-100 rounded-lg">
-                    <Building2 className="w-5 h-5 text-blue-600" />
-                  </div>
-                  <div className="text-left">
-                    <div className="font-medium">Pago Banco</div>
-                    <div className="text-sm text-muted-foreground">Transferencia bancaria</div>
-                  </div>
-                </Button>
-              </CardContent>
-            </Card>
+          {/* Método de pago */}
+          <div className="space-y-3">
+            <Label className="text-base font-medium">Método de pago:</Label>
+            <RadioGroup value={selectedPaymentMethod} onValueChange={setSelectedPaymentMethod}>
+              <div className="grid grid-cols-1 gap-3">
+                <Card className={`cursor-pointer transition-all duration-200 ${selectedPaymentMethod === 'Pago Banco' ? 'ring-2 ring-primary bg-accent/50' : 'hover:bg-accent/20'}`}>
+                  <CardContent className="p-4">
+                    <Label htmlFor="banco" className="cursor-pointer flex items-center space-x-3 w-full">
+                      <RadioGroupItem value="Pago Banco" id="banco" />
+                      <div className="p-2 bg-blue-100 rounded-lg">
+                        <Building2 className="w-5 h-5 text-blue-600" />
+                      </div>
+                      <div className="text-left">
+                        <div className="font-medium">Pago Banco</div>
+                        <div className="text-sm text-muted-foreground">Transferencia bancaria</div>
+                      </div>
+                    </Label>
+                  </CardContent>
+                </Card>
 
-            <Card className="cursor-pointer hover:bg-accent transition-colors" onClick={() => handlePayment('Pago Tobías')}>
-              <CardContent className="p-4">
-                <Button 
-                  variant="ghost" 
-                  className="w-full h-auto p-0 flex items-center space-x-3"
-                  disabled={processing}
-                >
-                  <div className="p-2 bg-green-100 rounded-lg">
-                    <CreditCard className="w-5 h-5 text-green-600" />
-                  </div>
-                  <div className="text-left">
-                    <div className="font-medium">Pago Tobías</div>
-                    <div className="text-sm text-muted-foreground">Método Tobías</div>
-                  </div>
-                </Button>
-              </CardContent>
-            </Card>
+                <Card className={`cursor-pointer transition-all duration-200 ${selectedPaymentMethod === 'Pago Tobías' ? 'ring-2 ring-primary bg-accent/50' : 'hover:bg-accent/20'}`}>
+                  <CardContent className="p-4">
+                    <Label htmlFor="tobias" className="cursor-pointer flex items-center space-x-3 w-full">
+                      <RadioGroupItem value="Pago Tobías" id="tobias" />
+                      <div className="p-2 bg-green-100 rounded-lg">
+                        <CreditCard className="w-5 h-5 text-green-600" />
+                      </div>
+                      <div className="text-left">
+                        <div className="font-medium">Pago Tobías</div>
+                        <div className="text-sm text-muted-foreground">Método Tobías</div>
+                      </div>
+                    </Label>
+                  </CardContent>
+                </Card>
+              </div>
+            </RadioGroup>
           </div>
 
-          <div className="flex justify-end pt-4 border-t">
+          {/* ¿Se aplicó pronto pago? */}
+          <div className="space-y-3">
+            <Label className="text-base font-medium">¿Se aplicó descuento por pronto pago?</Label>
+            <RadioGroup value={usedProntoPago} onValueChange={setUsedProntoPago}>
+              <div className="flex space-x-6">
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="yes" id="pronto-si" />
+                  <Label htmlFor="pronto-si" className="cursor-pointer flex items-center space-x-2">
+                    <Percent className="w-4 h-4 text-green-600" />
+                    <span>Sí, con descuento</span>
+                  </Label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="no" id="pronto-no" />
+                  <Label htmlFor="pronto-no" className="cursor-pointer">
+                    No, sin descuento
+                  </Label>
+                </div>
+              </div>
+            </RadioGroup>
+          </div>
+
+          <div className="flex justify-between pt-6 border-t">
             <Button variant="outline" onClick={onClose} disabled={processing}>
               Cancelar
+            </Button>
+            <Button 
+              onClick={handlePayment} 
+              disabled={processing || !selectedPaymentMethod || !usedProntoPago}
+              className="min-w-[120px]"
+            >
+              {processing ? "Procesando..." : "Confirmar Pago"}
             </Button>
           </div>
         </div>
