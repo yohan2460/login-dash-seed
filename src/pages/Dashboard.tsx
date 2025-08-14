@@ -114,19 +114,23 @@ export default function Dashboard() {
   };
 
   const calcularTotalImpuestos = () => {
-    return facturas.reduce((total, factura) => total + (factura.factura_iva || 0), 0);
+    const mercanciaFacturas = facturas.filter(f => f.clasificacion === 'mercancia');
+    return mercanciaFacturas.reduce((total, factura) => total + (factura.factura_iva || 0), 0);
   };
 
   const calcularTotalFacturas = () => {
-    return facturas.reduce((total, factura) => total + factura.total_a_pagar, 0);
+    const mercanciaFacturas = facturas.filter(f => f.clasificacion === 'mercancia');
+    return mercanciaFacturas.reduce((total, factura) => total + factura.total_a_pagar, 0);
   };
 
   const calcularTotalRetenciones = () => {
-    return facturas.reduce((total, factura) => total + (factura.monto_retencion || 0), 0);
+    const mercanciaFacturas = facturas.filter(f => f.clasificacion === 'mercancia');
+    return mercanciaFacturas.reduce((total, factura) => total + (factura.monto_retencion || 0), 0);
   };
 
   const calcularTotalAhorroProntoPago = () => {
-    return facturas.reduce((total, factura) => {
+    const mercanciaFacturas = facturas.filter(f => f.clasificacion === 'mercancia');
+    return mercanciaFacturas.reduce((total, factura) => {
       if (factura.porcentaje_pronto_pago) {
         return total + ((factura.total_a_pagar * factura.porcentaje_pronto_pago) / 100);
       }
