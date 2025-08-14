@@ -17,6 +17,8 @@ interface FacturaData {
   factura_cufe?: string;
   user_id: string;
   pdf_file_path?: string;
+  factura_iva?: number;
+  factura_iva_porcentaje?: number;
 }
 
 // Función para generar nombre único de archivo
@@ -67,6 +69,8 @@ serve(async (req) => {
         total_a_pagar: parseFloat(formData.get('total_a_pagar') as string),
         nombre_carpeta_factura: formData.get('nombre_carpeta_factura') as string || undefined,
         factura_cufe: formData.get('factura_cufe') as string || undefined,
+        factura_iva: formData.get('factura_iva') ? parseFloat(formData.get('factura_iva') as string) : 0,
+        factura_iva_porcentaje: formData.get('factura_iva_porcentaje') ? parseFloat(formData.get('factura_iva_porcentaje') as string) : 0,
       };
 
       // Extraer archivo PDF si existe
@@ -182,6 +186,8 @@ serve(async (req) => {
       nombre_carpeta_factura: facturaData.nombre_carpeta_factura || null,
       factura_cufe: facturaData.factura_cufe || null,
       pdf_file_path: pdfFilePath,
+      factura_iva: facturaData.factura_iva || 0,
+      factura_iva_porcentaje: facturaData.factura_iva_porcentaje || 0,
     };
 
     // Insert factura into database
