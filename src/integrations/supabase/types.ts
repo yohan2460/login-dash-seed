@@ -26,6 +26,8 @@ export type Database = {
           factura_iva: number | null
           factura_iva_porcentaje: number | null
           id: string
+          metodo_pago: string | null
+          monto_pagado: number | null
           monto_retencion: number | null
           nombre_carpeta_factura: string | null
           notas: string | null
@@ -37,6 +39,7 @@ export type Database = {
           total_a_pagar: number
           updated_at: string
           user_id: string
+          uso_pronto_pago: boolean | null
         }
         Insert: {
           clasificacion?: string | null
@@ -49,6 +52,8 @@ export type Database = {
           factura_iva?: number | null
           factura_iva_porcentaje?: number | null
           id?: string
+          metodo_pago?: string | null
+          monto_pagado?: number | null
           monto_retencion?: number | null
           nombre_carpeta_factura?: string | null
           notas?: string | null
@@ -60,6 +65,7 @@ export type Database = {
           total_a_pagar: number
           updated_at?: string
           user_id: string
+          uso_pronto_pago?: boolean | null
         }
         Update: {
           clasificacion?: string | null
@@ -72,6 +78,8 @@ export type Database = {
           factura_iva?: number | null
           factura_iva_porcentaje?: number | null
           id?: string
+          metodo_pago?: string | null
+          monto_pagado?: number | null
           monto_retencion?: number | null
           nombre_carpeta_factura?: string | null
           notas?: string | null
@@ -83,6 +91,7 @@ export type Database = {
           total_a_pagar?: number
           updated_at?: string
           user_id?: string
+          uso_pronto_pago?: boolean | null
         }
         Relationships: []
       }

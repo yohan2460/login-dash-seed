@@ -322,6 +322,7 @@ export default function Dashboard() {
                             <FacturasTable
                               facturas={filterFacturasByMercanciaState('pagada')}
                               onClassifyClick={handleClassifyClick}
+                              showPaymentInfo={true}
                             />
                           )}
                         </TabsContent>

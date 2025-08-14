@@ -52,9 +52,20 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
 
     setProcessing(true);
     try {
+      // Calculate actual amount paid
+      const discountAmount = usedProntoPago === 'yes' && factura.porcentaje_pronto_pago 
+        ? (factura.total_a_pagar * factura.porcentaje_pronto_pago) / 100 
+        : 0;
+      const actualAmountPaid = factura.total_a_pagar - discountAmount;
+
       const { error } = await supabase
         .from('facturas')
-        .update({ estado_mercancia: 'pagada' })
+        .update({ 
+          estado_mercancia: 'pagada',
+          metodo_pago: selectedPaymentMethod,
+          uso_pronto_pago: usedProntoPago === 'yes',
+          monto_pagado: actualAmountPaid
+        })
         .eq('id', factura.id);
 
       if (error) throw error;

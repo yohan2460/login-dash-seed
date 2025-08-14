@@ -21,15 +21,19 @@ interface Factura {
   porcentaje_pronto_pago?: number | null;
   numero_serie?: string | null;
   estado_mercancia?: string | null;
+  metodo_pago?: string | null;
+  uso_pronto_pago?: boolean | null;
+  monto_pagado?: number | null;
 }
 
 interface FacturasTableProps {
   facturas: Factura[];
   onClassifyClick: (factura: Factura) => void;
   onPayClick?: (factura: Factura) => void;
+  showPaymentInfo?: boolean;
 }
 
-export function FacturasTable({ facturas, onClassifyClick, onPayClick }: FacturasTableProps) {
+export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPaymentInfo = false }: FacturasTableProps) {
   const { toast } = useToast();
 
   const formatCurrency = (amount: number) => {
@@ -100,6 +104,13 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick }: Factura
             <TableHead>Clasificación</TableHead>
             <TableHead>Descripción</TableHead>
             <TableHead>Fecha</TableHead>
+            {showPaymentInfo && (
+              <>
+                <TableHead>Método de Pago</TableHead>
+                <TableHead>Pronto Pago</TableHead>
+                <TableHead>Monto Pagado</TableHead>
+              </>
+            )}
             <TableHead>Retención</TableHead>
             <TableHead>Pronto Pago</TableHead>
             <TableHead>IVA</TableHead>
@@ -144,6 +155,51 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick }: Factura
                   })}
                 </div>
               </TableCell>
+              
+              {showPaymentInfo && (
+                <>
+                  <TableCell>
+                    <div className="text-sm">
+                      {factura.metodo_pago ? (
+                        <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                          factura.metodo_pago === 'Pago Banco' 
+                            ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300'
+                            : 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300'
+                        }`}>
+                          {factura.metodo_pago}
+                        </span>
+                      ) : '-'}
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <div className="text-sm">
+                      {factura.uso_pronto_pago !== null ? (
+                        <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                          factura.uso_pronto_pago 
+                            ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300'
+                            : 'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-300'
+                        }`}>
+                          {factura.uso_pronto_pago ? 'Con descuento' : 'Sin descuento'}
+                        </span>
+                      ) : '-'}
+                    </div>
+                  </TableCell>
+                  <TableCell className="font-medium">
+                    {factura.monto_pagado ? (
+                      <div>
+                        <div className="text-green-600 font-bold">
+                          {formatCurrency(factura.monto_pagado)}
+                        </div>
+                        {factura.uso_pronto_pago && factura.porcentaje_pronto_pago && (
+                          <div className="text-xs text-green-600">
+                            Ahorro: {formatCurrency(factura.total_a_pagar - factura.monto_pagado)}
+                          </div>
+                        )}
+                      </div>
+                    ) : '-'}
+                  </TableCell>
+                </>
+              )}
               <TableCell>
                 {factura.tiene_retencion ? (
                   <div>
