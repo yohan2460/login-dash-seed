@@ -3,6 +3,10 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { Package, CreditCard } from 'lucide-react';
@@ -28,6 +32,10 @@ export function FacturaClassificationDialog({
   onClassificationUpdated
 }: FacturaClassificationDialogProps) {
   const [classification, setClassification] = useState<string>('');
+  const [descripcion, setDescripcion] = useState<string>('');
+  const [tieneRetencion, setTieneRetencion] = useState<boolean>(false);
+  const [tipoDescuento, setTipoDescuento] = useState<string>('');
+  const [porcentajeProntoPago, setPorcentajeProntoPago] = useState<string>('');
   const [isUpdating, setIsUpdating] = useState(false);
   const { toast } = useToast();
 
@@ -36,9 +44,17 @@ export function FacturaClassificationDialog({
 
     setIsUpdating(true);
     try {
+      const updateData: any = {
+        clasificacion: classification,
+        descripcion: descripcion || null,
+        tiene_retencion: tieneRetencion,
+        tipo_descuento: tipoDescuento || null,
+        porcentaje_pronto_pago: porcentajeProntoPago ? parseFloat(porcentajeProntoPago) : null
+      };
+
       const { error } = await supabase
         .from('facturas')
-        .update({ clasificacion: classification })
+        .update(updateData)
         .eq('id', factura.id);
 
       if (error) throw error;
@@ -50,7 +66,12 @@ export function FacturaClassificationDialog({
 
       onClassificationUpdated();
       onClose();
+      // Reset all form fields
       setClassification('');
+      setDescripcion('');
+      setTieneRetencion(false);
+      setTipoDescuento('');
+      setPorcentajeProntoPago('');
     } catch (error) {
       console.error('Error updating classification:', error);
       toast({
@@ -107,6 +128,64 @@ export function FacturaClassificationDialog({
                   </Label>
                 </div>
               </RadioGroup>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <Label htmlFor="descripcion" className="text-sm font-medium">
+                  Descripción (opcional)
+                </Label>
+                <Textarea
+                  id="descripcion"
+                  value={descripcion}
+                  onChange={(e) => setDescripcion(e.target.value)}
+                  placeholder="Agregar descripción adicional..."
+                  className="mt-1"
+                />
+              </div>
+
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="tiene_retencion"
+                  checked={tieneRetencion}
+                  onCheckedChange={(checked) => setTieneRetencion(checked === true)}
+                />
+                <Label htmlFor="tiene_retencion" className="text-sm">
+                  Tiene retención
+                </Label>
+              </div>
+
+              <div>
+                <Label htmlFor="tipo_descuento" className="text-sm font-medium">
+                  Tipo de descuento (opcional)
+                </Label>
+                <Input
+                  id="tipo_descuento"
+                  value={tipoDescuento}
+                  onChange={(e) => setTipoDescuento(e.target.value)}
+                  placeholder="Ej: Descuento por volumen, Descuento comercial..."
+                  className="mt-1"
+                />
+              </div>
+
+              <div>
+                <Label htmlFor="porcentaje_pronto_pago" className="text-sm font-medium">
+                  Porcentaje de pronto pago
+                </Label>
+                <Select value={porcentajeProntoPago} onValueChange={setPorcentajeProntoPago}>
+                  <SelectTrigger className="mt-1">
+                    <SelectValue placeholder="Seleccionar porcentaje" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">Sin descuento</SelectItem>
+                    <SelectItem value="1">1%</SelectItem>
+                    <SelectItem value="2">2%</SelectItem>
+                    <SelectItem value="3">3%</SelectItem>
+                    <SelectItem value="4">4%</SelectItem>
+                    <SelectItem value="5">5%</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
 
             <div className="flex space-x-2 pt-4">

@@ -18,6 +18,7 @@ export type Database = {
         Row: {
           clasificacion: string | null
           created_at: string
+          descripcion: string | null
           emisor_nit: string
           emisor_nombre: string
           factura_cufe: string | null
@@ -28,6 +29,9 @@ export type Database = {
           notas: string | null
           numero_factura: string
           pdf_file_path: string | null
+          porcentaje_pronto_pago: number | null
+          tiene_retencion: boolean | null
+          tipo_descuento: string | null
           total_a_pagar: number
           updated_at: string
           user_id: string
@@ -35,6 +39,7 @@ export type Database = {
         Insert: {
           clasificacion?: string | null
           created_at?: string
+          descripcion?: string | null
           emisor_nit: string
           emisor_nombre: string
           factura_cufe?: string | null
@@ -45,6 +50,9 @@ export type Database = {
           notas?: string | null
           numero_factura: string
           pdf_file_path?: string | null
+          porcentaje_pronto_pago?: number | null
+          tiene_retencion?: boolean | null
+          tipo_descuento?: string | null
           total_a_pagar: number
           updated_at?: string
           user_id: string
@@ -52,6 +60,7 @@ export type Database = {
         Update: {
           clasificacion?: string | null
           created_at?: string
+          descripcion?: string | null
           emisor_nit?: string
           emisor_nombre?: string
           factura_cufe?: string | null
@@ -62,6 +71,9 @@ export type Database = {
           notas?: string | null
           numero_factura?: string
           pdf_file_path?: string | null
+          porcentaje_pronto_pago?: number | null
+          tiene_retencion?: boolean | null
+          tipo_descuento?: string | null
           total_a_pagar?: number
           updated_at?: string
           user_id?: string
