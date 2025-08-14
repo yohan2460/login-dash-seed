@@ -65,12 +65,12 @@ export function FacturasTable({ facturas, onClassifyClick }: FacturasTableProps)
     
     const styles = {
       mercancia: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300',
-      gasto: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300'
+      gastos: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300'
     };
 
     const labels = {
       mercancia: 'Mercancía',
-      gasto: 'Gasto'
+      gastos: 'Gasto'
     };
 
     return (

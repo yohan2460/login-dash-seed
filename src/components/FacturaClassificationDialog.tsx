@@ -100,8 +100,8 @@ export function FacturaClassificationDialog({
                 </div>
                 
                 <div className="flex items-center space-x-3 p-3 border rounded-lg hover:bg-muted/50 transition-colors">
-                  <RadioGroupItem value="gasto" id="gasto" />
-                  <Label htmlFor="gasto" className="flex items-center space-x-2 cursor-pointer flex-1">
+                  <RadioGroupItem value="gastos" id="gastos" />
+                  <Label htmlFor="gastos" className="flex items-center space-x-2 cursor-pointer flex-1">
                     <CreditCard className="w-4 h-4 text-green-600" />
                     <span>Gasto</span>
                   </Label>
