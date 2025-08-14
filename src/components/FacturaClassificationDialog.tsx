@@ -54,7 +54,8 @@ export function FacturaClassificationDialog({
         monto_retencion: tieneRetencion && montoRetencion ? parseFloat(montoRetencion) : 0,
         porcentaje_pronto_pago: porcentajeProntoPago && porcentajeProntoPago !== "0" ? parseFloat(porcentajeProntoPago) : null,
         numero_serie: classification === 'mercancia' ? numeroSerie || null : null,
-        estado_mercancia: classification === 'mercancia' ? estadoMercancia || null : null
+        // If classifying as mercancia, set default state to pendiente if no state is selected
+        estado_mercancia: classification === 'mercancia' ? (estadoMercancia || 'pendiente') : null
       };
 
       const { error } = await supabase

@@ -99,8 +99,8 @@ export default function Dashboard() {
   const filterFacturasByMercanciaState = (estado: string | null) => {
     const mercanciaFacturas = facturas.filter(f => f.clasificacion === 'mercancia');
     if (estado === null) {
-      // "Todas" should show mercancia invoices that are NOT paid
-      return mercanciaFacturas.filter(f => f.estado_mercancia !== 'pagada');
+      // "Pendientes" should show mercancia invoices that are pendiente or don't have estado_mercancia set
+      return mercanciaFacturas.filter(f => f.estado_mercancia === 'pendiente' || !f.estado_mercancia);
     }
     return mercanciaFacturas.filter(f => f.estado_mercancia === estado);
   };
