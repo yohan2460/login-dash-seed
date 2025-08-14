@@ -153,119 +153,118 @@ export default function Dashboard() {
                     </p>
                   </div>
                 ) : (
-                  <>
-                    {/* Tarjetas de Resumen */}
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-                      <Card className="border-l-4 border-l-red-500">
-                        <CardContent className="p-4">
-                          <div className="flex items-center space-x-3">
-                            <div className="p-2 bg-red-100 rounded-lg">
-                              <Receipt className="w-5 h-5 text-red-600" />
-                            </div>
-                            <div>
-                              <p className="text-sm text-muted-foreground">Total Impuestos</p>
-                              <p className="text-xl font-bold text-red-600">
-                                {formatCurrency(calcularTotalImpuestos())}
-                              </p>
-                            </div>
-                          </div>
-                        </CardContent>
-                      </Card>
+                  <Tabs defaultValue="sin-clasificar" className="w-full">
+                    <TabsList className="grid w-full grid-cols-3">
+                      <TabsTrigger value="sin-clasificar" className="flex items-center space-x-2">
+                        <FileText className="w-4 h-4" />
+                        <span>Sin Clasificar ({filterFacturasByType(null).length})</span>
+                      </TabsTrigger>
+                      <TabsTrigger value="mercancia" className="flex items-center space-x-2">
+                        <Package className="w-4 h-4" />
+                        <span>Mercancía ({filterFacturasByType('mercancia').length})</span>
+                      </TabsTrigger>
+                      <TabsTrigger value="gasto" className="flex items-center space-x-2">
+                        <CreditCard className="w-4 h-4" />
+                        <span>Gastos ({filterFacturasByType('gasto').length})</span>
+                      </TabsTrigger>
+                    </TabsList>
 
-                      <Card className="border-l-4 border-l-blue-500">
-                        <CardContent className="p-4">
-                          <div className="flex items-center space-x-3">
-                            <div className="p-2 bg-blue-100 rounded-lg">
-                              <Calculator className="w-5 h-5 text-blue-600" />
+                    <TabsContent value="sin-clasificar" className="mt-6">
+                      {filterFacturasByType(null).length === 0 ? (
+                        <div className="text-center py-8">
+                          <FileText className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
+                          <p className="text-muted-foreground">No hay facturas sin clasificar</p>
+                        </div>
+                      ) : (
+                        <FacturasTable
+                          facturas={filterFacturasByType(null)}
+                          onClassifyClick={handleClassifyClick}
+                        />
+                      )}
+                    </TabsContent>
+
+                    <TabsContent value="mercancia" className="mt-6">
+                      {/* Tarjetas de Resumen - Solo en Mercancía */}
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                        <Card className="border-l-4 border-l-red-500">
+                          <CardContent className="p-4">
+                            <div className="flex items-center space-x-3">
+                              <div className="p-2 bg-red-100 rounded-lg">
+                                <Receipt className="w-5 h-5 text-red-600" />
+                              </div>
+                              <div>
+                                <p className="text-sm text-muted-foreground">Total Impuestos</p>
+                                <p className="text-xl font-bold text-red-600">
+                                  {formatCurrency(calcularTotalImpuestos())}
+                                </p>
+                              </div>
                             </div>
-                            <div>
-                              <p className="text-sm text-muted-foreground">Total Facturas</p>
-                              <p className="text-xl font-bold text-blue-600">
-                                {formatCurrency(calcularTotalFacturas())}
-                              </p>
+                          </CardContent>
+                        </Card>
+
+                        <Card className="border-l-4 border-l-blue-500">
+                          <CardContent className="p-4">
+                            <div className="flex items-center space-x-3">
+                              <div className="p-2 bg-blue-100 rounded-lg">
+                                <Calculator className="w-5 h-5 text-blue-600" />
+                              </div>
+                              <div>
+                                <p className="text-sm text-muted-foreground">Total Facturas</p>
+                                <p className="text-xl font-bold text-blue-600">
+                                  {formatCurrency(calcularTotalFacturas())}
+                                </p>
+                              </div>
                             </div>
-                          </div>
-                        </CardContent>
-                      </Card>
+                          </CardContent>
+                        </Card>
 
-                      <Card className="border-l-4 border-l-green-500">
-                        <CardContent className="p-4">
-                          <div className="flex items-center space-x-3">
-                            <div className="p-2 bg-green-100 rounded-lg">
-                              <Minus className="w-5 h-5 text-green-600" />
+                        <Card className="border-l-4 border-l-green-500">
+                          <CardContent className="p-4">
+                            <div className="flex items-center space-x-3">
+                              <div className="p-2 bg-green-100 rounded-lg">
+                                <Minus className="w-5 h-5 text-green-600" />
+                              </div>
+                              <div>
+                                <p className="text-sm text-muted-foreground">Total Retenciones</p>
+                                <p className="text-xl font-bold text-green-600">
+                                  {formatCurrency(calcularTotalRetenciones())}
+                                </p>
+                              </div>
                             </div>
-                            <div>
-                              <p className="text-sm text-muted-foreground">Total Retenciones</p>
-                              <p className="text-xl font-bold text-green-600">
-                                {formatCurrency(calcularTotalRetenciones())}
-                              </p>
-                            </div>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    </div>
+                          </CardContent>
+                        </Card>
+                      </div>
 
-                    <Tabs defaultValue="sin-clasificar" className="w-full">
-                      <TabsList className="grid w-full grid-cols-3">
-                        <TabsTrigger value="sin-clasificar" className="flex items-center space-x-2">
-                          <FileText className="w-4 h-4" />
-                          <span>Sin Clasificar ({filterFacturasByType(null).length})</span>
-                        </TabsTrigger>
-                        <TabsTrigger value="mercancia" className="flex items-center space-x-2">
-                          <Package className="w-4 h-4" />
-                          <span>Mercancía ({filterFacturasByType('mercancia').length})</span>
-                        </TabsTrigger>
-                        <TabsTrigger value="gasto" className="flex items-center space-x-2">
-                          <CreditCard className="w-4 h-4" />
-                          <span>Gastos ({filterFacturasByType('gasto').length})</span>
-                        </TabsTrigger>
-                      </TabsList>
+                      {filterFacturasByType('mercancia').length === 0 ? (
+                        <div className="text-center py-8">
+                          <Package className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
+                          <p className="text-muted-foreground">No hay facturas de mercancía</p>
+                        </div>
+                      ) : (
+                        <FacturasTable
+                          facturas={filterFacturasByType('mercancia')}
+                          onClassifyClick={handleClassifyClick}
+                        />
+                      )}
+                    </TabsContent>
 
-                      <TabsContent value="sin-clasificar" className="mt-6">
-                        {filterFacturasByType(null).length === 0 ? (
-                          <div className="text-center py-8">
-                            <FileText className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
-                            <p className="text-muted-foreground">No hay facturas sin clasificar</p>
-                          </div>
-                        ) : (
-                          <FacturasTable
-                            facturas={filterFacturasByType(null)}
-                            onClassifyClick={handleClassifyClick}
-                          />
-                        )}
-                      </TabsContent>
-
-                      <TabsContent value="mercancia" className="mt-6">
-                        {filterFacturasByType('mercancia').length === 0 ? (
-                          <div className="text-center py-8">
-                            <Package className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
-                            <p className="text-muted-foreground">No hay facturas de mercancía</p>
-                          </div>
-                        ) : (
-                          <FacturasTable
-                            facturas={filterFacturasByType('mercancia')}
-                            onClassifyClick={handleClassifyClick}
-                          />
-                        )}
-                      </TabsContent>
-
-                      <TabsContent value="gasto" className="mt-6">
-                        {filterFacturasByType('gasto').length === 0 ? (
-                          <div className="text-center py-8">
-                            <CreditCard className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
-                            <p className="text-muted-foreground">No hay facturas de gastos</p>
-                          </div>
-                        ) : (
-                          <FacturasTable
-                            facturas={filterFacturasByType('gasto')}
-                            onClassifyClick={handleClassifyClick}
-                          />
-                        )}
-                      </TabsContent>
-                    </Tabs>
-                  </>
+                    <TabsContent value="gasto" className="mt-6">
+                      {filterFacturasByType('gasto').length === 0 ? (
+                        <div className="text-center py-8">
+                          <CreditCard className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
+                          <p className="text-muted-foreground">No hay facturas de gastos</p>
+                        </div>
+                      ) : (
+                        <FacturasTable
+                          facturas={filterFacturasByType('gasto')}
+                          onClassifyClick={handleClassifyClick}
+                        />
+                      )}
+                    </TabsContent>
+                  </Tabs>
                 )}
               </CardContent>
+
             </Card>
 
             <FacturaClassificationDialog
