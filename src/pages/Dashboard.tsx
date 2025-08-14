@@ -50,7 +50,7 @@ export default function Dashboard() {
         data,
         error
       } = await supabase.from('facturas').select('*').order('created_at', {
-        ascending: false
+        ascending: true
       });
       if (error) throw error;
       setFacturas(data || []);
