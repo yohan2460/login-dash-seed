@@ -176,6 +176,40 @@ export default function Dashboard() {
       return total;
     }, 0);
   };
+
+  // Funciones para calcular totales de facturas pagadas
+  const calcularTotalImpuestosPagadas = () => {
+    const mercanciaFacturasPagadas = facturas.filter(f => 
+      f.clasificacion === 'mercancia' && f.estado_mercancia === 'pagada'
+    );
+    return mercanciaFacturasPagadas.reduce((total, factura) => total + (factura.factura_iva || 0), 0);
+  };
+
+  const calcularTotalFacturasPagadas = () => {
+    const mercanciaFacturasPagadas = facturas.filter(f => 
+      f.clasificacion === 'mercancia' && f.estado_mercancia === 'pagada'
+    );
+    return mercanciaFacturasPagadas.reduce((total, factura) => total + (factura.monto_pagado || factura.total_a_pagar), 0);
+  };
+
+  const calcularTotalRetencionesPagadas = () => {
+    const mercanciaFacturasPagadas = facturas.filter(f => 
+      f.clasificacion === 'mercancia' && f.estado_mercancia === 'pagada'
+    );
+    return mercanciaFacturasPagadas.reduce((total, factura) => total + (factura.monto_retencion || 0), 0);
+  };
+
+  const calcularTotalAhorroProntoPagoPagadas = () => {
+    const mercanciaFacturasPagadas = facturas.filter(f => 
+      f.clasificacion === 'mercancia' && f.estado_mercancia === 'pagada'
+    );
+    return mercanciaFacturasPagadas.reduce((total, factura) => {
+      if (factura.uso_pronto_pago && factura.monto_pagado) {
+        return total + (factura.total_a_pagar - factura.monto_pagado);
+      }
+      return total;
+    }, 0);
+  };
   if (loading) {
     return <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background to-muted">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
@@ -394,6 +428,75 @@ export default function Dashboard() {
                         </TabsContent>
 
                         <TabsContent value="pagada" className="mt-4">
+                          {/* Tarjetas de Resumen para Facturas Pagadas */}
+                          {filterFacturasByMercanciaState('pagada').length > 0 && (
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                              <Card className="border-l-4 border-l-red-500">
+                                <CardContent className="p-4">
+                                  <div className="flex items-center space-x-3">
+                                    <div className="p-2 bg-red-100 rounded-lg">
+                                      <Receipt className="w-5 h-5 text-red-600" />
+                                    </div>
+                                    <div>
+                                      <p className="text-sm text-muted-foreground">Total Impuestos</p>
+                                      <p className="text-xl font-bold text-red-600">
+                                        {formatCurrency(calcularTotalImpuestosPagadas())}
+                                      </p>
+                                    </div>
+                                  </div>
+                                </CardContent>
+                              </Card>
+
+                              <Card className="border-l-4 border-l-green-500">
+                                <CardContent className="p-4">
+                                  <div className="flex items-center space-x-3">
+                                    <div className="p-2 bg-green-100 rounded-lg">
+                                      <Minus className="w-5 h-5 text-green-600" />
+                                    </div>
+                                    <div>
+                                      <p className="text-sm text-muted-foreground">Total Retenciones</p>
+                                      <p className="text-xl font-bold text-green-600">
+                                        {formatCurrency(calcularTotalRetencionesPagadas())}
+                                      </p>
+                                    </div>
+                                  </div>
+                                </CardContent>
+                              </Card>
+
+                              <Card className="border-l-4 border-l-purple-500">
+                                <CardContent className="p-4">
+                                  <div className="flex items-center space-x-3">
+                                    <div className="p-2 bg-purple-100 rounded-lg">
+                                      <Percent className="w-5 h-5 text-purple-600" />
+                                    </div>
+                                    <div>
+                                      <p className="text-sm text-muted-foreground">Ahorro Pronto Pago</p>
+                                      <p className="text-xl font-bold text-purple-600">
+                                        {formatCurrency(calcularTotalAhorroProntoPagoPagadas())}
+                                      </p>
+                                    </div>
+                                  </div>
+                                </CardContent>
+                              </Card>
+
+                              <Card className="border-l-4 border-l-blue-500">
+                                <CardContent className="p-4">
+                                  <div className="flex items-center space-x-3">
+                                    <div className="p-2 bg-blue-100 rounded-lg">
+                                      <Calculator className="w-5 h-5 text-blue-600" />
+                                    </div>
+                                    <div>
+                                      <p className="text-sm text-muted-foreground">Total Pagado</p>
+                                      <p className="text-xl font-bold text-blue-600">
+                                        {formatCurrency(calcularTotalFacturasPagadas())}
+                                      </p>
+                                    </div>
+                                  </div>
+                                </CardContent>
+                              </Card>
+                            </div>
+                          )}
+
                           {filterFacturasByMercanciaState('pagada').length === 0 ? (
                             <div className="text-center py-8">
                               <Package className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
