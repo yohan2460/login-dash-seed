@@ -11,6 +11,7 @@ import {
   CheckCircle,
   Users
 } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
 import {
   Sidebar,
   SidebarContent,
@@ -27,7 +28,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useAuth } from "@/hooks/useAuth";
-import { supabase } from "@/integrations/supabase/client";
 import { useDashboard } from "@/contexts/DashboardContext";
 
 const navigationItems = [
