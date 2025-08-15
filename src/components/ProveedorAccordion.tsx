@@ -131,12 +131,12 @@ export function ProveedorAccordion({
   };
 
   return (
-    <Card className="border border-border/50 hover:border-border transition-colors">
+    <Card className="border border-border/50 hover:border-border hover:shadow-md transition-all duration-200">
       <Collapsible open={isOpen} onOpenChange={setIsOpen}>
         <CollapsibleTrigger asChild>
-          <CardContent className="p-4 hover:bg-muted/30 transition-colors cursor-pointer">
+          <CardContent className="p-6 hover:bg-muted/30 transition-colors cursor-pointer">
             <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-3">
+              <div className="flex items-center space-x-4">
                 <div className="transition-transform duration-200">
                   {isOpen ? (
                     <ChevronDown className="w-5 h-5 text-muted-foreground" />
@@ -144,23 +144,35 @@ export function ProveedorAccordion({
                     <ChevronRight className="w-5 h-5 text-muted-foreground" />
                   )}
                 </div>
-                <div className="p-2 bg-primary/10 rounded-lg">
-                  <Building2 className="w-5 h-5 text-primary" />
+                <div className="p-3 bg-primary/10 rounded-lg">
+                  <Building2 className="w-6 h-6 text-primary" />
                 </div>
-                <div>
-                  <h3 className="font-medium text-lg">{grupo.proveedor}</h3>
-                  <p className="text-sm text-muted-foreground">NIT: {grupo.nit}</p>
+                <div className="min-w-0 flex-1">
+                  <h3 className="font-semibold text-lg text-foreground truncate">
+                    {grupo.proveedor}
+                  </h3>
+                  <p className="text-sm text-muted-foreground">
+                    NIT: <span className="font-mono">{grupo.nit}</span>
+                  </p>
                 </div>
               </div>
               
-              <div className="flex items-center space-x-4 text-right">
-                <div>
-                  <p className="text-sm text-muted-foreground">Facturas</p>
-                  <p className="font-medium">{grupo.totalFacturas}</p>
+              <div className="flex items-center space-x-6">
+                <div className="text-center min-w-[80px]">
+                  <p className="text-xs text-muted-foreground uppercase tracking-wide font-medium">
+                    Facturas
+                  </p>
+                  <p className="text-xl font-bold text-blue-600 dark:text-blue-400">
+                    {grupo.totalFacturas}
+                  </p>
                 </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Valor Total</p>
-                  <p className="font-medium text-lg">{formatCurrency(grupo.valorTotal)}</p>
+                <div className="text-right min-w-[140px]">
+                  <p className="text-xs text-muted-foreground uppercase tracking-wide font-medium">
+                    Valor Total
+                  </p>
+                  <p className="text-xl font-bold text-green-600 dark:text-green-400">
+                    {formatCurrency(grupo.valorTotal)}
+                  </p>
                 </div>
               </div>
             </div>
@@ -168,33 +180,63 @@ export function ProveedorAccordion({
         </CollapsibleTrigger>
         
         <CollapsibleContent>
-          <div className="border-t border-border/50">
-            {grupo.facturas.map((factura) => (
+          <div className="border-t border-border/50 bg-muted/20">
+            {grupo.facturas.map((factura, index) => (
               <div 
                 key={factura.id} 
-                className="flex items-center justify-between p-4 border-b border-border/30 last:border-b-0 hover:bg-muted/20 transition-colors"
+                className={`flex items-center justify-between p-5 ${
+                  index !== grupo.facturas.length - 1 ? 'border-b border-border/30' : ''
+                } hover:bg-muted/30 transition-colors`}
               >
                 <div className="flex items-center space-x-4 flex-1">
-                  <div className="w-4 h-4 bg-primary/20 rounded"></div>
+                  <div className="w-1 h-12 bg-primary/30 rounded-full"></div>
                   
-                  <div className="space-y-1">
-                    <div className="flex items-center space-x-2">
-                      <h4 className="font-medium">{factura.numero_factura}</h4>
+                  <div className="space-y-2 flex-1">
+                    <div className="flex items-center space-x-3 flex-wrap gap-2">
+                      <h4 className="font-semibold text-foreground text-base">
+                        {factura.numero_factura}
+                      </h4>
                       {getClassificationBadge(factura.clasificacion)}
                       {getEstadoBadge(factura)}
                     </div>
-                    <p className="text-sm text-muted-foreground">
-                      {factura.descripcion || 'Sin descripción'}
+                    
+                    <p className="text-sm text-muted-foreground max-w-md">
+                      {factura.descripcion || 'Sin descripción disponible'}
                     </p>
-                    <div className="flex items-center space-x-4 text-xs text-muted-foreground">
-                      <span>
-                        Fecha: {factura.fecha_emision ? 
-                          new Date(factura.fecha_emision).toLocaleDateString('es-CO') : 
-                          new Date(factura.created_at).toLocaleDateString('es-CO')
-                        }
-                      </span>
+                    
+                    <div className="flex items-center space-x-6 text-xs">
+                      <div className="flex items-center space-x-1">
+                        <span className="text-muted-foreground">📅</span>
+                        <span className="text-muted-foreground">
+                          {factura.fecha_emision ? 
+                            new Date(factura.fecha_emision).toLocaleDateString('es-CO', {
+                              day: '2-digit',
+                              month: 'short',
+                              year: 'numeric'
+                            }) : 
+                            new Date(factura.created_at).toLocaleDateString('es-CO', {
+                              day: '2-digit',
+                              month: 'short', 
+                              year: 'numeric'
+                            })
+                          }
+                        </span>
+                      </div>
                       {factura.numero_serie && (
-                        <span>Serie: {factura.numero_serie}</span>
+                        <div className="flex items-center space-x-1">
+                          <span className="text-muted-foreground">🏷️</span>
+                          <span className="text-muted-foreground font-mono">
+                            {factura.numero_serie}
+                          </span>
+                        </div>
+                      )}
+                      {factura.factura_iva && (
+                        <div className="flex items-center space-x-1">
+                          <span className="text-muted-foreground">💰</span>
+                          <span className="text-muted-foreground">
+                            IVA: {formatCurrency(factura.factura_iva)}
+                          </span>
+                        </div>
                       )}
                     </div>
                   </div>
@@ -202,12 +244,12 @@ export function ProveedorAccordion({
                 
                 <div className="flex items-center space-x-4">
                   <div className="text-right">
-                    <p className="font-medium text-lg">{formatCurrency(factura.total_a_pagar)}</p>
-                    {factura.factura_iva && (
-                      <p className="text-xs text-muted-foreground">
-                        IVA: {formatCurrency(factura.factura_iva)}
-                      </p>
-                    )}
+                    <p className="text-lg font-bold text-foreground">
+                      {formatCurrency(factura.total_a_pagar)}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Total a pagar
+                    </p>
                   </div>
                   
                   <div className="flex items-center space-x-2">
@@ -215,10 +257,10 @@ export function ProveedorAccordion({
                       variant="outline"
                       size="sm"
                       onClick={() => onClassifyClick(factura)}
-                      className="transition-all duration-200 hover:scale-105"
+                      className="transition-all duration-200 hover:scale-105 hover:bg-blue-50 hover:border-blue-200"
                     >
                       <Tag className="w-3 h-3 mr-1" />
-                      Clasificar
+                      <span className="hidden sm:inline">Clasificar</span>
                     </Button>
                     
                     {factura.clasificacion === 'mercancia' && factura.estado_mercancia !== 'pagada' && (
@@ -226,10 +268,10 @@ export function ProveedorAccordion({
                         variant="outline"
                         size="sm"
                         onClick={() => onPayClick(factura)}
-                        className="transition-all duration-200 hover:scale-105 border-green-200 text-green-700 hover:bg-green-50"
+                        className="transition-all duration-200 hover:scale-105 border-green-200 text-green-700 hover:bg-green-50 hover:border-green-300"
                       >
                         <CreditCard className="w-3 h-3 mr-1" />
-                        Pagar
+                        <span className="hidden sm:inline">Pagar</span>
                       </Button>
                     )}
                     
@@ -238,10 +280,10 @@ export function ProveedorAccordion({
                         variant="outline"
                         size="sm"
                         onClick={() => viewPDF(factura)}
-                        className="transition-all duration-200 hover:scale-105"
+                        className="transition-all duration-200 hover:scale-105 hover:bg-gray-50 hover:border-gray-300"
                       >
                         <Eye className="w-3 h-3 mr-1" />
-                        Ver
+                        <span className="hidden sm:inline">Ver</span>
                       </Button>
                     )}
                   </div>
