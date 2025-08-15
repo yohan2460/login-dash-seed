@@ -328,75 +328,29 @@ export default function Dashboard() {
                     </TabsContent>
 
                     <TabsContent value="mercancia" className="mt-6">
-                      {/* Tarjetas de Resumen - Solo en Mercancía */}
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-                        <Card className="border-l-4 border-l-red-500">
-                          <CardContent className="p-4">
-                            <div className="flex items-center space-x-3">
-                              <div className="p-2 bg-red-100 rounded-lg">
-                                <Receipt className="w-5 h-5 text-red-600" />
-                              </div>
-                              <div>
-                                <p className="text-sm text-muted-foreground">Total Impuestos</p>
-                                <p className="text-xl font-bold text-red-600">
-                                  {formatCurrency(calcularTotalImpuestos())}
-                                </p>
-                              </div>
-                            </div>
-                          </CardContent>
-                        </Card>
-
-                        <Card className="border-l-4 border-l-green-500">
-                          <CardContent className="p-4">
-                            <div className="flex items-center space-x-3">
-                              <div className="p-2 bg-green-100 rounded-lg">
-                                <Minus className="w-5 h-5 text-green-600" />
-                              </div>
-                              <div>
-                                <p className="text-sm text-muted-foreground">Total Retenciones</p>
-                                <p className="text-xl font-bold text-green-600">
-                                  {formatCurrency(calcularTotalRetenciones())}
-                                </p>
-                              </div>
-                            </div>
-                          </CardContent>
-                        </Card>
-
-                        <Card className="border-l-4 border-l-purple-500">
-                          <CardContent className="p-4">
-                            <div className="flex items-center space-x-3">
-                              <div className="p-2 bg-purple-100 rounded-lg">
-                                <Percent className="w-5 h-5 text-purple-600" />
-                              </div>
-                              <div>
-                                <p className="text-sm text-muted-foreground">Ahorro Pronto Pago</p>
-                                <p className="text-xl font-bold text-purple-600">
-                                  {formatCurrency(calcularTotalAhorroProntoPago())}
-                                </p>
-                              </div>
-                            </div>
-                          </CardContent>
-                        </Card>
-
-                        <Card className="border-l-4 border-l-blue-500">
-                          <CardContent className="p-4">
-                            <div className="flex items-center space-x-3">
-                              <div className="p-2 bg-blue-100 rounded-lg">
-                                <Calculator className="w-5 h-5 text-blue-600" />
-                              </div>
-                              <div>
-                                <p className="text-sm text-muted-foreground">Total Facturas</p>
-                                <p className="text-xl font-bold text-blue-600">
-                                  {formatCurrency(calcularTotalFacturas())}
-                                </p>
-                              </div>
-                            </div>
-                          </CardContent>
-                        </Card>
-                      </div>
-
                       {/* Pestañas anidadas para estados de Mercancía */}
-                      <Tabs defaultValue="todas-mercancia" className="w-full">
+                      <Tabs defaultValue="todas-mercancia" className="w-full" onValueChange={(value) => {
+                        // Actualizar las tarjetas según la pestaña activa
+                        const impuestosEl = document.getElementById('total-impuestos');
+                        const retencionesEl = document.getElementById('total-retenciones');
+                        const ahorroEl = document.getElementById('ahorro-pronto-pago');
+                        const totalEl = document.getElementById('total-facturas');
+                        const labelEl = document.getElementById('total-label');
+                        
+                        if (value === 'pagada') {
+                          if (impuestosEl) impuestosEl.textContent = formatCurrency(calcularTotalImpuestosPagadas());
+                          if (retencionesEl) retencionesEl.textContent = formatCurrency(calcularTotalRetencionesPagadas());
+                          if (ahorroEl) ahorroEl.textContent = formatCurrency(calcularTotalAhorroProntoPagoPagadas());
+                          if (totalEl) totalEl.textContent = formatCurrency(calcularTotalFacturasPagadas());
+                          if (labelEl) labelEl.textContent = 'Total Pagado';
+                        } else {
+                          if (impuestosEl) impuestosEl.textContent = formatCurrency(calcularTotalImpuestos());
+                          if (retencionesEl) retencionesEl.textContent = formatCurrency(calcularTotalRetenciones());
+                          if (ahorroEl) ahorroEl.textContent = formatCurrency(calcularTotalAhorroProntoPago());
+                          if (totalEl) totalEl.textContent = formatCurrency(calcularTotalFacturas());
+                          if (labelEl) labelEl.textContent = 'Total Facturas';
+                        }
+                      }}>
                         <TabsList className="grid w-full grid-cols-2 bg-accent/20 border border-border/50 rounded-lg p-1">
                           <TabsTrigger 
                             value="todas-mercancia" 
@@ -411,6 +365,73 @@ export default function Dashboard() {
                             Pagadas ({filterFacturasByMercanciaState('pagada').length})
                           </TabsTrigger>
                         </TabsList>
+
+                        {/* Tarjetas de Resumen dinámicas */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 my-6">
+                          <Card className="border-l-4 border-l-red-500">
+                            <CardContent className="p-4">
+                              <div className="flex items-center space-x-3">
+                                <div className="p-2 bg-red-100 rounded-lg">
+                                  <Receipt className="w-5 h-5 text-red-600" />
+                                </div>
+                                <div>
+                                  <p className="text-sm text-muted-foreground">Total Impuestos</p>
+                                  <p className="text-xl font-bold text-red-600" id="total-impuestos">
+                                    {formatCurrency(calcularTotalImpuestos())}
+                                  </p>
+                                </div>
+                              </div>
+                            </CardContent>
+                          </Card>
+
+                          <Card className="border-l-4 border-l-green-500">
+                            <CardContent className="p-4">
+                              <div className="flex items-center space-x-3">
+                                <div className="p-2 bg-green-100 rounded-lg">
+                                  <Minus className="w-5 h-5 text-green-600" />
+                                </div>
+                                <div>
+                                  <p className="text-sm text-muted-foreground">Total Retenciones</p>
+                                  <p className="text-xl font-bold text-green-600" id="total-retenciones">
+                                    {formatCurrency(calcularTotalRetenciones())}
+                                  </p>
+                                </div>
+                              </div>
+                            </CardContent>
+                          </Card>
+
+                          <Card className="border-l-4 border-l-purple-500">
+                            <CardContent className="p-4">
+                              <div className="flex items-center space-x-3">
+                                <div className="p-2 bg-purple-100 rounded-lg">
+                                  <Percent className="w-5 h-5 text-purple-600" />
+                                </div>
+                                <div>
+                                  <p className="text-sm text-muted-foreground">Ahorro Pronto Pago</p>
+                                  <p className="text-xl font-bold text-purple-600" id="ahorro-pronto-pago">
+                                    {formatCurrency(calcularTotalAhorroProntoPago())}
+                                  </p>
+                                </div>
+                              </div>
+                            </CardContent>
+                          </Card>
+
+                          <Card className="border-l-4 border-l-blue-500">
+                            <CardContent className="p-4">
+                              <div className="flex items-center space-x-3">
+                                <div className="p-2 bg-blue-100 rounded-lg">
+                                  <Calculator className="w-5 h-5 text-blue-600" />
+                                </div>
+                                <div>
+                                  <p className="text-sm text-muted-foreground" id="total-label">Total Facturas</p>
+                                  <p className="text-xl font-bold text-blue-600" id="total-facturas">
+                                    {formatCurrency(calcularTotalFacturas())}
+                                  </p>
+                                </div>
+                              </div>
+                            </CardContent>
+                          </Card>
+                        </div>
 
                         <TabsContent value="todas-mercancia" className="mt-4">
                           {filterFacturasByMercanciaState(null).length === 0 ? (
@@ -428,75 +449,6 @@ export default function Dashboard() {
                         </TabsContent>
 
                         <TabsContent value="pagada" className="mt-4">
-                          {/* Tarjetas de Resumen para Facturas Pagadas */}
-                          {filterFacturasByMercanciaState('pagada').length > 0 && (
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-                              <Card className="border-l-4 border-l-red-500">
-                                <CardContent className="p-4">
-                                  <div className="flex items-center space-x-3">
-                                    <div className="p-2 bg-red-100 rounded-lg">
-                                      <Receipt className="w-5 h-5 text-red-600" />
-                                    </div>
-                                    <div>
-                                      <p className="text-sm text-muted-foreground">Total Impuestos</p>
-                                      <p className="text-xl font-bold text-red-600">
-                                        {formatCurrency(calcularTotalImpuestosPagadas())}
-                                      </p>
-                                    </div>
-                                  </div>
-                                </CardContent>
-                              </Card>
-
-                              <Card className="border-l-4 border-l-green-500">
-                                <CardContent className="p-4">
-                                  <div className="flex items-center space-x-3">
-                                    <div className="p-2 bg-green-100 rounded-lg">
-                                      <Minus className="w-5 h-5 text-green-600" />
-                                    </div>
-                                    <div>
-                                      <p className="text-sm text-muted-foreground">Total Retenciones</p>
-                                      <p className="text-xl font-bold text-green-600">
-                                        {formatCurrency(calcularTotalRetencionesPagadas())}
-                                      </p>
-                                    </div>
-                                  </div>
-                                </CardContent>
-                              </Card>
-
-                              <Card className="border-l-4 border-l-purple-500">
-                                <CardContent className="p-4">
-                                  <div className="flex items-center space-x-3">
-                                    <div className="p-2 bg-purple-100 rounded-lg">
-                                      <Percent className="w-5 h-5 text-purple-600" />
-                                    </div>
-                                    <div>
-                                      <p className="text-sm text-muted-foreground">Ahorro Pronto Pago</p>
-                                      <p className="text-xl font-bold text-purple-600">
-                                        {formatCurrency(calcularTotalAhorroProntoPagoPagadas())}
-                                      </p>
-                                    </div>
-                                  </div>
-                                </CardContent>
-                              </Card>
-
-                              <Card className="border-l-4 border-l-blue-500">
-                                <CardContent className="p-4">
-                                  <div className="flex items-center space-x-3">
-                                    <div className="p-2 bg-blue-100 rounded-lg">
-                                      <Calculator className="w-5 h-5 text-blue-600" />
-                                    </div>
-                                    <div>
-                                      <p className="text-sm text-muted-foreground">Total Pagado</p>
-                                      <p className="text-xl font-bold text-blue-600">
-                                        {formatCurrency(calcularTotalFacturasPagadas())}
-                                      </p>
-                                    </div>
-                                  </div>
-                                </CardContent>
-                              </Card>
-                            </div>
-                          )}
-
                           {filterFacturasByMercanciaState('pagada').length === 0 ? (
                             <div className="text-center py-8">
                               <Package className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
