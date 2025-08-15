@@ -56,6 +56,28 @@ export default function Informes() {
   const [loadingData, setLoadingData] = useState(true);
   const [selectedMonth, setSelectedMonth] = useState<string>('todos');
 
+  const getFilteredFacturas = () => {
+    if (selectedMonth === 'todos') {
+      return facturas;
+    }
+    
+    return facturas.filter(factura => {
+      const fechaCreacion = new Date(factura.created_at);
+      const mesAno = `${fechaCreacion.getFullYear()}-${String(fechaCreacion.getMonth() + 1).padStart(2, '0')}`;
+      return mesAno === selectedMonth;
+    });
+  };
+
+  const getAvailableMonths = () => {
+    const months = new Set<string>();
+    facturas.forEach(factura => {
+      const fecha = new Date(factura.created_at);
+      const mesAno = `${fecha.getFullYear()}-${String(fecha.getMonth() + 1).padStart(2, '0')}`;
+      months.add(mesAno);
+    });
+    return Array.from(months).sort().reverse();
+  };
+
   useEffect(() => {
     if (user) {
       fetchFacturas();
@@ -88,27 +110,6 @@ export default function Informes() {
     }
   };
 
-  const getFilteredFacturas = () => {
-    if (selectedMonth === 'todos') {
-      return facturas;
-    }
-    
-    return facturas.filter(factura => {
-      const fechaCreacion = new Date(factura.created_at);
-      const mesAno = `${fechaCreacion.getFullYear()}-${String(fechaCreacion.getMonth() + 1).padStart(2, '0')}`;
-      return mesAno === selectedMonth;
-    });
-  };
-
-  const getAvailableMonths = () => {
-    const months = new Set<string>();
-    facturas.forEach(factura => {
-      const fecha = new Date(factura.created_at);
-      const mesAno = `${fecha.getFullYear()}-${String(fecha.getMonth() + 1).padStart(2, '0')}`;
-      months.add(mesAno);
-    });
-    return Array.from(months).sort().reverse();
-  };
 
   const procesarProveedores = (facturas: Factura[]) => {
     const proveedoresMap = new Map<string, ProveedorData>();
