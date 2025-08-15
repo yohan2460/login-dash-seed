@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
-import { Navigate } from 'react-router-dom';
+import { Navigate, Link } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { LogOut, FileText, Package, CreditCard, Calculator, Receipt, Minus, Percent } from 'lucide-react';
+import { LogOut, FileText, Package, CreditCard, Calculator, Receipt, Minus, Percent, Building2 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { FacturasTable } from '@/components/FacturasTable';
@@ -227,6 +227,12 @@ export default function Dashboard() {
           </div>
           
           <div className="flex items-center space-x-4">
+            <Link to="/facturas-por-proveedor">
+              <Button variant="outline" size="sm" className="transition-all duration-300 hover:scale-105">
+                <Building2 className="w-4 h-4 mr-2" />
+                Ver por Proveedor
+              </Button>
+            </Link>
             <span className="text-sm text-muted-foreground">
               {user?.email}
             </span>
