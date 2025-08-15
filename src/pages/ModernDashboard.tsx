@@ -117,7 +117,8 @@ export default function ModernDashboard() {
   const filterFacturasByGastoState = (estado: string | null) => {
     const gastoFacturas = facturas.filter(f => f.clasificacion === 'gasto');
     if (estado === null) {
-      return gastoFacturas.filter(f => f.estado_mercancia !== 'pagada');
+      // Para gastos pendientes: estado_mercancia es null, undefined, o cualquier valor que no sea 'pagada'
+      return gastoFacturas.filter(f => !f.estado_mercancia || f.estado_mercancia !== 'pagada');
     }
     return gastoFacturas.filter(f => f.estado_mercancia === estado);
   };
