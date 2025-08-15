@@ -4,7 +4,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { LogOut, FileText, Package, CreditCard, Calculator, Receipt, Minus, Percent, Building2 } from 'lucide-react';
+import { LogOut, FileText, Package, CreditCard, Calculator, Receipt, Minus, Percent, Building2, Banknote, User } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { FacturasTable } from '@/components/FacturasTable';
@@ -178,11 +178,18 @@ export default function Dashboard() {
   };
 
   // Funciones para calcular totales de facturas pagadas
-  const calcularTotalImpuestosPagadas = () => {
+  const calcularTotalPagadoBancos = () => {
     const mercanciaFacturasPagadas = facturas.filter(f => 
-      f.clasificacion === 'mercancia' && f.estado_mercancia === 'pagada'
+      f.clasificacion === 'mercancia' && f.estado_mercancia === 'pagada' && f.metodo_pago === 'Pago Banco'
     );
-    return mercanciaFacturasPagadas.reduce((total, factura) => total + (factura.factura_iva || 0), 0);
+    return mercanciaFacturasPagadas.reduce((total, factura) => total + (factura.monto_pagado || factura.total_a_pagar), 0);
+  };
+
+  const calcularTotalPagadoTobias = () => {
+    const mercanciaFacturasPagadas = facturas.filter(f => 
+      f.clasificacion === 'mercancia' && f.estado_mercancia === 'pagada' && f.metodo_pago === 'Pago Tobías'
+    );
+    return mercanciaFacturasPagadas.reduce((total, factura) => total + (factura.monto_pagado || factura.total_a_pagar), 0);
   };
 
   const calcularTotalFacturasPagadas = () => {
@@ -190,13 +197,6 @@ export default function Dashboard() {
       f.clasificacion === 'mercancia' && f.estado_mercancia === 'pagada'
     );
     return mercanciaFacturasPagadas.reduce((total, factura) => total + (factura.monto_pagado || factura.total_a_pagar), 0);
-  };
-
-  const calcularTotalRetencionesPagadas = () => {
-    const mercanciaFacturasPagadas = facturas.filter(f => 
-      f.clasificacion === 'mercancia' && f.estado_mercancia === 'pagada'
-    );
-    return mercanciaFacturasPagadas.reduce((total, factura) => total + (factura.monto_retencion || 0), 0);
   };
 
   const calcularTotalAhorroProntoPagoPagadas = () => {
@@ -344,12 +344,36 @@ export default function Dashboard() {
                         const labelEl = document.getElementById('total-label');
                         
                         if (value === 'pagada') {
-                          if (impuestosEl) impuestosEl.textContent = formatCurrency(calcularTotalImpuestosPagadas());
-                          if (retencionesEl) retencionesEl.textContent = formatCurrency(calcularTotalRetencionesPagadas());
+                          // Para facturas pagadas, mostrar bancos y Tobías en lugar de impuestos/retenciones
+                          const bancosCard = document.querySelector('[data-card="bancos"]');
+                          const tobiasCard = document.querySelector('[data-card="tobias"]');
+                          const impuestosCard = document.querySelector('[data-card="impuestos"]');
+                          const retencionesCard = document.querySelector('[data-card="retenciones"]');
+                          
+                          if (impuestosCard) (impuestosCard as HTMLElement).style.display = 'none';
+                          if (retencionesCard) (retencionesCard as HTMLElement).style.display = 'none';
+                          if (bancosCard) (bancosCard as HTMLElement).style.display = 'block';
+                          if (tobiasCard) (tobiasCard as HTMLElement).style.display = 'block';
+                          
+                          const bancosEl = document.getElementById('total-bancos');
+                          const tobiasEl = document.getElementById('total-tobias');
+                          if (bancosEl) bancosEl.textContent = formatCurrency(calcularTotalPagadoBancos());
+                          if (tobiasEl) tobiasEl.textContent = formatCurrency(calcularTotalPagadoTobias());
                           if (ahorroEl) ahorroEl.textContent = formatCurrency(calcularTotalAhorroProntoPagoPagadas());
                           if (totalEl) totalEl.textContent = formatCurrency(calcularTotalFacturasPagadas());
                           if (labelEl) labelEl.textContent = 'Total Pagado';
                         } else {
+                          // Para facturas pendientes, mostrar impuestos/retenciones y ocultar bancos/Tobías
+                          const bancosCard = document.querySelector('[data-card="bancos"]');
+                          const tobiasCard = document.querySelector('[data-card="tobias"]');
+                          const impuestosCard = document.querySelector('[data-card="impuestos"]');
+                          const retencionesCard = document.querySelector('[data-card="retenciones"]');
+                          
+                          if (impuestosCard) (impuestosCard as HTMLElement).style.display = 'block';
+                          if (retencionesCard) (retencionesCard as HTMLElement).style.display = 'block';
+                          if (bancosCard) (bancosCard as HTMLElement).style.display = 'none';
+                          if (tobiasCard) (tobiasCard as HTMLElement).style.display = 'none';
+                          
                           if (impuestosEl) impuestosEl.textContent = formatCurrency(calcularTotalImpuestos());
                           if (retencionesEl) retencionesEl.textContent = formatCurrency(calcularTotalRetenciones());
                           if (ahorroEl) ahorroEl.textContent = formatCurrency(calcularTotalAhorroProntoPago());
@@ -374,7 +398,7 @@ export default function Dashboard() {
 
                         {/* Tarjetas de Resumen dinámicas */}
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 my-6">
-                          <Card className="border-l-4 border-l-red-500">
+                          <Card className="border-l-4 border-l-red-500" data-card="impuestos">
                             <CardContent className="p-4">
                               <div className="flex items-center space-x-3">
                                 <div className="p-2 bg-red-100 rounded-lg">
@@ -390,7 +414,7 @@ export default function Dashboard() {
                             </CardContent>
                           </Card>
 
-                          <Card className="border-l-4 border-l-green-500">
+                          <Card className="border-l-4 border-l-green-500" data-card="retenciones">
                             <CardContent className="p-4">
                               <div className="flex items-center space-x-3">
                                 <div className="p-2 bg-green-100 rounded-lg">
@@ -400,6 +424,39 @@ export default function Dashboard() {
                                   <p className="text-sm text-muted-foreground">Total Retenciones</p>
                                   <p className="text-xl font-bold text-green-600" id="total-retenciones">
                                     {formatCurrency(calcularTotalRetenciones())}
+                                  </p>
+                                </div>
+                              </div>
+                            </CardContent>
+                          </Card>
+
+                          {/* Cards que aparecen solo en la pestaña de pagadas */}
+                          <Card className="border-l-4 border-l-blue-500" data-card="bancos" style={{display: 'none'}}>
+                            <CardContent className="p-4">
+                              <div className="flex items-center space-x-3">
+                                <div className="p-2 bg-blue-100 rounded-lg">
+                                  <Banknote className="w-5 h-5 text-blue-600" />
+                                </div>
+                                <div>
+                                  <p className="text-sm text-muted-foreground">Pagado por Bancos</p>
+                                  <p className="text-xl font-bold text-blue-600" id="total-bancos">
+                                    {formatCurrency(calcularTotalPagadoBancos())}
+                                  </p>
+                                </div>
+                              </div>
+                            </CardContent>
+                          </Card>
+
+                          <Card className="border-l-4 border-l-orange-500" data-card="tobias" style={{display: 'none'}}>
+                            <CardContent className="p-4">
+                              <div className="flex items-center space-x-3">
+                                <div className="p-2 bg-orange-100 rounded-lg">
+                                  <User className="w-5 h-5 text-orange-600" />
+                                </div>
+                                <div>
+                                  <p className="text-sm text-muted-foreground">Pagado por Tobías</p>
+                                  <p className="text-xl font-bold text-orange-600" id="total-tobias">
+                                    {formatCurrency(calcularTotalPagadoTobias())}
                                   </p>
                                 </div>
                               </div>
