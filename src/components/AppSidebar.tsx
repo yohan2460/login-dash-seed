@@ -28,6 +28,7 @@ import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
+import { useDashboard } from "@/contexts/DashboardContext";
 
 const navigationItems = [
   {
@@ -57,6 +58,7 @@ export function AppSidebar() {
   const location = useLocation();
   const { user, signOut } = useAuth();
   const currentPath = location.pathname;
+  const { activeCategory, setActiveCategory } = useDashboard();
   const [stats, setStats] = useState<FacturasStats>({
     total: 0,
     sinClasificar: 0,
@@ -194,16 +196,21 @@ export function AppSidebar() {
         )}
 
         {/* CATEGORÍAS */}
-        {state !== 'collapsed' && (
+        {state !== 'collapsed' && currentPath === '/dashboard' && (
           <SidebarGroup className="mt-8">
             <SidebarGroupLabel className="text-xs font-medium text-muted-foreground mb-4">
               Categorías
             </SidebarGroupLabel>
             <SidebarGroupContent>
               <div className="space-y-1">
-                <div className="flex items-center justify-between p-2 rounded-lg hover:bg-muted/50 cursor-pointer">
+                <div 
+                  className={`flex items-center justify-between p-2 rounded-lg cursor-pointer transition-colors ${
+                    activeCategory === 'overview' ? 'bg-primary/10 text-primary' : 'hover:bg-muted/50'
+                  }`}
+                  onClick={() => setActiveCategory('overview')}
+                >
                   <div className="flex items-center space-x-2">
-                    <TrendingUp className="w-4 h-4 text-muted-foreground" />
+                    <TrendingUp className="w-4 h-4" />
                     <div>
                       <div className="text-sm font-medium">Resumen General</div>
                       <div className="text-xs text-muted-foreground">{stats.total} facturas</div>
@@ -211,9 +218,14 @@ export function AppSidebar() {
                   </div>
                 </div>
                 
-                <div className="flex items-center justify-between p-2 rounded-lg hover:bg-muted/50 cursor-pointer">
+                <div 
+                  className={`flex items-center justify-between p-2 rounded-lg cursor-pointer transition-colors ${
+                    activeCategory === 'sin-clasificar' ? 'bg-primary/10 text-primary' : 'hover:bg-muted/50'
+                  }`}
+                  onClick={() => setActiveCategory('sin-clasificar')}
+                >
                   <div className="flex items-center space-x-2">
-                    <FileText className="w-4 h-4 text-muted-foreground" />
+                    <FileText className="w-4 h-4" />
                     <div>
                       <div className="text-sm font-medium">Sin Clasificar</div>
                       <div className="text-xs text-muted-foreground">{stats.sinClasificar} facturas</div>
@@ -221,9 +233,14 @@ export function AppSidebar() {
                   </div>
                 </div>
                 
-                <div className="flex items-center justify-between p-2 rounded-lg hover:bg-muted/50 cursor-pointer">
+                <div 
+                  className={`flex items-center justify-between p-2 rounded-lg cursor-pointer transition-colors ${
+                    activeCategory === 'mercancia-pendientes' ? 'bg-primary/10 text-primary' : 'hover:bg-muted/50'
+                  }`}
+                  onClick={() => setActiveCategory('mercancia-pendientes')}
+                >
                   <div className="flex items-center space-x-2">
-                    <Package className="w-4 h-4 text-muted-foreground" />
+                    <Package className="w-4 h-4" />
                     <div>
                       <div className="text-sm font-medium">Mercancía - Pendientes</div>
                       <div className="text-xs text-muted-foreground">{stats.pendientes} facturas</div>
@@ -231,9 +248,14 @@ export function AppSidebar() {
                   </div>
                 </div>
                 
-                <div className="flex items-center justify-between p-2 rounded-lg hover:bg-muted/50 cursor-pointer">
+                <div 
+                  className={`flex items-center justify-between p-2 rounded-lg cursor-pointer transition-colors ${
+                    activeCategory === 'mercancia-pagadas' ? 'bg-primary/10 text-primary' : 'hover:bg-muted/50'
+                  }`}
+                  onClick={() => setActiveCategory('mercancia-pagadas')}
+                >
                   <div className="flex items-center space-x-2">
-                    <Package className="w-4 h-4 text-muted-foreground" />
+                    <Package className="w-4 h-4" />
                     <div>
                       <div className="text-sm font-medium">Mercancía - Pagadas</div>
                       <div className="text-xs text-muted-foreground">{stats.pagadas} facturas</div>
@@ -241,9 +263,14 @@ export function AppSidebar() {
                   </div>
                 </div>
                 
-                <div className="flex items-center justify-between p-2 rounded-lg hover:bg-muted/50 cursor-pointer">
+                <div 
+                  className={`flex items-center justify-between p-2 rounded-lg cursor-pointer transition-colors ${
+                    activeCategory === 'gastos' ? 'bg-primary/10 text-primary' : 'hover:bg-muted/50'
+                  }`}
+                  onClick={() => setActiveCategory('gastos')}
+                >
                   <div className="flex items-center space-x-2">
-                    <CreditCard className="w-4 h-4 text-muted-foreground" />
+                    <CreditCard className="w-4 h-4" />
                     <div>
                       <div className="text-sm font-medium">Gastos</div>
                       <div className="text-xs text-muted-foreground">{stats.gastos} facturas</div>

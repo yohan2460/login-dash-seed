@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
+import { useDashboard } from '@/contexts/DashboardContext';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -46,12 +47,15 @@ interface Factura {
 
 export default function ModernDashboard() {
   const { user, loading } = useAuth();
+  const { activeCategory } = useDashboard();
   const [facturas, setFacturas] = useState<Factura[]>([]);
   const [loadingFacturas, setLoadingFacturas] = useState(true);
   const [selectedFactura, setSelectedFactura] = useState<Factura | null>(null);
   const [isClassificationDialogOpen, setIsClassificationDialogOpen] = useState(false);
   const [selectedPaymentFactura, setSelectedPaymentFactura] = useState<Factura | null>(null);
   const [isPaymentDialogOpen, setIsPaymentDialogOpen] = useState(false);
+  const [dateFrom, setDateFrom] = useState<Date | undefined>(undefined);
+  const [dateTo, setDateTo] = useState<Date | undefined>(undefined);
 
   useEffect(() => {
     if (user) {
@@ -117,16 +121,40 @@ export default function ModernDashboard() {
     }).format(amount);
   };
 
-  const calcularTotalPagadoBancos = () => {
-    return facturas
-      .filter(f => f.clasificacion === 'mercancia' && f.estado_mercancia === 'pagada' && f.metodo_pago === 'Pago Banco')
-      .reduce((total, factura) => total + (factura.monto_pagado || 0), 0);
+  const calcularTotalPagadoBancos = (filtrarPorFechas = true) => {
+    let facturasPagadas = facturas.filter(f => f.clasificacion === 'mercancia' && f.estado_mercancia === 'pagada' && f.metodo_pago === 'Pago Banco');
+    
+    if (filtrarPorFechas && (dateFrom || dateTo)) {
+      facturasPagadas = facturasPagadas.filter(factura => {
+        if (!factura.fecha_emision) return false;
+        const fechaEmision = new Date(factura.fecha_emision);
+        
+        if (dateFrom && fechaEmision < dateFrom) return false;
+        if (dateTo && fechaEmision > dateTo) return false;
+        
+        return true;
+      });
+    }
+    
+    return facturasPagadas.reduce((total, factura) => total + (factura.monto_pagado || 0), 0);
   };
 
-  const calcularTotalPagadoTobias = () => {
-    return facturas
-      .filter(f => f.clasificacion === 'mercancia' && f.estado_mercancia === 'pagada' && f.metodo_pago === 'Pago Tobías')
-      .reduce((total, factura) => total + (factura.monto_pagado || 0), 0);
+  const calcularTotalPagadoTobias = (filtrarPorFechas = true) => {
+    let facturasPagadas = facturas.filter(f => f.clasificacion === 'mercancia' && f.estado_mercancia === 'pagada' && f.metodo_pago === 'Pago Tobías');
+    
+    if (filtrarPorFechas && (dateFrom || dateTo)) {
+      facturasPagadas = facturasPagadas.filter(factura => {
+        if (!factura.fecha_emision) return false;
+        const fechaEmision = new Date(factura.fecha_emision);
+        
+        if (dateFrom && fechaEmision < dateFrom) return false;
+        if (dateTo && fechaEmision > dateTo) return false;
+        
+        return true;
+      });
+    }
+    
+    return facturasPagadas.reduce((total, factura) => total + (factura.monto_pagado || 0), 0);
   };
 
   const calcularTotalFacturas = () => {
@@ -139,6 +167,29 @@ export default function ModernDashboard() {
     return facturas
       .filter(f => f.clasificacion === null)
       .reduce((total, factura) => total + (factura.factura_iva || 0), 0);
+  };
+
+  const getFilteredPaidFacturas = () => {
+    let facturasPagadas = facturas.filter(f => f.clasificacion === 'mercancia' && f.estado_mercancia === 'pagada');
+    
+    if (dateFrom || dateTo) {
+      facturasPagadas = facturasPagadas.filter(factura => {
+        if (!factura.fecha_emision) return false;
+        const fechaEmision = new Date(factura.fecha_emision);
+        
+        if (dateFrom && fechaEmision < dateFrom) return false;
+        if (dateTo && fechaEmision > dateTo) return false;
+        
+        return true;
+      });
+    }
+    
+    return facturasPagadas;
+  };
+
+  const clearDateFilter = () => {
+    setDateFrom(undefined);
+    setDateTo(undefined);
   };
 
   if (loading) {
@@ -172,46 +223,289 @@ export default function ModernDashboard() {
         </div>
       ) : (
         <div className="space-y-6">
-          {/* Stats Overview */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            <ModernStatsCard
-              title="Sin Clasificar"
-              value={filterFacturasByType(null).length.toString()}
-              icon={FileText}
-              color="red"
-            />
-            <ModernStatsCard
-              title="Mercancía"
-              value={filterFacturasByType('mercancia').length.toString()}
-              icon={Package}
-              color="blue"
-            />
-            <ModernStatsCard
-              title="Gastos"
-              value={filterFacturasByType('gasto').length.toString()}
-              icon={CreditCard}
-              color="green"
-            />
-            <ModernStatsCard
-              title="Total Valor"
-              value={formatCurrency(facturas.reduce((sum, f) => sum + f.total_a_pagar, 0))}
-              icon={TrendingUp}
-              color="purple"
-            />
-          </div>
+          {/* Renderizar contenido según categoría activa */}
           
-          <Card>
-            <CardHeader>
-              <CardTitle>Todas las Facturas</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <FacturasTable
-                facturas={facturas}
-                onClassifyClick={handleClassifyClick}
-                onPayClick={handlePayClick}
-              />
-            </CardContent>
-          </Card>
+          {/* Overview */}
+          {activeCategory === 'overview' && (
+            <>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                <ModernStatsCard
+                  title="Sin Clasificar"
+                  value={filterFacturasByType(null).length.toString()}
+                  icon={FileText}
+                  color="red"
+                />
+                <ModernStatsCard
+                  title="Mercancía"
+                  value={filterFacturasByType('mercancia').length.toString()}
+                  icon={Package}
+                  color="blue"
+                />
+                <ModernStatsCard
+                  title="Gastos"
+                  value={filterFacturasByType('gasto').length.toString()}
+                  icon={CreditCard}
+                  color="green"
+                />
+                <ModernStatsCard
+                  title="Total Valor"
+                  value={formatCurrency(facturas.reduce((sum, f) => sum + f.total_a_pagar, 0))}
+                  icon={TrendingUp}
+                  color="purple"
+                />
+              </div>
+              
+              <Card>
+                <CardHeader>
+                  <CardTitle>Todas las Facturas</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <FacturasTable
+                    facturas={facturas}
+                    onClassifyClick={handleClassifyClick}
+                    onPayClick={handlePayClick}
+                  />
+                </CardContent>
+              </Card>
+            </>
+          )}
+
+          {/* Sin Clasificar */}
+          {activeCategory === 'sin-clasificar' && (
+            <>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <ModernStatsCard
+                  title="Total Impuestos"
+                  value={formatCurrency(calcularTotalImpuestos())}
+                  icon={Receipt}
+                  color="red"
+                />
+                <ModernStatsCard
+                  title="Total Facturas"
+                  value={formatCurrency(calcularTotalFacturas())}
+                  icon={Calculator}
+                  color="blue"
+                />
+              </div>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Facturas Sin Clasificar</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {filterFacturasByType(null).length === 0 ? (
+                    <div className="text-center py-8">
+                      <FileText className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+                      <p className="text-muted-foreground">No hay facturas sin clasificar</p>
+                    </div>
+                  ) : (
+                    <FacturasTable
+                      facturas={filterFacturasByType(null)}
+                      onClassifyClick={handleClassifyClick}
+                      onPayClick={handlePayClick}
+                    />
+                  )}
+                </CardContent>
+              </Card>
+            </>
+          )}
+
+          {/* Mercancía Pendientes */}
+          {activeCategory === 'mercancia-pendientes' && (
+            <>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                <ModernStatsCard
+                  title="Total Impuestos"
+                  value={formatCurrency(calcularTotalImpuestos())}
+                  icon={Receipt}
+                  color="red"
+                />
+                <ModernStatsCard
+                  title="Total Retenciones"
+                  value={formatCurrency(0)}
+                  icon={Minus}
+                  color="green"
+                />
+                <ModernStatsCard
+                  title="Ahorro Pronto Pago"
+                  value={formatCurrency(0)}
+                  icon={Percent}
+                  color="purple"
+                />
+                <ModernStatsCard
+                  title="Total Facturas"
+                  value={formatCurrency(calcularTotalFacturas())}
+                  icon={Calculator}
+                  color="blue"
+                />
+              </div>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Facturas Pendientes de Pago</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {filterFacturasByMercanciaState(null).length === 0 ? (
+                    <div className="text-center py-8">
+                      <Package className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+                      <p className="text-muted-foreground">No hay facturas pendientes de pago</p>
+                    </div>
+                  ) : (
+                    <FacturasTable
+                      facturas={filterFacturasByMercanciaState(null)}
+                      onClassifyClick={handleClassifyClick}
+                      onPayClick={handlePayClick}
+                    />
+                  )}
+                </CardContent>
+              </Card>
+            </>
+          )}
+
+          {/* Mercancía Pagadas */}
+          {activeCategory === 'mercancia-pagadas' && (
+            <>
+              {/* Filtro de fechas */}
+              <Card className="bg-muted/20 border-dashed">
+                <CardContent className="p-4">
+                  <div className="flex flex-wrap items-center gap-4">
+                    <div className="flex items-center space-x-2">
+                      <Filter className="w-4 h-4 text-muted-foreground" />
+                      <span className="text-sm font-medium">Filtrar por fecha:</span>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button
+                            variant="outline"
+                            className={cn(
+                              "w-[140px] justify-start text-left font-normal",
+                              !dateFrom && "text-muted-foreground"
+                            )}
+                          >
+                            <CalendarIcon className="mr-2 h-4 w-4" />
+                            {dateFrom ? format(dateFrom, "dd/MM/yyyy") : "Desde"}
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0" align="start">
+                          <Calendar
+                            mode="single"
+                            selected={dateFrom}
+                            onSelect={setDateFrom}
+                            disabled={(date) => date > new Date()}
+                            initialFocus
+                          />
+                        </PopoverContent>
+                      </Popover>
+                      
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button
+                            variant="outline"
+                            className={cn(
+                              "w-[140px] justify-start text-left font-normal",
+                              !dateTo && "text-muted-foreground"
+                            )}
+                          >
+                            <CalendarIcon className="mr-2 h-4 w-4" />
+                            {dateTo ? format(dateTo, "dd/MM/yyyy") : "Hasta"}
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0" align="start">
+                          <Calendar
+                            mode="single"
+                            selected={dateTo}
+                            onSelect={setDateTo}
+                            disabled={(date) => date > new Date() || (dateFrom && date < dateFrom)}
+                            initialFocus
+                          />
+                        </PopoverContent>
+                      </Popover>
+                      
+                      {(dateFrom || dateTo) && (
+                        <Button variant="outline" size="sm" onClick={clearDateFilter}>
+                          Limpiar
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                <ModernStatsCard
+                  title="Pagado por Bancos"
+                  value={formatCurrency(calcularTotalPagadoBancos())}
+                  icon={CreditCard}
+                  color="blue"
+                />
+                <ModernStatsCard
+                  title="Pagado por Tobías"
+                  value={formatCurrency(calcularTotalPagadoTobias())}
+                  icon={Package}
+                  color="green"
+                />
+                <ModernStatsCard
+                  title="Ahorro Pronto Pago"
+                  value={formatCurrency(getFilteredPaidFacturas().reduce((total, factura) => {
+                    if (factura.uso_pronto_pago && factura.porcentaje_pronto_pago) {
+                      return total + (factura.total_a_pagar * factura.porcentaje_pronto_pago / 100);
+                    }
+                    return total;
+                  }, 0))}
+                  icon={Percent}
+                  color="purple"
+                />
+                <ModernStatsCard
+                  title="Total Facturas"
+                  value={formatCurrency(getFilteredPaidFacturas().reduce((sum, f) => sum + f.total_a_pagar, 0))}
+                  icon={Calculator}
+                  color="red"
+                />
+              </div>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Facturas Pagadas</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {getFilteredPaidFacturas().length === 0 ? (
+                    <div className="text-center py-8">
+                      <Package className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+                      <p className="text-muted-foreground">No hay facturas pagadas en el período seleccionado</p>
+                    </div>
+                  ) : (
+                    <FacturasTable
+                      facturas={getFilteredPaidFacturas()}
+                      onClassifyClick={handleClassifyClick}
+                      onPayClick={handlePayClick}
+                    />
+                  )}
+                </CardContent>
+              </Card>
+            </>
+          )}
+
+          {/* Gastos */}
+          {activeCategory === 'gastos' && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Gastos</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {filterFacturasByType('gasto').length === 0 ? (
+                  <div className="text-center py-8">
+                    <CreditCard className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+                    <p className="text-muted-foreground">No hay gastos registrados</p>
+                  </div>
+                ) : (
+                  <FacturasTable
+                    facturas={filterFacturasByType('gasto')}
+                    onClassifyClick={handleClassifyClick}
+                    onPayClick={handlePayClick}
+                  />
+                )}
+              </CardContent>
+            </Card>
+          )}
         </div>
 
       )}

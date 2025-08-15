@@ -4,16 +4,19 @@ import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
 import ModernDashboard from "./pages/ModernDashboard";
 import FacturasPorProveedor from "./pages/FacturasPorProveedor";
+import { DashboardProvider } from "./contexts/DashboardContext";
 
 function App() {
   return (
-    <Routes>
-      <Route path="/" element={<Index />} />
-      <Route path="/auth" element={<Auth />} />
-      <Route path="/dashboard" element={<ModernDashboard />} />
-      <Route path="/facturas-por-proveedor" element={<FacturasPorProveedor />} />
-      <Route path="*" element={<NotFound />} />
-    </Routes>
+    <DashboardProvider>
+      <Routes>
+        <Route path="/" element={<Index />} />
+        <Route path="/auth" element={<Auth />} />
+        <Route path="/dashboard" element={<ModernDashboard />} />
+        <Route path="/facturas-por-proveedor" element={<FacturasPorProveedor />} />
+        <Route path="*" element={<NotFound />} />
+      </Routes>
+    </DashboardProvider>
   );
 }
 
