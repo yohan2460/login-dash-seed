@@ -46,7 +46,7 @@ interface ProveedorGroup {
 }
 
 export default function FacturasPorProveedor() {
-  const { user, signOut, loading } = useAuth();
+  const { user, loading, signOut } = useAuth();
   const { toast } = useToast();
   const [facturas, setFacturas] = useState<Factura[]>([]);
   const [filteredFacturas, setFilteredFacturas] = useState<Factura[]>([]);

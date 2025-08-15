@@ -1,5 +1,5 @@
 import { useAuth } from '@/hooks/useAuth';
-import { Navigate } from 'react-router-dom';
+import { Navigate, Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { LogIn, UserPlus, Sparkles } from 'lucide-react';
@@ -50,7 +50,7 @@ const Index = () => {
             </CardHeader>
             <CardContent>
               <Button asChild className="w-full transition-all duration-300 hover:scale-105">
-                <a href="/auth">Entrar</a>
+                <Link to="/auth">Entrar</Link>
               </Button>
             </CardContent>
           </Card>
@@ -67,7 +67,7 @@ const Index = () => {
             </CardHeader>
             <CardContent>
               <Button variant="outline" asChild className="w-full transition-all duration-300 hover:scale-105">
-                <a href="/auth">Registrarse</a>
+                <Link to="/auth">Registrarse</Link>
               </Button>
             </CardContent>
           </Card>
