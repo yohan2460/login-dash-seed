@@ -95,6 +95,51 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
     );
   };
 
+  const getDaysUntilDue = (fechaVencimiento: string | null, estadoMercancia?: string | null) => {
+    if (!fechaVencimiento || estadoMercancia === 'pagada') return null;
+    
+    const today = new Date();
+    const dueDate = new Date(fechaVencimiento);
+    const diffTime = dueDate.getTime() - today.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    
+    return diffDays;
+  };
+
+  const getDaysIndicator = (daysUntilDue: number | null) => {
+    if (daysUntilDue === null) return null;
+    
+    let bgColor = '';
+    let textColor = '';
+    let text = '';
+    
+    if (daysUntilDue < 0) {
+      bgColor = 'bg-red-500';
+      textColor = 'text-white';
+      text = `${Math.abs(daysUntilDue)}d`;
+    } else if (daysUntilDue <= 3) {
+      bgColor = 'bg-orange-500';
+      textColor = 'text-white';
+      text = `${daysUntilDue}d`;
+    } else if (daysUntilDue <= 7) {
+      bgColor = 'bg-yellow-500';
+      textColor = 'text-white';
+      text = `${daysUntilDue}d`;
+    } else {
+      bgColor = 'bg-green-500';
+      textColor = 'text-white';
+      text = `${daysUntilDue}d`;
+    }
+    
+    return (
+      <div className="flex items-center space-x-2">
+        <span className={`inline-flex items-center justify-center w-8 h-8 rounded-full text-xs font-bold ${bgColor} ${textColor}`}>
+          {text}
+        </span>
+      </div>
+    );
+  };
+
   return (
     <div className="rounded-md border">
       <Table>
@@ -167,14 +212,17 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
                 </div>
               </TableCell>
               <TableCell>
-                <div className="text-sm">
-                  {factura.fecha_vencimiento ? (
-                    new Date(factura.fecha_vencimiento).toLocaleDateString('es-CO', {
-                      day: '2-digit',
-                      month: '2-digit',
-                      year: 'numeric'
-                    })
-                  ) : '-'}
+                <div className="flex items-center space-x-3">
+                  <div className="text-sm">
+                    {factura.fecha_vencimiento ? (
+                      new Date(factura.fecha_vencimiento).toLocaleDateString('es-CO', {
+                        day: '2-digit',
+                        month: '2-digit',
+                        year: 'numeric'
+                      })
+                    ) : '-'}
+                  </div>
+                  {getDaysIndicator(getDaysUntilDue(factura.fecha_vencimiento, factura.estado_mercancia))}
                 </div>
               </TableCell>
               
