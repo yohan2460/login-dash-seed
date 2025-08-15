@@ -82,12 +82,12 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
     
     const styles = {
       mercancia: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300',
-      gastos: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300'
+      gasto: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300'
     };
 
     const labels = {
       mercancia: 'Mercancía',
-      gastos: 'Gasto'
+      gasto: 'Gasto'
     };
 
     return (
@@ -296,7 +296,7 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
                       Clasificar
                     </Button>
                     
-                    {factura.clasificacion === 'mercancia' && factura.estado_mercancia !== 'pagada' && onPayClick && (
+                    {((factura.clasificacion === 'mercancia' && factura.estado_mercancia !== 'pagada') || (factura.clasificacion === 'gasto' && (!factura.estado_mercancia || factura.estado_mercancia !== 'pagada'))) && onPayClick && (
                       <Button
                         variant="outline"
                         size="sm"
@@ -500,7 +500,7 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
                         <Tag className="w-4 h-4" />
                       </Button>
                       
-                      {factura.clasificacion === 'mercancia' && factura.estado_mercancia !== 'pagada' && onPayClick && (
+                      {((factura.clasificacion === 'mercancia' && factura.estado_mercancia !== 'pagada') || (factura.clasificacion === 'gasto' && (!factura.estado_mercancia || factura.estado_mercancia !== 'pagada'))) && onPayClick && (
                         <Button
                           variant="ghost"
                           size="sm"
