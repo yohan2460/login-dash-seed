@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, ReactNode } from 'react';
 
-type CategoryType = 'overview' | 'sin-clasificar' | 'mercancia-pendientes' | 'mercancia-pagadas' | 'gastos';
+type CategoryType = 'overview' | 'sin-clasificar' | 'mercancia-pendientes' | 'mercancia-pagadas' | 'gastos-pendientes' | 'gastos-pagados';
 
 interface DashboardContextType {
   activeCategory: CategoryType;

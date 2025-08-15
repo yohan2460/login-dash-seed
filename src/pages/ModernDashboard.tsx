@@ -114,6 +114,14 @@ export default function ModernDashboard() {
     return mercanciaFacturas.filter(f => f.estado_mercancia === estado);
   };
 
+  const filterFacturasByGastoState = (estado: string | null) => {
+    const gastoFacturas = facturas.filter(f => f.clasificacion === 'gasto');
+    if (estado === null) {
+      return gastoFacturas.filter(f => f.estado_mercancia !== 'pagada');
+    }
+    return gastoFacturas.filter(f => f.estado_mercancia === estado);
+  };
+
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('es-CO', {
       style: 'currency',
@@ -190,6 +198,60 @@ export default function ModernDashboard() {
   const clearDateFilter = () => {
     setDateFrom(undefined);
     setDateTo(undefined);
+  };
+
+  const calcularTotalPagadoBancosGastos = (filtrarPorFechas = true) => {
+    let facturasPagadas = facturas.filter(f => f.clasificacion === 'gasto' && f.estado_mercancia === 'pagada' && f.metodo_pago === 'Pago Banco');
+    
+    if (filtrarPorFechas && (dateFrom || dateTo)) {
+      facturasPagadas = facturasPagadas.filter(factura => {
+        if (!factura.fecha_emision) return false;
+        const fechaEmision = new Date(factura.fecha_emision);
+        
+        if (dateFrom && fechaEmision < dateFrom) return false;
+        if (dateTo && fechaEmision > dateTo) return false;
+        
+        return true;
+      });
+    }
+    
+    return facturasPagadas.reduce((total, factura) => total + (factura.monto_pagado || 0), 0);
+  };
+
+  const calcularTotalPagadoTobiasGastos = (filtrarPorFechas = true) => {
+    let facturasPagadas = facturas.filter(f => f.clasificacion === 'gasto' && f.estado_mercancia === 'pagada' && f.metodo_pago === 'Pago Tobías');
+    
+    if (filtrarPorFechas && (dateFrom || dateTo)) {
+      facturasPagadas = facturasPagadas.filter(factura => {
+        if (!factura.fecha_emision) return false;
+        const fechaEmision = new Date(factura.fecha_emision);
+        
+        if (dateFrom && fechaEmision < dateFrom) return false;
+        if (dateTo && fechaEmision > dateTo) return false;
+        
+        return true;
+      });
+    }
+    
+    return facturasPagadas.reduce((total, factura) => total + (factura.monto_pagado || 0), 0);
+  };
+
+  const getFilteredPaidGastos = () => {
+    let facturasPagadas = facturas.filter(f => f.clasificacion === 'gasto' && f.estado_mercancia === 'pagada');
+    
+    if (dateFrom || dateTo) {
+      facturasPagadas = facturasPagadas.filter(factura => {
+        if (!factura.fecha_emision) return false;
+        const fechaEmision = new Date(factura.fecha_emision);
+        
+        if (dateFrom && fechaEmision < dateFrom) return false;
+        if (dateTo && fechaEmision > dateTo) return false;
+        
+        return true;
+      });
+    }
+    
+    return facturasPagadas;
   };
 
   if (loading) {
@@ -484,27 +546,184 @@ export default function ModernDashboard() {
             </>
           )}
 
-          {/* Gastos */}
-          {activeCategory === 'gastos' && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Gastos</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {filterFacturasByType('gasto').length === 0 ? (
-                  <div className="text-center py-8">
-                    <CreditCard className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-                    <p className="text-muted-foreground">No hay gastos registrados</p>
+          {/* Gastos Pendientes */}
+          {activeCategory === 'gastos-pendientes' && (
+            <>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                <ModernStatsCard
+                  title="Total Impuestos"
+                  value={formatCurrency(filterFacturasByGastoState(null).reduce((total, factura) => total + (factura.factura_iva || 0), 0))}
+                  icon={Receipt}
+                  color="red"
+                />
+                <ModernStatsCard
+                  title="Total Retenciones"
+                  value={formatCurrency(filterFacturasByGastoState(null).reduce((total, factura) => total + (factura.monto_retencion || 0), 0))}
+                  icon={Minus}
+                  color="green"
+                />
+                <ModernStatsCard
+                  title="Ahorro Pronto Pago"
+                  value={formatCurrency(filterFacturasByGastoState(null).reduce((total, factura) => {
+                    if (factura.porcentaje_pronto_pago) {
+                      return total + (factura.total_a_pagar * factura.porcentaje_pronto_pago / 100);
+                    }
+                    return total;
+                  }, 0))}
+                  icon={Percent}
+                  color="purple"
+                />
+                <ModernStatsCard
+                  title="Total Facturas"
+                  value={formatCurrency(filterFacturasByGastoState(null).reduce((sum, f) => sum + f.total_a_pagar, 0))}
+                  icon={Calculator}
+                  color="blue"
+                />
+              </div>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Gastos Pendientes de Pago</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {filterFacturasByGastoState(null).length === 0 ? (
+                    <div className="text-center py-8">
+                      <CreditCard className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+                      <p className="text-muted-foreground">No hay gastos pendientes de pago</p>
+                    </div>
+                  ) : (
+                    <FacturasTable
+                      facturas={filterFacturasByGastoState(null)}
+                      onClassifyClick={handleClassifyClick}
+                      onPayClick={handlePayClick}
+                    />
+                  )}
+                </CardContent>
+              </Card>
+            </>
+          )}
+
+          {/* Gastos Pagados */}
+          {activeCategory === 'gastos-pagados' && (
+            <>
+              {/* Filtro de fechas */}
+              <Card className="bg-muted/20 border-dashed">
+                <CardContent className="p-4">
+                  <div className="flex flex-wrap items-center gap-4">
+                    <div className="flex items-center space-x-2">
+                      <Filter className="w-4 h-4 text-muted-foreground" />
+                      <span className="text-sm font-medium">Filtrar por fecha:</span>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button
+                            variant="outline"
+                            className={cn(
+                              "w-[140px] justify-start text-left font-normal",
+                              !dateFrom && "text-muted-foreground"
+                            )}
+                          >
+                            <CalendarIcon className="mr-2 h-4 w-4" />
+                            {dateFrom ? format(dateFrom, "dd/MM/yyyy") : "Desde"}
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0" align="start">
+                          <Calendar
+                            mode="single"
+                            selected={dateFrom}
+                            onSelect={setDateFrom}
+                            disabled={(date) => date > new Date()}
+                            initialFocus
+                          />
+                        </PopoverContent>
+                      </Popover>
+                      
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button
+                            variant="outline"
+                            className={cn(
+                              "w-[140px] justify-start text-left font-normal",
+                              !dateTo && "text-muted-foreground"
+                            )}
+                          >
+                            <CalendarIcon className="mr-2 h-4 w-4" />
+                            {dateTo ? format(dateTo, "dd/MM/yyyy") : "Hasta"}
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0" align="start">
+                          <Calendar
+                            mode="single"
+                            selected={dateTo}
+                            onSelect={setDateTo}
+                            disabled={(date) => date > new Date() || (dateFrom && date < dateFrom)}
+                            initialFocus
+                          />
+                        </PopoverContent>
+                      </Popover>
+                      
+                      {(dateFrom || dateTo) && (
+                        <Button variant="outline" size="sm" onClick={clearDateFilter}>
+                          Limpiar
+                        </Button>
+                      )}
+                    </div>
                   </div>
-                ) : (
-                  <FacturasTable
-                    facturas={filterFacturasByType('gasto')}
-                    onClassifyClick={handleClassifyClick}
-                    onPayClick={handlePayClick}
-                  />
-                )}
-              </CardContent>
-            </Card>
+                </CardContent>
+              </Card>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                <ModernStatsCard
+                  title="Pagado por Bancos"
+                  value={formatCurrency(calcularTotalPagadoBancosGastos())}
+                  icon={CreditCard}
+                  color="blue"
+                />
+                <ModernStatsCard
+                  title="Pagado por Tobías"
+                  value={formatCurrency(calcularTotalPagadoTobiasGastos())}
+                  icon={Package}
+                  color="green"
+                />
+                <ModernStatsCard
+                  title="Ahorro Pronto Pago"
+                  value={formatCurrency(getFilteredPaidGastos().reduce((total, factura) => {
+                    if (factura.uso_pronto_pago && factura.porcentaje_pronto_pago) {
+                      return total + (factura.total_a_pagar * factura.porcentaje_pronto_pago / 100);
+                    }
+                    return total;
+                  }, 0))}
+                  icon={Percent}
+                  color="purple"
+                />
+                <ModernStatsCard
+                  title="Total Facturas"
+                  value={formatCurrency(getFilteredPaidGastos().reduce((sum, f) => sum + f.total_a_pagar, 0))}
+                  icon={Calculator}
+                  color="red"
+                />
+              </div>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Gastos Pagados</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {getFilteredPaidGastos().length === 0 ? (
+                    <div className="text-center py-8">
+                      <CreditCard className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+                      <p className="text-muted-foreground">No hay gastos pagados en el período seleccionado</p>
+                    </div>
+                  ) : (
+                    <FacturasTable
+                      facturas={getFilteredPaidGastos()}
+                      onClassifyClick={handleClassifyClick}
+                      onPayClick={handlePayClick}
+                      showPaymentInfo={true}
+                    />
+                  )}
+                </CardContent>
+              </Card>
+            </>
           )}
         </div>
 

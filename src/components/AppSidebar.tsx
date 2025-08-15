@@ -8,8 +8,8 @@ import {
   Package,
   CreditCard,
   TrendingUp,
-  Users,
-  CheckCircle
+  CheckCircle,
+  Users
 } from "lucide-react";
 import {
   Sidebar,
@@ -50,6 +50,8 @@ interface FacturasStats {
   gastos: number;
   pendientes: number;
   pagadas: number;
+  gastosPendientes: number;
+  gastosPagados: number;
   proveedores: number;
 }
 
@@ -66,6 +68,8 @@ export function AppSidebar() {
     gastos: 0,
     pendientes: 0,
     pagadas: 0,
+    gastosPendientes: 0,
+    gastosPagados: 0,
     proveedores: 0
   });
 
@@ -86,6 +90,8 @@ export function AppSidebar() {
       const gastos = facturas?.filter(f => f.clasificacion === 'gasto').length || 0;
       const pendientes = facturas?.filter(f => f.clasificacion === 'mercancia' && f.estado_mercancia !== 'pagada').length || 0;
       const pagadas = facturas?.filter(f => f.clasificacion === 'mercancia' && f.estado_mercancia === 'pagada').length || 0;
+      const gastosPendientes = facturas?.filter(f => f.clasificacion === 'gasto' && f.estado_mercancia !== 'pagada').length || 0;
+      const gastosPagados = facturas?.filter(f => f.clasificacion === 'gasto' && f.estado_mercancia === 'pagada').length || 0;
       
       // Calcular proveedores únicos
       const proveedoresUnicos = new Set(facturas?.map(f => f.emisor_nit)).size;
@@ -97,6 +103,8 @@ export function AppSidebar() {
         gastos,
         pendientes,
         pagadas,
+        gastosPendientes,
+        gastosPagados,
         proveedores: proveedoresUnicos
       });
     } catch (error) {
@@ -265,15 +273,30 @@ export function AppSidebar() {
                 
                 <div 
                   className={`flex items-center justify-between p-2 rounded-lg cursor-pointer transition-colors ${
-                    activeCategory === 'gastos' ? 'bg-primary/10 text-primary' : 'hover:bg-muted/50'
+                    activeCategory === 'gastos-pendientes' ? 'bg-primary/10 text-primary' : 'hover:bg-muted/50'
                   }`}
-                  onClick={() => setActiveCategory('gastos')}
+                  onClick={() => setActiveCategory('gastos-pendientes')}
                 >
                   <div className="flex items-center space-x-2">
                     <CreditCard className="w-4 h-4" />
                     <div>
-                      <div className="text-sm font-medium">Gastos</div>
-                      <div className="text-xs text-muted-foreground">{stats.gastos} facturas</div>
+                      <div className="text-sm font-medium">Gastos - Pendientes</div>
+                      <div className="text-xs text-muted-foreground">{stats.gastosPendientes} facturas</div>
+                    </div>
+                  </div>
+                </div>
+                
+                <div 
+                  className={`flex items-center justify-between p-2 rounded-lg cursor-pointer transition-colors ${
+                    activeCategory === 'gastos-pagados' ? 'bg-primary/10 text-primary' : 'hover:bg-muted/50'
+                  }`}
+                  onClick={() => setActiveCategory('gastos-pagados')}
+                >
+                  <div className="flex items-center space-x-2">
+                    <CheckCircle className="w-4 h-4" />
+                    <div>
+                      <div className="text-sm font-medium">Gastos - Pagados</div>
+                      <div className="text-xs text-muted-foreground">{stats.gastosPagados} facturas</div>
                     </div>
                   </div>
                 </div>
