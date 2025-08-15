@@ -29,6 +29,11 @@ interface Factura {
   porcentaje_pronto_pago?: number | null;
   numero_serie?: string | null;
   estado_mercancia?: string | null;
+  metodo_pago?: string | null;
+  uso_pronto_pago?: boolean | null;
+  monto_pagado?: number | null;
+  fecha_emision?: string | null;
+  fecha_vencimiento?: string | null;
 }
 export default function Dashboard() {
   const {
