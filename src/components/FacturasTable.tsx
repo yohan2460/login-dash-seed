@@ -24,6 +24,8 @@ interface Factura {
   metodo_pago?: string | null;
   uso_pronto_pago?: boolean | null;
   monto_pagado?: number | null;
+  fecha_emision?: string | null;
+  fecha_vencimiento?: string | null;
 }
 
 interface FacturasTableProps {
@@ -103,7 +105,8 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
             <TableHead>Emisor</TableHead>
             <TableHead>Clasificación</TableHead>
             <TableHead>Descripción</TableHead>
-            <TableHead>Fecha</TableHead>
+            <TableHead>Fecha Emisión</TableHead>
+            <TableHead>Fecha Vencimiento</TableHead>
             {showPaymentInfo && (
               <>
                 <TableHead>Método de Pago</TableHead>
@@ -148,11 +151,30 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
               </TableCell>
               <TableCell>
                 <div className="text-sm">
-                  {new Date(factura.created_at).toLocaleDateString('es-CO', {
-                    day: '2-digit',
-                    month: '2-digit',
-                    year: 'numeric'
-                  })}
+                  {factura.fecha_emision ? (
+                    new Date(factura.fecha_emision).toLocaleDateString('es-CO', {
+                      day: '2-digit',
+                      month: '2-digit',
+                      year: 'numeric'
+                    })
+                  ) : (
+                    new Date(factura.created_at).toLocaleDateString('es-CO', {
+                      day: '2-digit',
+                      month: '2-digit',
+                      year: 'numeric'
+                    })
+                  )}
+                </div>
+              </TableCell>
+              <TableCell>
+                <div className="text-sm">
+                  {factura.fecha_vencimiento ? (
+                    new Date(factura.fecha_vencimiento).toLocaleDateString('es-CO', {
+                      day: '2-digit',
+                      month: '2-digit',
+                      year: 'numeric'
+                    })
+                  ) : '-'}
                 </div>
               </TableCell>
               

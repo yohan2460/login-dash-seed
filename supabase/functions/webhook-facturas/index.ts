@@ -23,6 +23,8 @@ interface FacturaData {
   tiene_retencion?: boolean;
   monto_retencion?: number;
   porcentaje_pronto_pago?: number;
+  fecha_emision?: string;
+  fecha_vencimiento?: string;
 }
 
 // Función para generar nombre único de archivo
@@ -79,6 +81,8 @@ serve(async (req) => {
         tiene_retencion: formData.get('tiene_retencion') === 'true',
         monto_retencion: formData.get('monto_retencion') ? parseFloat(formData.get('monto_retencion') as string) : 0,
         porcentaje_pronto_pago: formData.get('porcentaje_pronto_pago') ? parseFloat(formData.get('porcentaje_pronto_pago') as string) : undefined,
+        fecha_emision: formData.get('fecha_emision') as string || undefined,
+        fecha_vencimiento: formData.get('fecha_vencimiento') as string || undefined,
       };
 
       // Extraer archivo PDF si existe
@@ -200,6 +204,8 @@ serve(async (req) => {
       tiene_retencion: facturaData.tiene_retencion || false,
       monto_retencion: facturaData.monto_retencion || 0,
       porcentaje_pronto_pago: facturaData.porcentaje_pronto_pago || null,
+      fecha_emision: facturaData.fecha_emision || null,
+      fecha_vencimiento: facturaData.fecha_vencimiento || null,
     };
 
     // Insert factura into database
