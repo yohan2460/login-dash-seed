@@ -4,12 +4,16 @@ import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { LogOut, FileText, Package, CreditCard, Calculator, Receipt, Minus, Percent, Building2, Banknote, User } from 'lucide-react';
+import { LogOut, FileText, Package, CreditCard, Calculator, Receipt, Minus, Percent, Building2, Banknote, User, CalendarIcon, X } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { FacturasTable } from '@/components/FacturasTable';
 import { FacturaClassificationDialog } from '@/components/FacturaClassificationDialog';
 import { PaymentMethodDialog } from '@/components/PaymentMethodDialog';
+import { Calendar } from '@/components/ui/calendar';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { format } from 'date-fns';
+import { cn } from '@/lib/utils';
 interface Factura {
   id: string;
   numero_factura: string;
@@ -50,6 +54,8 @@ export default function Dashboard() {
   const [isClassificationDialogOpen, setIsClassificationDialogOpen] = useState(false);
   const [selectedPaymentFactura, setSelectedPaymentFactura] = useState<Factura | null>(null);
   const [isPaymentDialogOpen, setIsPaymentDialogOpen] = useState(false);
+  const [dateFrom, setDateFrom] = useState<Date | null>(null);
+  const [dateTo, setDateTo] = useState<Date | null>(null);
   useEffect(() => {
     if (user) {
       fetchFacturas();
@@ -178,37 +184,111 @@ export default function Dashboard() {
   };
 
   // Funciones para calcular totales de facturas pagadas
-  const calcularTotalPagadoBancos = () => {
-    const mercanciaFacturasPagadas = facturas.filter(f => 
+  const calcularTotalPagadoBancos = (fechaInicio?: Date | null, fechaFin?: Date | null) => {
+    let mercanciaFacturasPagadas = facturas.filter(f => 
       f.clasificacion === 'mercancia' && f.estado_mercancia === 'pagada' && f.metodo_pago === 'Pago Banco'
     );
+    
+    if (fechaInicio && fechaFin) {
+      mercanciaFacturasPagadas = mercanciaFacturasPagadas.filter(f => {
+        if (!f.fecha_emision) return false;
+        const fechaEmision = new Date(f.fecha_emision);
+        return fechaEmision >= fechaInicio && fechaEmision <= fechaFin;
+      });
+    }
+    
     return mercanciaFacturasPagadas.reduce((total, factura) => total + (factura.monto_pagado || factura.total_a_pagar), 0);
   };
 
-  const calcularTotalPagadoTobias = () => {
-    const mercanciaFacturasPagadas = facturas.filter(f => 
+  const calcularTotalPagadoTobias = (fechaInicio?: Date | null, fechaFin?: Date | null) => {
+    let mercanciaFacturasPagadas = facturas.filter(f => 
       f.clasificacion === 'mercancia' && f.estado_mercancia === 'pagada' && f.metodo_pago === 'Pago Tobías'
     );
+    
+    if (fechaInicio && fechaFin) {
+      mercanciaFacturasPagadas = mercanciaFacturasPagadas.filter(f => {
+        if (!f.fecha_emision) return false;
+        const fechaEmision = new Date(f.fecha_emision);
+        return fechaEmision >= fechaInicio && fechaEmision <= fechaFin;
+      });
+    }
+    
     return mercanciaFacturasPagadas.reduce((total, factura) => total + (factura.monto_pagado || factura.total_a_pagar), 0);
   };
 
-  const calcularTotalFacturasPagadas = () => {
-    const mercanciaFacturasPagadas = facturas.filter(f => 
+  const calcularTotalFacturasPagadas = (fechaInicio?: Date | null, fechaFin?: Date | null) => {
+    let mercanciaFacturasPagadas = facturas.filter(f => 
       f.clasificacion === 'mercancia' && f.estado_mercancia === 'pagada'
     );
+    
+    if (fechaInicio && fechaFin) {
+      mercanciaFacturasPagadas = mercanciaFacturasPagadas.filter(f => {
+        if (!f.fecha_emision) return false;
+        const fechaEmision = new Date(f.fecha_emision);
+        return fechaEmision >= fechaInicio && fechaEmision <= fechaFin;
+      });
+    }
+    
     return mercanciaFacturasPagadas.reduce((total, factura) => total + (factura.monto_pagado || factura.total_a_pagar), 0);
   };
 
-  const calcularTotalAhorroProntoPagoPagadas = () => {
-    const mercanciaFacturasPagadas = facturas.filter(f => 
+  const calcularTotalRetencionesPagadas = (fechaInicio?: Date | null, fechaFin?: Date | null) => {
+    let mercanciaFacturasPagadas = facturas.filter(f => 
       f.clasificacion === 'mercancia' && f.estado_mercancia === 'pagada'
     );
+    
+    if (fechaInicio && fechaFin) {
+      mercanciaFacturasPagadas = mercanciaFacturasPagadas.filter(f => {
+        if (!f.fecha_emision) return false;
+        const fechaEmision = new Date(f.fecha_emision);
+        return fechaEmision >= fechaInicio && fechaEmision <= fechaFin;
+      });
+    }
+    
+    return mercanciaFacturasPagadas.reduce((total, factura) => total + (factura.monto_retencion || 0), 0);
+  };
+
+  const calcularTotalAhorroProntoPagoPagadas = (fechaInicio?: Date | null, fechaFin?: Date | null) => {
+    let mercanciaFacturasPagadas = facturas.filter(f => 
+      f.clasificacion === 'mercancia' && f.estado_mercancia === 'pagada'
+    );
+    
+    if (fechaInicio && fechaFin) {
+      mercanciaFacturasPagadas = mercanciaFacturasPagadas.filter(f => {
+        if (!f.fecha_emision) return false;
+        const fechaEmision = new Date(f.fecha_emision);
+        return fechaEmision >= fechaInicio && fechaEmision <= fechaFin;
+      });
+    }
+    
     return mercanciaFacturasPagadas.reduce((total, factura) => {
       if (factura.uso_pronto_pago && factura.monto_pagado) {
         return total + (factura.total_a_pagar - factura.monto_pagado);
       }
       return total;
     }, 0);
+  };
+
+  // Función para filtrar facturas pagadas por fecha
+  const getFilteredPaidFacturas = () => {
+    let mercanciaFacturasPagadas = facturas.filter(f => 
+      f.clasificacion === 'mercancia' && f.estado_mercancia === 'pagada'
+    );
+    
+    if (dateFrom && dateTo) {
+      mercanciaFacturasPagadas = mercanciaFacturasPagadas.filter(f => {
+        if (!f.fecha_emision) return false;
+        const fechaEmision = new Date(f.fecha_emision);
+        return fechaEmision >= dateFrom && fechaEmision <= dateTo;
+      });
+    }
+    
+    return mercanciaFacturasPagadas;
+  };
+
+  const clearDateFilter = () => {
+    setDateFrom(null);
+    setDateTo(null);
   };
   if (loading) {
     return <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background to-muted">
@@ -357,10 +437,10 @@ export default function Dashboard() {
                           
                           const bancosEl = document.getElementById('total-bancos');
                           const tobiasEl = document.getElementById('total-tobias');
-                          if (bancosEl) bancosEl.textContent = formatCurrency(calcularTotalPagadoBancos());
-                          if (tobiasEl) tobiasEl.textContent = formatCurrency(calcularTotalPagadoTobias());
-                          if (ahorroEl) ahorroEl.textContent = formatCurrency(calcularTotalAhorroProntoPagoPagadas());
-                          if (totalEl) totalEl.textContent = formatCurrency(calcularTotalFacturasPagadas());
+                          if (bancosEl) bancosEl.textContent = formatCurrency(calcularTotalPagadoBancos(dateFrom, dateTo));
+                          if (tobiasEl) tobiasEl.textContent = formatCurrency(calcularTotalPagadoTobias(dateFrom, dateTo));
+                          if (ahorroEl) ahorroEl.textContent = formatCurrency(calcularTotalAhorroProntoPagoPagadas(dateFrom, dateTo));
+                          if (totalEl) totalEl.textContent = formatCurrency(calcularTotalFacturasPagadas(dateFrom, dateTo));
                           if (labelEl) labelEl.textContent = 'Total Pagado';
                         } else {
                           // Para facturas pendientes, mostrar impuestos/retenciones y ocultar bancos/Tobías
@@ -440,7 +520,7 @@ export default function Dashboard() {
                                 <div>
                                   <p className="text-sm text-muted-foreground">Pagado por Bancos</p>
                                   <p className="text-xl font-bold text-blue-600" id="total-bancos">
-                                    {formatCurrency(calcularTotalPagadoBancos())}
+                                    {formatCurrency(calcularTotalPagadoBancos(dateFrom, dateTo))}
                                   </p>
                                 </div>
                               </div>
@@ -456,7 +536,7 @@ export default function Dashboard() {
                                 <div>
                                   <p className="text-sm text-muted-foreground">Pagado por Tobías</p>
                                   <p className="text-xl font-bold text-orange-600" id="total-tobias">
-                                    {formatCurrency(calcularTotalPagadoTobias())}
+                                    {formatCurrency(calcularTotalPagadoTobias(dateFrom, dateTo))}
                                   </p>
                                 </div>
                               </div>
@@ -512,14 +592,91 @@ export default function Dashboard() {
                         </TabsContent>
 
                         <TabsContent value="pagada" className="mt-4">
-                          {filterFacturasByMercanciaState('pagada').length === 0 ? (
+                          {/* Filtro de fechas para facturas pagadas */}
+                          <div className="mb-4 p-4 bg-accent/20 rounded-lg border">
+                            <div className="flex flex-wrap items-center gap-4">
+                              <div className="flex items-center space-x-2">
+                                <span className="text-sm font-medium">Filtrar por fecha:</span>
+                                <Popover>
+                                  <PopoverTrigger asChild>
+                                    <Button
+                                      variant="outline"
+                                      className={cn(
+                                        "w-[140px] justify-start text-left font-normal",
+                                        !dateFrom && "text-muted-foreground"
+                                      )}
+                                    >
+                                      <CalendarIcon className="mr-2 h-4 w-4" />
+                                      {dateFrom ? format(dateFrom, "dd/MM/yyyy") : "Desde"}
+                                    </Button>
+                                  </PopoverTrigger>
+                                  <PopoverContent className="w-auto p-0" align="start">
+                                    <Calendar
+                                      mode="single"
+                                      selected={dateFrom}
+                                      onSelect={setDateFrom}
+                                      disabled={(date) => date > new Date()}
+                                      initialFocus
+                                      className={cn("p-3 pointer-events-auto")}
+                                    />
+                                  </PopoverContent>
+                                </Popover>
+                                
+                                <Popover>
+                                  <PopoverTrigger asChild>
+                                    <Button
+                                      variant="outline"
+                                      className={cn(
+                                        "w-[140px] justify-start text-left font-normal",
+                                        !dateTo && "text-muted-foreground"
+                                      )}
+                                    >
+                                      <CalendarIcon className="mr-2 h-4 w-4" />
+                                      {dateTo ? format(dateTo, "dd/MM/yyyy") : "Hasta"}
+                                    </Button>
+                                  </PopoverTrigger>
+                                  <PopoverContent className="w-auto p-0" align="start">
+                                    <Calendar
+                                      mode="single"
+                                      selected={dateTo}
+                                      onSelect={setDateTo}
+                                      disabled={(date) => date > new Date() || (dateFrom && date < dateFrom)}
+                                      initialFocus
+                                      className={cn("p-3 pointer-events-auto")}
+                                    />
+                                  </PopoverContent>
+                                </Popover>
+                                
+                                {(dateFrom || dateTo) && (
+                                  <Button 
+                                    variant="outline" 
+                                    size="sm" 
+                                    onClick={clearDateFilter}
+                                    className="h-9 px-2"
+                                  >
+                                    <X className="h-4 w-4" />
+                                  </Button>
+                                )}
+                              </div>
+                              
+                              {dateFrom && dateTo && (
+                                <div className="text-sm text-muted-foreground">
+                                  Mostrando facturas del {format(dateFrom, "dd/MM/yyyy")} al {format(dateTo, "dd/MM/yyyy")}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                          
+                          {getFilteredPaidFacturas().length === 0 ? (
                             <div className="text-center py-8">
                               <Package className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
-                              <p className="text-muted-foreground">No hay facturas pagadas</p>
+                              <p className="text-muted-foreground">
+                                {dateFrom && dateTo ? 'No hay facturas pagadas en el rango de fechas seleccionado' : 'No hay facturas pagadas'}
+                              </p>
                             </div>
                           ) : (
                             <FacturasTable
-                              facturas={filterFacturasByMercanciaState('pagada')}
+                              facturas={getFilteredPaidFacturas()}
                               onClassifyClick={handleClassifyClick}
                               showPaymentInfo={true}
                             />
