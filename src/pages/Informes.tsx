@@ -5,6 +5,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ModernLayout } from '@/components/ModernLayout';
 import { 
   Building2, 
@@ -15,7 +16,8 @@ import {
   Clock,
   Receipt,
   CreditCard,
-  Percent
+  Percent,
+  Calendar
 } from 'lucide-react';
 
 interface Factura {
@@ -52,12 +54,19 @@ export default function Informes() {
   const [facturas, setFacturas] = useState<Factura[]>([]);
   const [proveedores, setProveedores] = useState<ProveedorData[]>([]);
   const [loadingData, setLoadingData] = useState(true);
+  const [selectedMonth, setSelectedMonth] = useState<string>('todos');
 
   useEffect(() => {
     if (user) {
       fetchFacturas();
     }
   }, [user]);
+
+  useEffect(() => {
+    if (facturas.length > 0) {
+      procesarProveedores(getFilteredFacturas());
+    }
+  }, [selectedMonth, facturas]);
 
   if (!user && !loading) {
     return <Navigate to="/auth" replace />;
@@ -72,12 +81,33 @@ export default function Informes() {
       
       if (error) throw error;
       setFacturas(data || []);
-      procesarProveedores(data || []);
     } catch (error) {
       console.error('Error fetching facturas:', error);
     } finally {
       setLoadingData(false);
     }
+  };
+
+  const getFilteredFacturas = () => {
+    if (selectedMonth === 'todos') {
+      return facturas;
+    }
+    
+    return facturas.filter(factura => {
+      const fechaCreacion = new Date(factura.created_at);
+      const mesAno = `${fechaCreacion.getFullYear()}-${String(fechaCreacion.getMonth() + 1).padStart(2, '0')}`;
+      return mesAno === selectedMonth;
+    });
+  };
+
+  const getAvailableMonths = () => {
+    const months = new Set<string>();
+    facturas.forEach(factura => {
+      const fecha = new Date(factura.created_at);
+      const mesAno = `${fecha.getFullYear()}-${String(fecha.getMonth() + 1).padStart(2, '0')}`;
+      months.add(mesAno);
+    });
+    return Array.from(months).sort().reverse();
   };
 
   const procesarProveedores = (facturas: Factura[]) => {
@@ -140,9 +170,10 @@ export default function Informes() {
   };
 
   const calcularEstadisticasGenerales = () => {
-    const facturasPagadas = facturas.filter(f => f.estado_mercancia === 'pagada');
+    const facturasFiltered = getFilteredFacturas();
+    const facturasPagadas = facturasFiltered.filter(f => f.estado_mercancia === 'pagada');
     
-    const totalIVA = facturas.reduce((sum, f) => sum + (f.factura_iva || 0), 0);
+    const totalIVA = facturasFiltered.reduce((sum, f) => sum + (f.factura_iva || 0), 0);
     const pagadoPorTobias = facturasPagadas
       .filter(f => f.metodo_pago === 'Pago Tobías')
       .reduce((sum, f) => sum + (f.monto_pagado || 0), 0);
@@ -174,6 +205,38 @@ export default function Informes() {
       subtitle="Reporte completo por proveedores y análisis financiero"
     >
       <div className="space-y-6">
+        {/* Filtro por Mes */}
+        <Card>
+          <CardContent className="p-6">
+            <div className="flex items-center gap-4">
+              <Calendar className="h-5 w-5 text-muted-foreground" />
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium">Filtrar por mes:</span>
+                <Select value={selectedMonth} onValueChange={setSelectedMonth}>
+                  <SelectTrigger className="w-48">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="todos">Todos los meses</SelectItem>
+                    {getAvailableMonths().map(month => {
+                      const [year, monthNum] = month.split('-');
+                      const monthName = new Date(parseInt(year), parseInt(monthNum) - 1).toLocaleDateString('es-CO', { 
+                        year: 'numeric', 
+                        month: 'long' 
+                      });
+                      return (
+                        <SelectItem key={month} value={month}>
+                          {monthName}
+                        </SelectItem>
+                      );
+                    })}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
         {/* Estadísticas Generales */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           <Card>
