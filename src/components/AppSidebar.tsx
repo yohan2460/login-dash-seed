@@ -41,6 +41,11 @@ const navigationItems = [
     url: "/facturas-por-proveedor", 
     icon: Building2,
   },
+  {
+    title: "Informes",
+    url: "/informes",
+    icon: TrendingUp,
+  },
 ];
 
 interface FacturasStats {
