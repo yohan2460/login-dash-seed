@@ -47,6 +47,8 @@ interface ProveedorData {
   facturasPagadas: Factura[];
   facturasPorVencer: Factura[];
   facturasTotales: number;
+  fechaVencimientoMasCercana: Date | null;
+  diasParaVencer: number | null;
 }
 
 export default function Informes() {
@@ -126,7 +128,9 @@ export default function Informes() {
           facturasPendientes: [],
           facturasPagadas: [],
           facturasPorVencer: [],
-          facturasTotales: 0
+          facturasTotales: 0,
+          fechaVencimientoMasCercana: null,
+          diasParaVencer: null
         });
       }
 
@@ -143,12 +147,17 @@ export default function Informes() {
         proveedor.totalPendiente += factura.total_a_pagar;
         proveedor.facturasPendientes.push(factura);
 
-        // Verificar si está por vencer (próximos 7 días)
+        // Calcular fecha de vencimiento más cercana
         if (factura.fecha_vencimiento) {
           const fechaVenc = new Date(factura.fecha_vencimiento);
           const hoy = new Date();
           const diferenciaDias = Math.ceil((fechaVenc.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24));
           
+          if (!proveedor.fechaVencimientoMasCercana || fechaVenc < proveedor.fechaVencimientoMasCercana) {
+            proveedor.fechaVencimientoMasCercana = fechaVenc;
+            proveedor.diasParaVencer = diferenciaDias;
+          }
+
           if (diferenciaDias <= 7 && diferenciaDias >= 0) {
             proveedor.facturasPorVencer.push(factura);
           }
@@ -156,11 +165,40 @@ export default function Informes() {
       }
     });
 
-    // Ordenar por total pendiente descendente
+    // Filtrar solo proveedores con deudas pendientes y ordenar por urgencia
     const proveedoresArray = Array.from(proveedoresMap.values())
-      .sort((a, b) => b.totalPendiente - a.totalPendiente);
+      .filter(proveedor => proveedor.totalPendiente > 0)
+      .sort((a, b) => {
+        // Primero por días para vencer (más urgente primero)
+        if (a.diasParaVencer !== null && b.diasParaVencer !== null) {
+          return a.diasParaVencer - b.diasParaVencer;
+        }
+        if (a.diasParaVencer !== null && b.diasParaVencer === null) return -1;
+        if (a.diasParaVencer === null && b.diasParaVencer !== null) return 1;
+        
+        // Luego por total pendiente (mayor deuda primero)
+        return b.totalPendiente - a.totalPendiente;
+      });
     
     setProveedores(proveedoresArray);
+  };
+
+  const getUrgencyColor = (diasParaVencer: number | null) => {
+    if (diasParaVencer === null) return 'border-l-blue-500';
+    if (diasParaVencer < 0) return 'border-l-red-600'; // Vencidas
+    if (diasParaVencer <= 3) return 'border-l-red-500'; // Muy urgente
+    if (diasParaVencer <= 7) return 'border-l-orange-500'; // Urgente
+    if (diasParaVencer <= 15) return 'border-l-yellow-500'; // Atención
+    return 'border-l-blue-500'; // Normal
+  };
+
+  const getUrgencyBadge = (diasParaVencer: number | null) => {
+    if (diasParaVencer === null) return null;
+    if (diasParaVencer < 0) return { text: 'VENCIDA', color: 'bg-red-600 text-white' };
+    if (diasParaVencer <= 3) return { text: 'MUY URGENTE', color: 'bg-red-500 text-white' };
+    if (diasParaVencer <= 7) return { text: 'URGENTE', color: 'bg-orange-500 text-white' };
+    if (diasParaVencer <= 15) return { text: 'PRÓXIMO VENC.', color: 'bg-yellow-500 text-black' };
+    return null;
   };
 
   const formatCurrency = (amount: number) => {
@@ -289,12 +327,17 @@ export default function Informes() {
           </Card>
         </div>
 
-        {/* Lista de Proveedores */}
+        {/* Lista de Proveedores con Deudas Pendientes */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center">
-              <Building2 className="w-5 h-5 mr-2" />
-              Reporte por Proveedores
+              <AlertTriangle className="w-5 h-5 mr-2 text-red-600" />
+              Proveedores con Deudas Pendientes
+              {proveedores.length > 0 && (
+                <Badge variant="destructive" className="ml-2">
+                  {proveedores.length}
+                </Badge>
+              )}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -305,27 +348,43 @@ export default function Informes() {
               </div>
             ) : (
               <div className="space-y-4">
-                {proveedores.map((proveedor) => (
-                  <Card key={proveedor.nit} className="border-l-4 border-l-blue-500">
-                    <CardContent className="p-6">
-                      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                        {/* Información del Proveedor */}
-                        <div className="lg:col-span-2">
-                          <div className="flex items-start justify-between mb-4">
-                            <div>
-                              <h3 className="text-lg font-semibold">{proveedor.nombre}</h3>
-                              <p className="text-sm text-muted-foreground">NIT: {proveedor.nit}</p>
-                              <p className="text-sm text-muted-foreground">
-                                {proveedor.facturasTotales} facturas en total
-                              </p>
-                            </div>
-                            <div className="text-right">
-                              <div className="text-sm text-muted-foreground">Total Pendiente</div>
-                              <div className="text-2xl font-bold text-red-600">
-                                {formatCurrency(proveedor.totalPendiente)}
+                {proveedores.map((proveedor) => {
+                  const urgencyBadge = getUrgencyBadge(proveedor.diasParaVencer);
+                  return (
+                    <Card key={proveedor.nit} className={`border-l-4 ${getUrgencyColor(proveedor.diasParaVencer)}`}>
+                      <CardContent className="p-6">
+                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                          {/* Información del Proveedor */}
+                          <div className="lg:col-span-2">
+                            <div className="flex items-start justify-between mb-4">
+                              <div>
+                                <div className="flex items-center gap-2 mb-2">
+                                  <h3 className="text-lg font-semibold">{proveedor.nombre}</h3>
+                                  {urgencyBadge && (
+                                    <Badge className={`text-xs px-2 py-1 ${urgencyBadge.color}`}>
+                                      {urgencyBadge.text}
+                                    </Badge>
+                                  )}
+                                </div>
+                                <p className="text-sm text-muted-foreground">NIT: {proveedor.nit}</p>
+                                <p className="text-sm text-muted-foreground">
+                                  {proveedor.facturasPendientes.length} facturas pendientes
+                                </p>
+                                {proveedor.diasParaVencer !== null && (
+                                  <p className="text-sm font-medium text-red-600">
+                                    {proveedor.diasParaVencer < 0 
+                                      ? `Vencida hace ${Math.abs(proveedor.diasParaVencer)} días`
+                                      : `Vence en ${proveedor.diasParaVencer} días`}
+                                  </p>
+                                )}
+                              </div>
+                              <div className="text-right">
+                                <div className="text-sm text-muted-foreground">Total Pendiente</div>
+                                <div className="text-2xl font-bold text-red-600">
+                                  {formatCurrency(proveedor.totalPendiente)}
+                                </div>
                               </div>
                             </div>
-                          </div>
 
                           {/* Progress bar */}
                           {(proveedor.totalPendiente + proveedor.totalPagado) > 0 && (
@@ -395,12 +454,13 @@ export default function Informes() {
                                 {formatCurrency(proveedor.totalPagado)}
                               </div>
                             </div>
-                          )}
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
+                           )}
+                         </div>
+                       </div>
+                     </CardContent>
+                   </Card>
+                 );
+                })}
               </div>
             )}
           </CardContent>
