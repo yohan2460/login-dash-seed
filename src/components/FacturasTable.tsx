@@ -364,15 +364,32 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
                       )}
 
                     {onSistematizarClick && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => onSistematizarClick(factura)}
-                        className="flex-1 border-purple-200 text-purple-700 hover:bg-purple-50"
-                      >
-                        <FileCheck className="w-4 h-4 mr-1" />
-                        Sistematizar
-                      </Button>
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="flex-1 border-purple-200 text-purple-700 hover:bg-purple-50"
+                          >
+                            <FileCheck className="w-4 h-4 mr-1" />
+                            Sistematizar
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Confirmar Sistematización</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              ¿Está seguro que desea marcar la factura {factura.numero_factura} como sistematizada? Esta acción moverá la factura a la sección de facturas sistematizadas.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                            <AlertDialogAction onClick={() => onSistematizarClick(factura)}>
+                              Sistematizar
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
                     )}
 
                     <AlertDialog>
@@ -630,14 +647,31 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
                       )}
 
                       {onSistematizarClick && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => onSistematizarClick(factura)}
-                          className="transition-all duration-200 hover:scale-105 text-purple-700 hover:bg-purple-50"
-                        >
-                          <FileCheck className="w-4 h-4" />
-                        </Button>
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="transition-all duration-200 hover:scale-105 text-purple-700 hover:bg-purple-50"
+                            >
+                              <FileCheck className="w-4 h-4" />
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Confirmar Sistematización</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                ¿Está seguro que desea marcar la factura {factura.numero_factura} como sistematizada? Esta acción moverá la factura a la sección de facturas sistematizadas.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                              <AlertDialogAction onClick={() => onSistematizarClick(factura)}>
+                                Sistematizar
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
                       )}
 
                       <AlertDialog>
