@@ -262,7 +262,10 @@ export default function Informes() {
     return new Date(dateString).toLocaleDateString('es-CO');
   };
 
-  const getDaysToExpire = (fechaVencimiento: string | null) => {
+  const getDaysToExpire = (fechaVencimiento: string | null, estadoPago: string | null) => {
+    // Si está pagada, no mostrar días de vencimiento
+    if (estadoPago === 'pagada') return null;
+    
     if (!fechaVencimiento) return null;
     const today = new Date();
     const expireDate = new Date(fechaVencimiento);
@@ -624,6 +627,7 @@ export default function Informes() {
                     <TableHead>Clasificación</TableHead>
                     <TableHead>Fecha Emisión</TableHead>
                     <TableHead>Fecha Vencimiento</TableHead>
+                    <TableHead>Fecha Pago</TableHead>
                     <TableHead>Total Factura</TableHead>
                     <TableHead>Total Pagado</TableHead>
                     <TableHead>Estado</TableHead>
@@ -633,7 +637,7 @@ export default function Informes() {
                 </TableHeader>
                 <TableBody>
                   {filteredFacturas.map((factura) => {
-                    const diasVencimiento = getDaysToExpire(factura.fecha_vencimiento);
+                    const diasVencimiento = getDaysToExpire(factura.fecha_vencimiento, factura.estado_mercancia);
                     const urgencyBadge = getUrgencyBadge(diasVencimiento);
                     
                     return (
@@ -658,6 +662,7 @@ export default function Informes() {
                         </TableCell>
                         <TableCell>{formatDate(factura.fecha_emision)}</TableCell>
                         <TableCell>{formatDate(factura.fecha_vencimiento)}</TableCell>
+                        <TableCell className="font-semibold text-blue-600">{formatDate(factura.fecha_pago)}</TableCell>
                         <TableCell className="font-semibold">{formatCurrency(factura.total_a_pagar)}</TableCell>
                         <TableCell className="font-semibold text-green-600">
                           {formatCurrency(factura.monto_pagado || 0)}
