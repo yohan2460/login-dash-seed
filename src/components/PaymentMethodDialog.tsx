@@ -26,6 +26,7 @@ interface Factura {
   porcentaje_pronto_pago?: number | null;
   numero_serie?: string | null;
   estado_mercancia?: string | null;
+  fecha_pago?: string | null;
 }
 
 interface PaymentMethodDialogProps {
@@ -71,7 +72,8 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
           estado_mercancia: 'pagada',
           metodo_pago: selectedPaymentMethod,
           uso_pronto_pago: usedProntoPago === 'yes',
-          monto_pagado: amountNumber
+          monto_pagado: amountNumber,
+          fecha_pago: new Date().toISOString()
         })
         .eq('id', factura.id);
 

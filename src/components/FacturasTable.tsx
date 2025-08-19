@@ -29,6 +29,7 @@ interface Factura {
   monto_pagado?: number | null;
   fecha_emision?: string | null;
   fecha_vencimiento?: string | null;
+  fecha_pago?: string | null;
 }
 
 interface FacturasTableProps {
@@ -243,7 +244,20 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
                         </div>
                       </div>
                     </div>
-                  </div>
+                   </div>
+                   
+                   {/* Fecha de pago si está pagada */}
+                   {factura.fecha_pago && (
+                     <div className="flex items-center space-x-2 text-sm">
+                       <CheckCircle className="w-4 h-4 text-green-600" />
+                       <div>
+                         <div className="text-green-600">Pagada el</div>
+                         <div className="font-medium text-green-600">
+                           {new Date(factura.fecha_pago).toLocaleDateString('es-CO')}
+                         </div>
+                       </div>
+                     </div>
+                   )}
 
                    {/* Información financiera */}
                    <div className="grid grid-cols-2 gap-4 text-sm">
@@ -464,16 +478,25 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
                           )}
                         </span>
                       </div>
-                      <div className="flex items-center space-x-2">
-                        <Clock className="w-3 h-3 text-muted-foreground" />
-                        <span className="text-xs text-muted-foreground">Vence:</span>
-                        <span>
-                          {factura.fecha_vencimiento ? (
-                            new Date(factura.fecha_vencimiento).toLocaleDateString('es-CO')
-                          ) : '-'}
-                        </span>
-                        {getDaysIndicator(getDaysUntilDue(factura.fecha_vencimiento, factura.estado_mercancia))}
-                      </div>
+                       <div className="flex items-center space-x-2">
+                         <Clock className="w-3 h-3 text-muted-foreground" />
+                         <span className="text-xs text-muted-foreground">Vence:</span>
+                         <span>
+                           {factura.fecha_vencimiento ? (
+                             new Date(factura.fecha_vencimiento).toLocaleDateString('es-CO')
+                           ) : '-'}
+                         </span>
+                         {getDaysIndicator(getDaysUntilDue(factura.fecha_vencimiento, factura.estado_mercancia))}
+                       </div>
+                       {factura.fecha_pago && (
+                         <div className="flex items-center space-x-2">
+                           <CheckCircle className="w-3 h-3 text-green-600" />
+                           <span className="text-xs text-green-600">Pagada:</span>
+                           <span className="text-green-600 font-medium">
+                             {new Date(factura.fecha_pago).toLocaleDateString('es-CO')}
+                           </span>
+                         </div>
+                       )}
                     </div>
                   </TableCell>
 

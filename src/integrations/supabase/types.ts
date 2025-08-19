@@ -26,6 +26,7 @@ export type Database = {
           factura_iva: number | null
           factura_iva_porcentaje: number | null
           fecha_emision: string | null
+          fecha_pago: string | null
           fecha_vencimiento: string | null
           id: string
           metodo_pago: string | null
@@ -54,6 +55,7 @@ export type Database = {
           factura_iva?: number | null
           factura_iva_porcentaje?: number | null
           fecha_emision?: string | null
+          fecha_pago?: string | null
           fecha_vencimiento?: string | null
           id?: string
           metodo_pago?: string | null
@@ -82,6 +84,7 @@ export type Database = {
           factura_iva?: number | null
           factura_iva_porcentaje?: number | null
           fecha_emision?: string | null
+          fecha_pago?: string | null
           fecha_vencimiento?: string | null
           id?: string
           metodo_pago?: string | null
