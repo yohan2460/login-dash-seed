@@ -878,6 +878,7 @@ export default function ModernDashboard() {
                       onPayClick={handlePayClick}
                       onDelete={handleDelete}
                       onSistematizarClick={handleSistematizarClick}
+                      allowDelete={false}
                     />
                   )}
                 </CardContent>

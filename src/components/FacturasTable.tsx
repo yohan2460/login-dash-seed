@@ -40,9 +40,10 @@ interface FacturasTableProps {
   onDelete?: (facturaId: string) => void;
   onSistematizarClick?: (factura: Factura) => void;
   showSistematizarButton?: boolean;
+  allowDelete?: boolean;
 }
 
-export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPaymentInfo = false, onDelete, onSistematizarClick, showSistematizarButton = false }: FacturasTableProps) {
+export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPaymentInfo = false, onDelete, onSistematizarClick, showSistematizarButton = false, allowDelete = true }: FacturasTableProps) {
   const { toast } = useToast();
 
   const formatCurrency = (amount: number) => {
@@ -393,7 +394,8 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
                       </AlertDialog>
                     )}
 
-                    <AlertDialog>
+                    {allowDelete && (
+                      <AlertDialog>
                       <AlertDialogTrigger asChild>
                         <Button
                           variant="outline"
@@ -421,6 +423,7 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
                         </AlertDialogFooter>
                       </AlertDialogContent>
                     </AlertDialog>
+                    )}
                   </div>
                 </div>
               </CardContent>
@@ -675,34 +678,36 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
                         </AlertDialog>
                       )}
 
-                      <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="transition-all duration-200 hover:scale-105 text-red-700 hover:bg-red-50"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent>
-                          <AlertDialogHeader>
-                            <AlertDialogTitle>¿Eliminar factura?</AlertDialogTitle>
-                            <AlertDialogDescription>
-                              Esta acción no se puede deshacer. Se eliminará permanentemente la factura #{factura.numero_factura} de {factura.emisor_nombre}.
-                            </AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                            <AlertDialogAction
-                              onClick={() => handleDelete(factura.id)}
-                              className="bg-red-600 hover:bg-red-700"
+                      {allowDelete && (
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="transition-all duration-200 hover:scale-105 text-red-700 hover:bg-red-50"
                             >
-                              Eliminar
-                            </AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>¿Eliminar factura?</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                Esta acción no se puede deshacer. Se eliminará permanentemente la factura #{factura.numero_factura} de {factura.emisor_nombre}.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                              <AlertDialogAction
+                                onClick={() => handleDelete(factura.id)}
+                                className="bg-red-600 hover:bg-red-700"
+                              >
+                                Eliminar
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                      )}
                     </div>
                   </TableCell>
                 </TableRow>
