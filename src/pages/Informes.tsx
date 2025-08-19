@@ -4,10 +4,18 @@ import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Progress } from '@/components/ui/progress';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { ModernLayout } from '@/components/ModernLayout';
+import { useToast } from '@/hooks/use-toast';
+import * as XLSX from 'xlsx';
 import { 
+  Filter,
+  Download,
   Building2, 
   DollarSign, 
   TrendingUp, 
@@ -16,8 +24,9 @@ import {
   Clock,
   Receipt,
   CreditCard,
-  Percent,
-  Calendar
+  Calendar,
+  Search,
+  RefreshCw
 } from 'lucide-react';
 
 interface Factura {
@@ -27,6 +36,7 @@ interface Factura {
   emisor_nit: string;
   total_a_pagar: number;
   clasificacion: string | null;
+  clasificacion_original: string | null;
   estado_mercancia: string | null;
   metodo_pago: string | null;
   factura_iva: number | null;
@@ -35,50 +45,39 @@ interface Factura {
   porcentaje_pronto_pago: number | null;
   fecha_emision: string | null;
   fecha_vencimiento: string | null;
+  fecha_pago: string | null;
   created_at: string;
 }
 
-interface ProveedorData {
-  nit: string;
-  nombre: string;
-  totalPendiente: number;
-  totalPagado: number;
-  facturasPendientes: Factura[];
-  facturasPagadas: Factura[];
-  facturasPorVencer: Factura[];
-  facturasTotales: number;
-  fechaVencimientoMasCercana: Date | null;
-  diasParaVencer: number | null;
+interface FilterState {
+  fechaInicio: string;
+  fechaFin: string;
+  proveedor: string;
+  clasificacion: string;
+  estadoPago: string;
+  metodoPago: string;
+  montoMinimo: string;
+  montoMaximo: string;
 }
 
 export default function Informes() {
   const { user, loading } = useAuth();
+  const { toast } = useToast();
   const [facturas, setFacturas] = useState<Factura[]>([]);
-  const [proveedores, setProveedores] = useState<ProveedorData[]>([]);
+  const [filteredFacturas, setFilteredFacturas] = useState<Factura[]>([]);
+  const [selectedFacturas, setSelectedFacturas] = useState<string[]>([]);
   const [loadingData, setLoadingData] = useState(true);
-  const [selectedMonth, setSelectedMonth] = useState<string>('todos');
-
-  const getFilteredFacturas = () => {
-    if (selectedMonth === 'todos') {
-      return facturas;
-    }
-    
-    return facturas.filter(factura => {
-      const fechaCreacion = new Date(factura.created_at);
-      const mesAno = `${fechaCreacion.getFullYear()}-${String(fechaCreacion.getMonth() + 1).padStart(2, '0')}`;
-      return mesAno === selectedMonth;
-    });
-  };
-
-  const getAvailableMonths = () => {
-    const months = new Set<string>();
-    facturas.forEach(factura => {
-      const fecha = new Date(factura.created_at);
-      const mesAno = `${fecha.getFullYear()}-${String(fecha.getMonth() + 1).padStart(2, '0')}`;
-      months.add(mesAno);
-    });
-    return Array.from(months).sort().reverse();
-  };
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filters, setFilters] = useState<FilterState>({
+    fechaInicio: '',
+    fechaFin: '',
+    proveedor: '',
+    clasificacion: '',
+    estadoPago: '',
+    metodoPago: '',
+    montoMinimo: '',
+    montoMaximo: ''
+  });
 
   useEffect(() => {
     if (user) {
@@ -87,10 +86,8 @@ export default function Informes() {
   }, [user]);
 
   useEffect(() => {
-    if (facturas.length > 0) {
-      procesarProveedores(getFilteredFacturas());
-    }
-  }, [selectedMonth, facturas]);
+    applyFilters();
+  }, [facturas, filters, searchTerm]);
 
   if (!user && !loading) {
     return <Navigate to="/auth" replace />;
@@ -107,98 +104,150 @@ export default function Informes() {
       setFacturas(data || []);
     } catch (error) {
       console.error('Error fetching facturas:', error);
+      toast({
+        title: "Error",
+        description: "No se pudieron cargar las facturas",
+        variant: "destructive",
+      });
     } finally {
       setLoadingData(false);
     }
   };
 
+  const applyFilters = () => {
+    let filtered = [...facturas];
 
-  const procesarProveedores = (facturas: Factura[]) => {
-    const proveedoresMap = new Map<string, ProveedorData>();
+    // Filtro por búsqueda
+    if (searchTerm) {
+      filtered = filtered.filter(f => 
+        f.emisor_nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        f.numero_factura.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        f.emisor_nit.includes(searchTerm)
+      );
+    }
 
-    facturas.forEach(factura => {
-      const key = factura.emisor_nit;
-      
-      if (!proveedoresMap.has(key)) {
-        proveedoresMap.set(key, {
-          nit: factura.emisor_nit,
-          nombre: factura.emisor_nombre,
-          totalPendiente: 0,
-          totalPagado: 0,
-          facturasPendientes: [],
-          facturasPagadas: [],
-          facturasPorVencer: [],
-          facturasTotales: 0,
-          fechaVencimientoMasCercana: null,
-          diasParaVencer: null
-        });
-      }
-
-      const proveedor = proveedoresMap.get(key)!;
-      proveedor.facturasTotales++;
-
-      // Determinar si está pendiente o pagada
-      const isPagada = factura.estado_mercancia === 'pagada';
-      
-      if (isPagada) {
-        proveedor.totalPagado += factura.monto_pagado || factura.total_a_pagar;
-        proveedor.facturasPagadas.push(factura);
-      } else if (factura.clasificacion) {
-        proveedor.totalPendiente += factura.total_a_pagar;
-        proveedor.facturasPendientes.push(factura);
-
-        // Calcular fecha de vencimiento más cercana
-        if (factura.fecha_vencimiento) {
-          const fechaVenc = new Date(factura.fecha_vencimiento);
-          const hoy = new Date();
-          const diferenciaDias = Math.ceil((fechaVenc.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24));
-          
-          if (!proveedor.fechaVencimientoMasCercana || fechaVenc < proveedor.fechaVencimientoMasCercana) {
-            proveedor.fechaVencimientoMasCercana = fechaVenc;
-            proveedor.diasParaVencer = diferenciaDias;
-          }
-
-          if (diferenciaDias <= 7 && diferenciaDias >= 0) {
-            proveedor.facturasPorVencer.push(factura);
-          }
-        }
-      }
-    });
-
-    // Filtrar solo proveedores con deudas pendientes y ordenar por urgencia
-    const proveedoresArray = Array.from(proveedoresMap.values())
-      .filter(proveedor => proveedor.totalPendiente > 0)
-      .sort((a, b) => {
-        // Primero por días para vencer (más urgente primero)
-        if (a.diasParaVencer !== null && b.diasParaVencer !== null) {
-          return a.diasParaVencer - b.diasParaVencer;
-        }
-        if (a.diasParaVencer !== null && b.diasParaVencer === null) return -1;
-        if (a.diasParaVencer === null && b.diasParaVencer !== null) return 1;
-        
-        // Luego por total pendiente (mayor deuda primero)
-        return b.totalPendiente - a.totalPendiente;
+    // Filtro por fechas
+    if (filters.fechaInicio) {
+      filtered = filtered.filter(f => {
+        const fechaFactura = f.fecha_emision || f.created_at;
+        return new Date(fechaFactura) >= new Date(filters.fechaInicio);
       });
+    }
+
+    if (filters.fechaFin) {
+      filtered = filtered.filter(f => {
+        const fechaFactura = f.fecha_emision || f.created_at;
+        return new Date(fechaFactura) <= new Date(filters.fechaFin);
+      });
+    }
+
+    // Filtro por proveedor
+    if (filters.proveedor) {
+      filtered = filtered.filter(f => f.emisor_nit === filters.proveedor);
+    }
+
+    // Filtro por clasificación
+    if (filters.clasificacion) {
+      if (filters.clasificacion === 'sistematizada') {
+        filtered = filtered.filter(f => f.clasificacion === 'sistematizada');
+      } else {
+        filtered = filtered.filter(f => f.clasificacion_original === filters.clasificacion);
+      }
+    }
+
+    // Filtro por estado de pago
+    if (filters.estadoPago) {
+      filtered = filtered.filter(f => f.estado_mercancia === filters.estadoPago);
+    }
+
+    // Filtro por método de pago
+    if (filters.metodoPago) {
+      filtered = filtered.filter(f => f.metodo_pago === filters.metodoPago);
+    }
+
+    // Filtro por montos
+    if (filters.montoMinimo) {
+      filtered = filtered.filter(f => f.total_a_pagar >= parseFloat(filters.montoMinimo));
+    }
+
+    if (filters.montoMaximo) {
+      filtered = filtered.filter(f => f.total_a_pagar <= parseFloat(filters.montoMaximo));
+    }
+
+    setFilteredFacturas(filtered);
+  };
+
+  const clearFilters = () => {
+    setFilters({
+      fechaInicio: '',
+      fechaFin: '',
+      proveedor: '',
+      clasificacion: '',
+      estadoPago: '',
+      metodoPago: '',
+      montoMinimo: '',
+      montoMaximo: ''
+    });
+    setSearchTerm('');
+  };
+
+  const toggleSelection = (facturaId: string) => {
+    setSelectedFacturas(prev =>
+      prev.includes(facturaId)
+        ? prev.filter(id => id !== facturaId)
+        : [...prev, facturaId]
+    );
+  };
+
+  const toggleSelectAll = () => {
+    setSelectedFacturas(
+      selectedFacturas.length === filteredFacturas.length
+        ? []
+        : filteredFacturas.map(f => f.id)
+    );
+  };
+
+  const exportToExcel = () => {
+    if (selectedFacturas.length === 0) {
+      toast({
+        title: "Error",
+        description: "Debe seleccionar al menos una factura para exportar",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const facturasToExport = filteredFacturas.filter(f => selectedFacturas.includes(f.id));
     
-    setProveedores(proveedoresArray);
-  };
+    const dataForExcel = facturasToExport.map(factura => ({
+      'Proveedor': factura.emisor_nombre,
+      'NIT': factura.emisor_nit,
+      'Serie de Factura': factura.numero_factura,
+      'Clasificación': factura.clasificacion_original || factura.clasificacion || 'Sin clasificar',
+      'Fecha de Emisión': factura.fecha_emision ? new Date(factura.fecha_emision).toLocaleDateString('es-CO') : 'No especificada',
+      'Fecha de Vencimiento': factura.fecha_vencimiento ? new Date(factura.fecha_vencimiento).toLocaleDateString('es-CO') : 'No especificada',
+      'Total de la Factura': factura.total_a_pagar,
+      'Total Pagado': factura.monto_pagado || 0,
+      'Estado': factura.estado_mercancia || 'Pendiente',
+      'Método de Pago': factura.metodo_pago || 'No especificado',
+      'Fecha de Pago': factura.fecha_pago ? new Date(factura.fecha_pago).toLocaleDateString('es-CO') : 'No pagada',
+      'IVA': factura.factura_iva || 0,
+      'Días para Vencer': factura.fecha_vencimiento ? 
+        Math.ceil((new Date(factura.fecha_vencimiento).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)) : 
+        'No especificado'
+    }));
 
-  const getUrgencyColor = (diasParaVencer: number | null) => {
-    if (diasParaVencer === null) return 'border-l-blue-500';
-    if (diasParaVencer < 0) return 'border-l-red-600'; // Vencidas
-    if (diasParaVencer <= 3) return 'border-l-red-500'; // Muy urgente
-    if (diasParaVencer <= 7) return 'border-l-orange-500'; // Urgente
-    if (diasParaVencer <= 15) return 'border-l-yellow-500'; // Atención
-    return 'border-l-blue-500'; // Normal
-  };
+    const worksheet = XLSX.utils.json_to_sheet(dataForExcel);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Facturas');
 
-  const getUrgencyBadge = (diasParaVencer: number | null) => {
-    if (diasParaVencer === null) return null;
-    if (diasParaVencer < 0) return { text: 'VENCIDA', color: 'bg-red-600 text-white' };
-    if (diasParaVencer <= 3) return { text: 'MUY URGENTE', color: 'bg-red-500 text-white' };
-    if (diasParaVencer <= 7) return { text: 'URGENTE', color: 'bg-orange-500 text-white' };
-    if (diasParaVencer <= 15) return { text: 'PRÓXIMO VENC.', color: 'bg-yellow-500 text-black' };
-    return null;
+    const fileName = `informe_facturas_${new Date().toISOString().split('T')[0]}.xlsx`;
+    XLSX.writeFile(workbook, fileName);
+
+    toast({
+      title: "Exportación exitosa",
+      description: `Se exportaron ${facturasToExport.length} facturas a Excel`,
+    });
   };
 
   const formatCurrency = (amount: number) => {
@@ -208,25 +257,42 @@ export default function Informes() {
     }).format(amount);
   };
 
-  const calcularEstadisticasGenerales = () => {
-    const facturasFiltered = getFilteredFacturas();
-    const facturasPagadas = facturasFiltered.filter(f => f.estado_mercancia === 'pagada');
-    
-    const totalIVA = facturasFiltered.reduce((sum, f) => sum + (f.factura_iva || 0), 0);
-    const pagadoPorTobias = facturasPagadas
-      .filter(f => f.metodo_pago === 'Pago Tobías')
-      .reduce((sum, f) => sum + (f.monto_pagado || 0), 0);
-    const pagadoPorBancos = facturasPagadas
-      .filter(f => f.metodo_pago === 'Pago Banco')
-      .reduce((sum, f) => sum + (f.monto_pagado || 0), 0);
-    const ahorroTotal = facturasPagadas
-      .filter(f => f.uso_pronto_pago && f.porcentaje_pronto_pago)
-      .reduce((sum, f) => sum + (f.total_a_pagar * (f.porcentaje_pronto_pago! / 100)), 0);
-
-    return { totalIVA, pagadoPorTobias, pagadoPorBancos, ahorroTotal };
+  const formatDate = (dateString: string | null) => {
+    if (!dateString) return 'No especificada';
+    return new Date(dateString).toLocaleDateString('es-CO');
   };
 
-  const stats = calcularEstadisticasGenerales();
+  const getDaysToExpire = (fechaVencimiento: string | null) => {
+    if (!fechaVencimiento) return null;
+    const today = new Date();
+    const expireDate = new Date(fechaVencimiento);
+    const diffTime = expireDate.getTime() - today.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    return diffDays;
+  };
+
+  const getUrgencyBadge = (dias: number | null) => {
+    if (dias === null) return null;
+    if (dias < 0) return { text: 'VENCIDA', color: 'bg-red-600 text-white' };
+    if (dias <= 3) return { text: 'URGENTE', color: 'bg-red-500 text-white' };
+    if (dias <= 7) return { text: 'PRÓXIMO', color: 'bg-orange-500 text-white' };
+    return null;
+  };
+
+  // Calcular estadísticas
+  const stats = {
+    totalFacturas: filteredFacturas.length,
+    totalMonto: filteredFacturas.reduce((sum, f) => sum + f.total_a_pagar, 0),
+    totalPagado: filteredFacturas.reduce((sum, f) => sum + (f.monto_pagado || 0), 0),
+    totalPendiente: filteredFacturas.filter(f => f.estado_mercancia !== 'pagada').reduce((sum, f) => sum + f.total_a_pagar, 0),
+    pagosMercancia: filteredFacturas.filter(f => f.clasificacion_original === 'Mercancía' && f.estado_mercancia === 'pagada').reduce((sum, f) => sum + (f.monto_pagado || 0), 0),
+    pagosGastos: filteredFacturas.filter(f => f.clasificacion_original === 'Gastos' && f.estado_mercancia === 'pagada').reduce((sum, f) => sum + (f.monto_pagado || 0), 0),
+  };
+
+  // Obtener opciones únicas para los filtros
+  const uniqueProveedores = [...new Set(facturas.map(f => ({ nit: f.emisor_nit, nombre: f.emisor_nombre })))];
+  const uniqueClasificaciones = [...new Set(facturas.map(f => f.clasificacion_original).filter(Boolean))];
+  const uniqueMetodosPago = [...new Set(facturas.map(f => f.metodo_pago).filter(Boolean))];
 
   if (loading || loadingData) {
     return (
@@ -240,229 +306,333 @@ export default function Informes() {
 
   return (
     <ModernLayout
-      title="Informes"
-      subtitle="Reporte completo por proveedores y análisis financiero"
+      title="Informes Avanzados"
+      subtitle="Análisis completo de facturas con filtros y exportación"
     >
       <div className="space-y-6">
-        {/* Filtro por Mes */}
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center gap-4">
-              <Calendar className="h-5 w-5 text-muted-foreground" />
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-medium">Filtrar por mes:</span>
-                <Select value={selectedMonth} onValueChange={setSelectedMonth}>
-                  <SelectTrigger className="w-48">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="todos">Todos los meses</SelectItem>
-                    {getAvailableMonths().map(month => {
-                      const [year, monthNum] = month.split('-');
-                      const monthName = new Date(parseInt(year), parseInt(monthNum) - 1).toLocaleDateString('es-CO', { 
-                        year: 'numeric', 
-                        month: 'long' 
-                      });
-                      return (
-                        <SelectItem key={month} value={month}>
-                          {monthName}
-                        </SelectItem>
-                      );
-                    })}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
         {/* Estadísticas Generales */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
           <Card>
-            <CardContent className="p-6">
+            <CardContent className="p-4">
               <div className="flex items-center">
-                <Receipt className="h-8 w-8 text-blue-600" />
-                <div className="ml-4">
-                  <p className="text-sm font-medium text-muted-foreground">Total IVA</p>
-                  <p className="text-2xl font-bold">{formatCurrency(stats.totalIVA)}</p>
+                <Receipt className="h-6 w-6 text-blue-600" />
+                <div className="ml-3">
+                  <p className="text-xs font-medium text-muted-foreground">Total Facturas</p>
+                  <p className="text-lg font-bold">{stats.totalFacturas}</p>
                 </div>
               </div>
             </CardContent>
           </Card>
 
           <Card>
-            <CardContent className="p-6">
+            <CardContent className="p-4">
               <div className="flex items-center">
-                <CreditCard className="h-8 w-8 text-green-600" />
-                <div className="ml-4">
-                  <p className="text-sm font-medium text-muted-foreground">Pagado por Bancos</p>
-                  <p className="text-2xl font-bold">{formatCurrency(stats.pagadoPorBancos)}</p>
+                <DollarSign className="h-6 w-6 text-green-600" />
+                <div className="ml-3">
+                  <p className="text-xs font-medium text-muted-foreground">Total Monto</p>
+                  <p className="text-sm font-bold">{formatCurrency(stats.totalMonto)}</p>
                 </div>
               </div>
             </CardContent>
           </Card>
 
           <Card>
-            <CardContent className="p-6">
+            <CardContent className="p-4">
               <div className="flex items-center">
-                <Building2 className="h-8 w-8 text-purple-600" />
-                <div className="ml-4">
-                  <p className="text-sm font-medium text-muted-foreground">Pagado por Tobías</p>
-                  <p className="text-2xl font-bold">{formatCurrency(stats.pagadoPorTobias)}</p>
+                <CheckCircle className="h-6 w-6 text-green-600" />
+                <div className="ml-3">
+                  <p className="text-xs font-medium text-muted-foreground">Total Pagado</p>
+                  <p className="text-sm font-bold">{formatCurrency(stats.totalPagado)}</p>
                 </div>
               </div>
             </CardContent>
           </Card>
 
           <Card>
-            <CardContent className="p-6">
+            <CardContent className="p-4">
               <div className="flex items-center">
-                <Percent className="h-8 w-8 text-orange-600" />
-                <div className="ml-4">
-                  <p className="text-sm font-medium text-muted-foreground">Total Ahorrado</p>
-                  <p className="text-2xl font-bold">{formatCurrency(stats.ahorroTotal)}</p>
+                <AlertTriangle className="h-6 w-6 text-red-600" />
+                <div className="ml-3">
+                  <p className="text-xs font-medium text-muted-foreground">Total Pendiente</p>
+                  <p className="text-sm font-bold">{formatCurrency(stats.totalPendiente)}</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center">
+                <Building2 className="h-6 w-6 text-purple-600" />
+                <div className="ml-3">
+                  <p className="text-xs font-medium text-muted-foreground">Pagos Mercancía</p>
+                  <p className="text-sm font-bold">{formatCurrency(stats.pagosMercancia)}</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center">
+                <CreditCard className="h-6 w-6 text-orange-600" />
+                <div className="ml-3">
+                  <p className="text-xs font-medium text-muted-foreground">Pagos Gastos</p>
+                  <p className="text-sm font-bold">{formatCurrency(stats.pagosGastos)}</p>
                 </div>
               </div>
             </CardContent>
           </Card>
         </div>
 
-        {/* Lista de Proveedores con Deudas Pendientes */}
+        {/* Filtros Avanzados */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center">
-              <AlertTriangle className="w-5 h-5 mr-2 text-red-600" />
-              Proveedores con Deudas Pendientes
-              {proveedores.length > 0 && (
-                <Badge variant="destructive" className="ml-2">
-                  {proveedores.length}
-                </Badge>
-              )}
+              <Filter className="w-5 h-5 mr-2" />
+              Filtros Avanzados
             </CardTitle>
           </CardHeader>
           <CardContent>
-            {proveedores.length === 0 ? (
-              <div className="text-center py-8">
-                <Building2 className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-                <p className="text-muted-foreground">No hay datos de proveedores disponibles</p>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+              {/* Búsqueda */}
+              <div>
+                <Label htmlFor="search">Buscar</Label>
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    id="search"
+                    placeholder="Proveedor, factura, NIT..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="pl-10"
+                  />
+                </div>
               </div>
-            ) : (
-              <div className="space-y-4">
-                {proveedores.map((proveedor) => {
-                  const urgencyBadge = getUrgencyBadge(proveedor.diasParaVencer);
-                  return (
-                    <Card key={proveedor.nit} className={`border-l-4 ${getUrgencyColor(proveedor.diasParaVencer)}`}>
-                      <CardContent className="p-6">
-                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                          {/* Información del Proveedor */}
-                          <div className="lg:col-span-2">
-                            <div className="flex items-start justify-between mb-4">
-                              <div>
-                                <div className="flex items-center gap-2 mb-2">
-                                  <h3 className="text-lg font-semibold">{proveedor.nombre}</h3>
-                                  {urgencyBadge && (
-                                    <Badge className={`text-xs px-2 py-1 ${urgencyBadge.color}`}>
-                                      {urgencyBadge.text}
-                                    </Badge>
-                                  )}
-                                </div>
-                                <p className="text-sm text-muted-foreground">NIT: {proveedor.nit}</p>
-                                <p className="text-sm text-muted-foreground">
-                                  {proveedor.facturasPendientes.length} facturas pendientes
-                                </p>
-                                {proveedor.diasParaVencer !== null && (
-                                  <p className="text-sm font-medium text-red-600">
-                                    {proveedor.diasParaVencer < 0 
-                                      ? `Vencida hace ${Math.abs(proveedor.diasParaVencer)} días`
-                                      : `Vence en ${proveedor.diasParaVencer} días`}
-                                  </p>
-                                )}
-                              </div>
-                              <div className="text-right">
-                                <div className="text-sm text-muted-foreground">Total Pendiente</div>
-                                <div className="text-2xl font-bold text-red-600">
-                                  {formatCurrency(proveedor.totalPendiente)}
-                                </div>
-                              </div>
-                            </div>
 
-                          {/* Progress bar */}
-                          {(proveedor.totalPendiente + proveedor.totalPagado) > 0 && (
-                            <div className="mb-4">
-                              <div className="flex justify-between text-sm mb-2">
-                                <span>Progreso de pagos</span>
-                                <span>
-                                  {Math.round((proveedor.totalPagado / (proveedor.totalPendiente + proveedor.totalPagado)) * 100)}%
-                                </span>
-                              </div>
-                              <Progress 
-                                value={(proveedor.totalPagado / (proveedor.totalPendiente + proveedor.totalPagado)) * 100} 
-                                className="h-2"
-                              />
-                            </div>
-                          )}
+              {/* Fecha Inicio */}
+              <div>
+                <Label htmlFor="fechaInicio">Fecha Inicio</Label>
+                <Input
+                  id="fechaInicio"
+                  type="date"
+                  value={filters.fechaInicio}
+                  onChange={(e) => setFilters(prev => ({ ...prev, fechaInicio: e.target.value }))}
+                />
+              </div>
 
-                          {/* Facturas por vencer */}
-                          {proveedor.facturasPorVencer.length > 0 && (
-                            <div className="bg-orange-50 dark:bg-orange-900/20 p-3 rounded-lg">
-                              <div className="flex items-center mb-2">
-                                <AlertTriangle className="w-4 h-4 text-orange-600 mr-2" />
-                                <span className="text-sm font-medium text-orange-800 dark:text-orange-300">
-                                  Facturas por vencer (próximos 7 días)
-                                </span>
-                              </div>
-                              <div className="space-y-1">
-                                {proveedor.facturasPorVencer.map(factura => (
-                                  <div key={factura.id} className="text-xs text-orange-700 dark:text-orange-300">
-                                    #{factura.numero_factura} - {formatCurrency(factura.total_a_pagar)}
-                                    {factura.fecha_vencimiento && (
-                                      <span className="ml-2">
-                                        (Vence: {new Date(factura.fecha_vencimiento).toLocaleDateString('es-CO')})
-                                      </span>
-                                    )}
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-                        </div>
+              {/* Fecha Fin */}
+              <div>
+                <Label htmlFor="fechaFin">Fecha Fin</Label>
+                <Input
+                  id="fechaFin"
+                  type="date"
+                  value={filters.fechaFin}
+                  onChange={(e) => setFilters(prev => ({ ...prev, fechaFin: e.target.value }))}
+                />
+              </div>
 
-                        {/* Estadísticas */}
-                        <div className="space-y-4">
-                          <div className="grid grid-cols-2 gap-4">
-                            <div className="text-center p-3 bg-red-50 dark:bg-red-900/20 rounded-lg">
-                              <Clock className="w-6 h-6 text-red-600 mx-auto mb-1" />
-                              <div className="text-lg font-bold text-red-700 dark:text-red-300">
-                                {proveedor.facturasPendientes.length}
-                              </div>
-                              <div className="text-xs text-red-600">Pendientes</div>
-                            </div>
-                            
-                            <div className="text-center p-3 bg-green-50 dark:bg-green-900/20 rounded-lg">
-                              <CheckCircle className="w-6 h-6 text-green-600 mx-auto mb-1" />
-                              <div className="text-lg font-bold text-green-700 dark:text-green-300">
-                                {proveedor.facturasPagadas.length}
-                              </div>
-                              <div className="text-xs text-green-600">Pagadas</div>
-                            </div>
+              {/* Proveedor */}
+              <div>
+                <Label htmlFor="proveedor">Proveedor</Label>
+                <Select value={filters.proveedor} onValueChange={(value) => setFilters(prev => ({ ...prev, proveedor: value }))}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Seleccionar proveedor" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">Todos los proveedores</SelectItem>
+                    {uniqueProveedores.map(proveedor => (
+                      <SelectItem key={proveedor.nit} value={proveedor.nit}>
+                        {proveedor.nombre}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Clasificación */}
+              <div>
+                <Label htmlFor="clasificacion">Clasificación</Label>
+                <Select value={filters.clasificacion} onValueChange={(value) => setFilters(prev => ({ ...prev, clasificacion: value }))}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Seleccionar clasificación" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">Todas las clasificaciones</SelectItem>
+                    <SelectItem value="sistematizada">Sistematizada</SelectItem>
+                    {uniqueClasificaciones.map(clasificacion => (
+                      <SelectItem key={clasificacion} value={clasificacion}>
+                        {clasificacion}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Estado de Pago */}
+              <div>
+                <Label htmlFor="estadoPago">Estado de Pago</Label>
+                <Select value={filters.estadoPago} onValueChange={(value) => setFilters(prev => ({ ...prev, estadoPago: value }))}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Seleccionar estado" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">Todos los estados</SelectItem>
+                    <SelectItem value="pagada">Pagada</SelectItem>
+                    <SelectItem value="pendiente">Pendiente</SelectItem>
+                    <SelectItem value="vencida">Vencida</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Método de Pago */}
+              <div>
+                <Label htmlFor="metodoPago">Método de Pago</Label>
+                <Select value={filters.metodoPago} onValueChange={(value) => setFilters(prev => ({ ...prev, metodoPago: value }))}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Seleccionar método" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">Todos los métodos</SelectItem>
+                    {uniqueMetodosPago.map(metodo => (
+                      <SelectItem key={metodo} value={metodo}>
+                        {metodo}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Monto Mínimo */}
+              <div>
+                <Label htmlFor="montoMinimo">Monto Mínimo</Label>
+                <Input
+                  id="montoMinimo"
+                  type="number"
+                  placeholder="0"
+                  value={filters.montoMinimo}
+                  onChange={(e) => setFilters(prev => ({ ...prev, montoMinimo: e.target.value }))}
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={clearFilters}>
+                <RefreshCw className="w-4 h-4 mr-2" />
+                Limpiar Filtros
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Tabla de Facturas */}
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <CardTitle>
+                Facturas ({filteredFacturas.length} de {facturas.length})
+              </CardTitle>
+              <div className="flex gap-2">
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Checkbox
+                    checked={selectedFacturas.length === filteredFacturas.length && filteredFacturas.length > 0}
+                    onCheckedChange={toggleSelectAll}
+                  />
+                  <span>Seleccionar todas ({selectedFacturas.length} seleccionadas)</span>
+                </div>
+                <Button 
+                  onClick={exportToExcel}
+                  disabled={selectedFacturas.length === 0}
+                  size="sm"
+                >
+                  <Download className="w-4 h-4 mr-2" />
+                  Exportar Excel
+                </Button>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-12">
+                      <Checkbox
+                        checked={selectedFacturas.length === filteredFacturas.length && filteredFacturas.length > 0}
+                        onCheckedChange={toggleSelectAll}
+                      />
+                    </TableHead>
+                    <TableHead>Proveedor</TableHead>
+                    <TableHead>Serie Factura</TableHead>
+                    <TableHead>Clasificación</TableHead>
+                    <TableHead>Fecha Emisión</TableHead>
+                    <TableHead>Fecha Vencimiento</TableHead>
+                    <TableHead>Total Factura</TableHead>
+                    <TableHead>Total Pagado</TableHead>
+                    <TableHead>Estado</TableHead>
+                    <TableHead>Método Pago</TableHead>
+                    <TableHead>Días Vencimiento</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredFacturas.map((factura) => {
+                    const diasVencimiento = getDaysToExpire(factura.fecha_vencimiento);
+                    const urgencyBadge = getUrgencyBadge(diasVencimiento);
+                    
+                    return (
+                      <TableRow key={factura.id}>
+                        <TableCell>
+                          <Checkbox
+                            checked={selectedFacturas.includes(factura.id)}
+                            onCheckedChange={() => toggleSelection(factura.id)}
+                          />
+                        </TableCell>
+                        <TableCell className="font-medium">
+                          <div>
+                            <div>{factura.emisor_nombre}</div>
+                            <div className="text-xs text-muted-foreground">{factura.emisor_nit}</div>
                           </div>
-
-                          {proveedor.totalPagado > 0 && (
-                            <div className="p-3 bg-muted/50 rounded-lg">
-                              <div className="text-sm text-muted-foreground mb-1">Total Pagado</div>
-                              <div className="text-lg font-bold text-green-600">
-                                {formatCurrency(proveedor.totalPagado)}
-                              </div>
-                            </div>
-                           )}
-                         </div>
-                       </div>
-                     </CardContent>
-                   </Card>
-                 );
-                })}
-              </div>
-            )}
+                        </TableCell>
+                        <TableCell>{factura.numero_factura}</TableCell>
+                        <TableCell>
+                          <Badge variant="outline">
+                            {factura.clasificacion_original || factura.clasificacion || 'Sin clasificar'}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>{formatDate(factura.fecha_emision)}</TableCell>
+                        <TableCell>{formatDate(factura.fecha_vencimiento)}</TableCell>
+                        <TableCell className="font-semibold">{formatCurrency(factura.total_a_pagar)}</TableCell>
+                        <TableCell className="font-semibold text-green-600">
+                          {formatCurrency(factura.monto_pagado || 0)}
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant={factura.estado_mercancia === 'pagada' ? 'default' : 'destructive'}>
+                            {factura.estado_mercancia || 'Pendiente'}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>{factura.metodo_pago || 'No especificado'}</TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            {diasVencimiento !== null && (
+                              <>
+                                <span className={diasVencimiento < 0 ? 'text-red-600 font-semibold' : ''}>
+                                  {diasVencimiento < 0 ? `${Math.abs(diasVencimiento)} días vencida` : `${diasVencimiento} días`}
+                                </span>
+                                {urgencyBadge && (
+                                  <Badge className={`text-xs px-2 py-1 ${urgencyBadge.color}`}>
+                                    {urgencyBadge.text}
+                                  </Badge>
+                                )}
+                              </>
+                            )}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
           </CardContent>
         </Card>
       </div>
