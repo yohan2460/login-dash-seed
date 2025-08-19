@@ -194,6 +194,25 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
                 setAmountPaid(value);
               }}
             />
+            {usedProntoPago === 'yes' && factura.porcentaje_pronto_pago && (
+              <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
+                <div className="text-sm font-medium text-green-800 mb-1">
+                  💡 Monto sugerido con descuento:
+                </div>
+                <div className="text-lg font-bold text-green-700">
+                  {new Intl.NumberFormat('es-CO', {
+                    style: 'currency',
+                    currency: 'COP'
+                  }).format(factura.total_a_pagar - (factura.total_a_pagar * factura.porcentaje_pronto_pago / 100))}
+                </div>
+                <div className="text-xs text-green-600 mt-1">
+                  Ahorro: {new Intl.NumberFormat('es-CO', {
+                    style: 'currency',
+                    currency: 'COP'
+                  }).format(factura.total_a_pagar * factura.porcentaje_pronto_pago / 100)} ({factura.porcentaje_pronto_pago}%)
+                </div>
+              </div>
+            )}
           </div>
 
           {/* ¿Se aplicó pronto pago? */}
