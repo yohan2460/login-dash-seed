@@ -11,7 +11,7 @@ import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 import { 
   FileText, Package, CreditCard, TrendingUp, Receipt, 
-  Calculator, Minus, Percent, Filter, CalendarIcon, Banknote 
+  Calculator, Minus, Percent, Filter, CalendarIcon, Banknote, DollarSign 
 } from 'lucide-react';
 import { ModernStatsCard } from '@/components/ModernStatsCard';
 import { FacturasTable } from '@/components/FacturasTable';
@@ -534,7 +534,15 @@ export default function ModernDashboard() {
                 </CardContent>
               </Card>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
+                <ModernStatsCard
+                  title="Total Real Pagado"
+                  value={formatCurrency(getFilteredPaidFacturas().reduce((total, factura) => {
+                    return total + (factura.monto_pagado || 0);
+                  }, 0))}
+                  icon={DollarSign}
+                  color="purple"
+                />
                 <ModernStatsCard
                   title="Pagado por Bancos"
                   value={formatCurrency(calcularTotalPagadoBancos())}
