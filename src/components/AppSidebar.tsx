@@ -138,19 +138,17 @@ export function AppSidebar() {
   };
 
   return (
-    <Sidebar className={`${state === 'collapsed' ? "w-16" : "w-72"} border-r bg-card/50 backdrop-blur-sm`}>
+    <Sidebar className="w-72 border-r bg-card/50 backdrop-blur-sm">
       <SidebarHeader className="border-b p-6">
         <div className="flex items-center space-x-3">
           <div className="w-10 h-10 bg-primary rounded-xl flex items-center justify-center">
             <FileText className="w-6 h-6 text-primary-foreground" />
           </div>
-          {state !== 'collapsed' && (
-            <div>
-              <h2 className="text-lg font-semibold text-foreground">
-                Sistema de Gestión
-              </h2>
-            </div>
-          )}
+          <div>
+            <h2 className="text-lg font-semibold text-foreground">
+              Sistema de Gestión
+            </h2>
+          </div>
         </div>
       </SidebarHeader>
 
@@ -158,7 +156,7 @@ export function AppSidebar() {
         {/* NAVEGACIÓN */}
         <SidebarGroup>
           <SidebarGroupLabel className="text-xs font-medium text-muted-foreground mb-4">
-            {state !== 'collapsed' ? "NAVEGACIÓN" : ""}
+            NAVEGACIÓN
           </SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu className="space-y-1">
@@ -170,9 +168,7 @@ export function AppSidebar() {
                       className={`flex items-center space-x-3 px-4 py-3 rounded-lg transition-all duration-200 ${getNavCls(isActive(item.url))}`}
                     >
                       <item.icon className="w-5 h-5 flex-shrink-0" />
-                      {state !== 'collapsed' && (
-                        <span className="font-medium">{item.title}</span>
-                      )}
+                      <span className="font-medium">{item.title}</span>
                     </NavLink>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
@@ -182,43 +178,41 @@ export function AppSidebar() {
         </SidebarGroup>
 
         {/* RESUMEN RÁPIDO */}
-        {state !== 'collapsed' && (
-          <SidebarGroup className="mt-8">
-            <SidebarGroupLabel className="text-xs font-medium text-muted-foreground mb-4">
-              RESUMEN RÁPIDO
-            </SidebarGroupLabel>
-            <SidebarGroupContent>
-              <div className="space-y-3">
-                <div className="flex items-center justify-between p-2 rounded-lg bg-blue-50 dark:bg-blue-950/20">
-                  <div className="flex items-center space-x-2">
-                    <FileText className="w-4 h-4 text-blue-600" />
-                    <span className="text-sm text-blue-600 font-medium">Facturas</span>
-                  </div>
-                  <span className="text-sm font-semibold text-blue-700">{stats.total}</span>
+        <SidebarGroup className="mt-8">
+          <SidebarGroupLabel className="text-xs font-medium text-muted-foreground mb-4">
+            RESUMEN RÁPIDO
+          </SidebarGroupLabel>
+          <SidebarGroupContent>
+            <div className="space-y-3">
+              <div className="flex items-center justify-between p-2 rounded-lg bg-blue-50 dark:bg-blue-950/20">
+                <div className="flex items-center space-x-2">
+                  <FileText className="w-4 h-4 text-blue-600" />
+                  <span className="text-sm text-blue-600 font-medium">Facturas</span>
                 </div>
-                
-                <div className="flex items-center justify-between p-2 rounded-lg bg-green-50 dark:bg-green-950/20">
-                  <div className="flex items-center space-x-2">
-                    <Users className="w-4 h-4 text-green-600" />
-                    <span className="text-sm text-green-600 font-medium">Proveedores</span>
-                  </div>
-                  <span className="text-sm font-semibold text-green-700">{stats.proveedores}</span>
-                </div>
-                
-                <div className="flex items-center justify-between p-2 rounded-lg bg-purple-50 dark:bg-purple-950/20">
-                  <div className="flex items-center space-x-2">
-                    <CheckCircle className="w-4 h-4 text-purple-600" />
-                    <span className="text-sm text-purple-600 font-medium">Pagadas</span>
-                  </div>
-                  <span className="text-sm font-semibold text-purple-700">{stats.pagadas}</span>
-                </div>
+                <span className="text-sm font-semibold text-blue-700">{stats.total}</span>
               </div>
-            </SidebarGroupContent>
-          </SidebarGroup>
-        )}
+              
+              <div className="flex items-center justify-between p-2 rounded-lg bg-green-50 dark:bg-green-950/20">
+                <div className="flex items-center space-x-2">
+                  <Users className="w-4 h-4 text-green-600" />
+                  <span className="text-sm text-green-600 font-medium">Proveedores</span>
+                </div>
+                <span className="text-sm font-semibold text-green-700">{stats.proveedores}</span>
+              </div>
+              
+              <div className="flex items-center justify-between p-2 rounded-lg bg-purple-50 dark:bg-purple-950/20">
+                <div className="flex items-center space-x-2">
+                  <CheckCircle className="w-4 h-4 text-purple-600" />
+                  <span className="text-sm text-purple-600 font-medium">Pagadas</span>
+                </div>
+                <span className="text-sm font-semibold text-purple-700">{stats.pagadas}</span>
+              </div>
+            </div>
+          </SidebarGroupContent>
+        </SidebarGroup>
 
         {/* CATEGORÍAS */}
-        {state !== 'collapsed' && currentPath === '/dashboard' && (
+        {currentPath === '/dashboard' && (
           <SidebarGroup className="mt-8">
             <SidebarGroupLabel className="text-xs font-medium text-muted-foreground mb-4">
               Categorías
@@ -339,27 +333,23 @@ export function AppSidebar() {
         <div className="flex items-center space-x-3">
           <Avatar className="w-10 h-10">
             <AvatarFallback className="bg-primary/10 text-primary font-semibold">
-              {user?.email?.charAt(0).toUpperCase()}
-            </AvatarFallback>
-          </Avatar>
-          {state !== 'collapsed' && (
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium truncate">{user?.email}</p>
-              <p className="text-xs text-muted-foreground">Administrador</p>
-            </div>
-          )}
-        </div>
-        {state !== 'collapsed' && (
-          <Button 
-            variant="ghost" 
-            size="sm" 
-            onClick={handleSignOut}
-            className="w-full justify-start mt-3 text-muted-foreground hover:text-foreground"
-          >
-            <LogOut className="w-4 h-4 mr-2" />
-            Cerrar Sesión
-          </Button>
-        )}
+          {user?.email?.charAt(0).toUpperCase()}
+        </AvatarFallback>
+      </Avatar>
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-medium truncate">{user?.email}</p>
+        <p className="text-xs text-muted-foreground">Administrador</p>
+      </div>
+    </div>
+    <Button 
+      variant="ghost" 
+      size="sm" 
+      onClick={handleSignOut}
+      className="w-full justify-start mt-3 text-muted-foreground hover:text-foreground"
+    >
+      <LogOut className="w-4 h-4 mr-2" />
+      Cerrar Sesión
+    </Button>
       </SidebarFooter>
     </Sidebar>
   );
