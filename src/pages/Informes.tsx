@@ -105,16 +105,35 @@ export default function Informes() {
   }
 
   const fetchFacturas = async () => {
+    setLoadingData(true);
     try {
+      console.log('Iniciando fetch de facturas...');
+      
+      // Limpiar cache y forzar nueva consulta
       const { data, error } = await supabase
         .from('facturas')
         .select('*')
         .order('created_at', { ascending: false });
       
-      if (error) throw error;
-      setFacturas(data || []);
+      console.log('Respuesta de la base de datos:', {
+        cantidadFacturas: data?.length || 0,
+        error: error,
+        timestamp: new Date().toISOString()
+      });
+      
+      if (error) {
+        console.error('Error fetching facturas:', error);
+        throw error;
+      }
+      
+      // Forzar actualización del estado
+      setFacturas([]);
+      setTimeout(() => {
+        setFacturas(data || []);
+      }, 100);
+      
     } catch (error) {
-      console.error('Error fetching facturas:', error);
+      console.error('Error en fetchFacturas:', error);
       toast({
         title: "Error",
         description: "No se pudieron cargar las facturas",
