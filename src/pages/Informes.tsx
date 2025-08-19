@@ -287,6 +287,10 @@ export default function Informes() {
     totalPendiente: filteredFacturas.filter(f => f.estado_mercancia !== 'pagada').reduce((sum, f) => sum + f.total_a_pagar, 0),
     pagosMercancia: filteredFacturas.filter(f => f.clasificacion_original === 'Mercancía' && f.estado_mercancia === 'pagada').reduce((sum, f) => sum + (f.monto_pagado || 0), 0),
     pagosGastos: filteredFacturas.filter(f => f.clasificacion_original === 'Gastos' && f.estado_mercancia === 'pagada').reduce((sum, f) => sum + (f.monto_pagado || 0), 0),
+    pagosTobias: filteredFacturas.filter(f => f.metodo_pago === 'Pago Tobías' && f.estado_mercancia === 'pagada').reduce((sum, f) => sum + (f.monto_pagado || 0), 0),
+    pagosBancos: filteredFacturas.filter(f => f.metodo_pago === 'Pago Banco' && f.estado_mercancia === 'pagada').reduce((sum, f) => sum + (f.monto_pagado || 0), 0),
+    pagosCaja: filteredFacturas.filter(f => f.metodo_pago === 'Pago Caja' && f.estado_mercancia === 'pagada').reduce((sum, f) => sum + (f.monto_pagado || 0), 0),
+    totalImpuestos: filteredFacturas.filter(f => f.estado_mercancia === 'pagada').reduce((sum, f) => sum + (f.factura_iva || 0), 0),
   };
 
   // Obtener opciones únicas para los filtros
@@ -381,6 +385,57 @@ export default function Informes() {
                 <div className="ml-3">
                   <p className="text-xs font-medium text-muted-foreground">Pagos Gastos</p>
                   <p className="text-sm font-bold">{formatCurrency(stats.pagosGastos)}</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Estadísticas de Métodos de Pago */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center">
+                <Building2 className="h-6 w-6 text-blue-600" />
+                <div className="ml-3">
+                  <p className="text-xs font-medium text-muted-foreground">Pagos por Tobías</p>
+                  <p className="text-lg font-bold">{formatCurrency(stats.pagosTobias)}</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center">
+                <CreditCard className="h-6 w-6 text-green-600" />
+                <div className="ml-3">
+                  <p className="text-xs font-medium text-muted-foreground">Pagos por Bancos</p>
+                  <p className="text-lg font-bold">{formatCurrency(stats.pagosBancos)}</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center">
+                <DollarSign className="h-6 w-6 text-purple-600" />
+                <div className="ml-3">
+                  <p className="text-xs font-medium text-muted-foreground">Pagos por Caja</p>
+                  <p className="text-lg font-bold">{formatCurrency(stats.pagosCaja)}</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center">
+                <Receipt className="h-6 w-6 text-red-600" />
+                <div className="ml-3">
+                  <p className="text-xs font-medium text-muted-foreground">Total Impuestos Pagados</p>
+                  <p className="text-lg font-bold">{formatCurrency(stats.totalImpuestos)}</p>
                 </div>
               </div>
             </CardContent>
