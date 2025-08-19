@@ -291,7 +291,6 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
               <Checkbox
                 checked={selectedFacturas.length === facturas.length}
                 onCheckedChange={toggleSelectAll}
-                indeterminate={selectedFacturas.length > 0 && selectedFacturas.length < facturas.length}
               />
               <span className="text-sm font-medium">
                 Seleccionar todas ({selectedFacturas.length} de {facturas.length} seleccionadas)
@@ -318,12 +317,12 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
                 {/* Checkbox de selección */}
                 <div className="flex items-start space-x-3">
                   <Checkbox
-                     checked={selectedFacturas.includes(factura.id)}
-                     onCheckedChange={() => toggleSelection(factura.id)}
-                     className="mt-1"
-                   />
-                   <div className="flex-1 space-y-3">
-                  {/* Header con número y estado */}
+                    checked={selectedFacturas.includes(factura.id)}
+                    onCheckedChange={() => toggleSelection(factura.id)}
+                    className="mt-1"
+                  />
+                  <div className="flex-1 space-y-3">
+                    {/* Header con número y estado */}
                   <div className="flex items-start justify-between">
                     <div>
                       <div className="font-semibold text-lg">
@@ -567,8 +566,9 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
                       </AlertDialogContent>
                     </AlertDialog>
                     )}
-                 </div>
+                  </div>
                 </div>
+               </div>
               </CardContent>
             </Card>
           ))}
@@ -585,7 +585,6 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
                   <Checkbox
                     checked={selectedFacturas.length === facturas.length}
                     onCheckedChange={toggleSelectAll}
-                    indeterminate={selectedFacturas.length > 0 && selectedFacturas.length < facturas.length}
                   />
                 </TableHead>
                 <TableHead className="font-semibold">Factura</TableHead>
