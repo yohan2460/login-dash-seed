@@ -15,6 +15,7 @@ interface Factura {
   total_a_pagar: number;
   pdf_file_path: string | null;
   clasificacion?: string | null;
+  clasificacion_original?: string | null;
   created_at: string;
   factura_iva?: number | null;
   factura_iva_porcentaje?: number | null;
@@ -41,9 +42,10 @@ interface FacturasTableProps {
   onSistematizarClick?: (factura: Factura) => void;
   showSistematizarButton?: boolean;
   allowDelete?: boolean;
+  showOriginalClassification?: boolean;
 }
 
-export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPaymentInfo = false, onDelete, onSistematizarClick, showSistematizarButton = false, allowDelete = true }: FacturasTableProps) {
+export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPaymentInfo = false, onDelete, onSistematizarClick, showSistematizarButton = false, allowDelete = true, showOriginalClassification = false }: FacturasTableProps) {
   const { toast } = useToast();
 
   const formatCurrency = (amount: number) => {
@@ -200,6 +202,11 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
                     <div className="flex flex-col items-end space-y-2">
                       {getClassificationBadge(factura.clasificacion) || (
                         <Badge variant="outline" className="text-xs">Sin clasificar</Badge>
+                      )}
+                      {showOriginalClassification && factura.clasificacion_original && (
+                        <Badge variant="outline" className="text-xs bg-purple-50 border-purple-200 text-purple-700">
+                          Origen: {factura.clasificacion_original === 'mercancia' ? 'Mercancía' : 'Gasto'}
+                        </Badge>
                       )}
                       {getDaysIndicator(getDaysUntilDue(factura.fecha_vencimiento, factura.estado_mercancia))}
                     </div>
@@ -487,6 +494,11 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
                         <Badge variant="outline" className="text-xs">
                           <AlertTriangle className="w-3 h-3 mr-1" />
                           Sin clasificar
+                        </Badge>
+                      )}
+                      {showOriginalClassification && factura.clasificacion_original && (
+                        <Badge variant="outline" className="text-xs bg-purple-50 border-purple-200 text-purple-700">
+                          Origen: {factura.clasificacion_original === 'mercancia' ? 'Mercancía' : 'Gasto'}
                         </Badge>
                       )}
                       {factura.estado_mercancia === 'pagada' && (

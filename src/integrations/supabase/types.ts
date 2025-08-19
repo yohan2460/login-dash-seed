@@ -17,6 +17,7 @@ export type Database = {
       facturas: {
         Row: {
           clasificacion: string | null
+          clasificacion_original: string | null
           created_at: string
           descripcion: string | null
           emisor_nit: string
@@ -46,6 +47,7 @@ export type Database = {
         }
         Insert: {
           clasificacion?: string | null
+          clasificacion_original?: string | null
           created_at?: string
           descripcion?: string | null
           emisor_nit: string
@@ -75,6 +77,7 @@ export type Database = {
         }
         Update: {
           clasificacion?: string | null
+          clasificacion_original?: string | null
           created_at?: string
           descripcion?: string | null
           emisor_nit?: string

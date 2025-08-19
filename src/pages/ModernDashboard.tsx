@@ -13,6 +13,7 @@ import {
   FileText, Package, CreditCard, TrendingUp, Receipt, 
   Calculator, Minus, Percent, Filter, CalendarIcon, Banknote, DollarSign, CheckCircle
 } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ModernStatsCard } from '@/components/ModernStatsCard';
 import { FacturasTable } from '@/components/FacturasTable';
 import { FacturaClassificationDialog } from '@/components/FacturaClassificationDialog';
@@ -30,6 +31,7 @@ interface Factura {
   factura_cufe: string;
   pdf_file_path: string | null;
   clasificacion?: string | null;
+  clasificacion_original?: string | null;
   created_at: string;
   factura_iva?: number | null;
   factura_iva_porcentaje?: number | null;
@@ -44,6 +46,7 @@ interface Factura {
   monto_pagado?: number | null;
   fecha_emision?: string | null;
   fecha_vencimiento?: string | null;
+  fecha_pago?: string | null;
 }
 
 export default function ModernDashboard() {
@@ -58,6 +61,7 @@ export default function ModernDashboard() {
   const [isPaymentDialogOpen, setIsPaymentDialogOpen] = useState(false);
   const [dateFrom, setDateFrom] = useState<Date | undefined>(undefined);
   const [dateTo, setDateTo] = useState<Date | undefined>(undefined);
+  const [sistematizadaFilter, setSistematizadaFilter] = useState<string>('all'); // 'all', 'mercancia', 'gasto'
 
   useEffect(() => {
     if (user) {
@@ -141,6 +145,7 @@ export default function ModernDashboard() {
       const { error } = await supabase
         .from('facturas')
         .update({ 
+          clasificacion_original: factura.clasificacion,
           clasificacion: 'sistematizada'
         })
         .eq('id', factura.id);
@@ -320,6 +325,17 @@ export default function ModernDashboard() {
     }
     
     return facturasPagadas;
+  };
+
+  // Filter sistematizada invoices by original classification
+  const getFilteredSistematizadas = () => {
+    let sistematizadas = facturas.filter(f => f.clasificacion === 'sistematizada');
+    
+    if (sistematizadaFilter !== 'all') {
+      sistematizadas = sistematizadas.filter(f => f.clasificacion_original === sistematizadaFilter);
+    }
+    
+    return sistematizadas;
   };
 
   if (loading) {
@@ -835,23 +851,45 @@ export default function ModernDashboard() {
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 <ModernStatsCard
                   title="Total Sistematizadas"
-                  value={filterFacturasByType('sistematizada').length.toString()}
+                  value={getFilteredSistematizadas().length.toString()}
                   icon={FileText}
                   color="purple"
                 />
                 <ModernStatsCard
-                  title="Pendientes de Proceso"
-                  value="0"
+                  title="De Mercancía"
+                  value={facturas.filter(f => f.clasificacion === 'sistematizada' && f.clasificacion_original === 'mercancia').length.toString()}
                   icon={Package}
-                  color="orange"
+                  color="blue"
                 />
                 <ModernStatsCard
-                  title="Procesadas"
-                  value="0"
-                  icon={CheckCircle}
+                  title="De Gastos"
+                  value={facturas.filter(f => f.clasificacion === 'sistematizada' && f.clasificacion_original === 'gasto').length.toString()}
+                  icon={CreditCard}
                   color="green"
                 />
               </div>
+
+              {/* Filter for Sistematizada */}
+              <Card className="bg-muted/20 border-dashed">
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-4">
+                    <div className="flex items-center space-x-2">
+                      <Filter className="w-4 h-4 text-muted-foreground" />
+                      <span className="text-sm font-medium">Filtrar por tipo:</span>
+                      <Select value={sistematizadaFilter} onValueChange={setSistematizadaFilter}>
+                        <SelectTrigger className="w-[200px]">
+                          <SelectValue placeholder="Seleccionar filtro" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">Todas</SelectItem>
+                          <SelectItem value="mercancia">Mercancía</SelectItem>
+                          <SelectItem value="gasto">Gastos</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
 
               {/* Sistematizada Table */}
               <Card>
@@ -865,7 +903,7 @@ export default function ModernDashboard() {
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  {filterFacturasByType('sistematizada').length === 0 ? (
+                  {getFilteredSistematizadas().length === 0 ? (
                     <div className="text-center py-12 text-muted-foreground">
                       <FileText className="w-12 h-12 mx-auto mb-4 text-muted-foreground/50" />
                       <p className="text-lg font-medium mb-2">No hay facturas sistematizadas</p>
@@ -873,12 +911,13 @@ export default function ModernDashboard() {
                     </div>
                   ) : (
                     <FacturasTable
-                      facturas={filterFacturasByType('sistematizada')}
+                      facturas={getFilteredSistematizadas()}
                       onClassifyClick={handleClassifyClick}
                       onPayClick={handlePayClick}
                       onDelete={handleDelete}
                       onSistematizarClick={handleSistematizarClick}
                       allowDelete={false}
+                      showOriginalClassification={true}
                     />
                   )}
                 </CardContent>
