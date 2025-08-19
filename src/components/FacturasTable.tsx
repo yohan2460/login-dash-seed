@@ -567,6 +567,14 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
                      <div className="font-bold text-lg">
                        {factura.monto_pagado ? formatCurrency(factura.monto_pagado) : formatCurrency(factura.total_a_pagar)}
                      </div>
+                     {factura.metodo_pago && (
+                       <Badge 
+                         variant="secondary" 
+                         className="mt-1 text-xs"
+                       >
+                         {factura.metodo_pago}
+                       </Badge>
+                     )}
                    </TableCell>
 
                   {/* Acciones */}
