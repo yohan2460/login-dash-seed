@@ -11,7 +11,7 @@ import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 import { 
   FileText, Package, CreditCard, TrendingUp, Receipt, 
-  Calculator, Minus, Percent, Filter, CalendarIcon 
+  Calculator, Minus, Percent, Filter, CalendarIcon, Banknote 
 } from 'lucide-react';
 import { ModernStatsCard } from '@/components/ModernStatsCard';
 import { FacturasTable } from '@/components/FacturasTable';
@@ -234,6 +234,40 @@ export default function ModernDashboard() {
         if (dateFrom && fechaEmision < dateFrom) return false;
         if (dateTo && fechaEmision > dateTo) return false;
         
+        return true;
+      });
+    }
+    
+    return facturasPagadas.reduce((total, factura) => total + (factura.monto_pagado || 0), 0);
+  };
+
+  const calcularTotalPagadoCaja = (filtrarPorFechas = true) => {
+    let facturasPagadas = facturas.filter(f => f.clasificacion === 'mercancia' && f.estado_mercancia === 'pagada' && f.metodo_pago === 'Caja');
+    
+    if (filtrarPorFechas && (dateFrom || dateTo)) {
+      facturasPagadas = facturasPagadas.filter(factura => {
+        if (!factura.fecha_emision) return false;
+        const fechaEmision = new Date(factura.fecha_emision);
+        
+        if (dateFrom && fechaEmision < dateFrom) return false;
+        if (dateTo && fechaEmision > dateTo) return false;
+        return true;
+      });
+    }
+    
+    return facturasPagadas.reduce((total, factura) => total + (factura.monto_pagado || 0), 0);
+  };
+
+  const calcularTotalPagadoCajaGastos = (filtrarPorFechas = true) => {
+    let facturasPagadas = facturas.filter(f => f.clasificacion === 'gasto' && f.estado_mercancia === 'pagada' && f.metodo_pago === 'Caja');
+    
+    if (filtrarPorFechas && (dateFrom || dateTo)) {
+      facturasPagadas = facturasPagadas.filter(factura => {
+        if (!factura.fecha_emision) return false;
+        const fechaEmision = new Date(factura.fecha_emision);
+        
+        if (dateFrom && fechaEmision < dateFrom) return false;
+        if (dateTo && fechaEmision > dateTo) return false;
         return true;
       });
     }
@@ -514,6 +548,12 @@ export default function ModernDashboard() {
                   color="green"
                 />
                 <ModernStatsCard
+                  title="Pagado por Caja"
+                  value={formatCurrency(calcularTotalPagadoCaja())}
+                  icon={Banknote}
+                  color="orange"
+                />
+                <ModernStatsCard
                   title="Ahorro Pronto Pago"
                   value={formatCurrency(getFilteredPaidFacturas().reduce((total, factura) => {
                     if (factura.uso_pronto_pago && factura.porcentaje_pronto_pago) {
@@ -693,6 +733,12 @@ export default function ModernDashboard() {
                   value={formatCurrency(calcularTotalPagadoTobiasGastos())}
                   icon={Package}
                   color="green"
+                />
+                <ModernStatsCard
+                  title="Pagado por Caja"
+                  value={formatCurrency(calcularTotalPagadoCajaGastos())}
+                  icon={Banknote}
+                  color="orange"
                 />
                 <ModernStatsCard
                   title="Ahorro Pronto Pago"
