@@ -245,14 +245,14 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
                     </div>
                   </div>
 
-                  {/* Información financiera */}
-                  <div className="grid grid-cols-2 gap-4 text-sm">
-                    <div>
-                      <div className="text-muted-foreground">Total</div>
-                      <div className="font-bold text-lg">
-                        {formatCurrency(factura.total_a_pagar)}
-                      </div>
-                    </div>
+                   {/* Información financiera */}
+                   <div className="grid grid-cols-2 gap-4 text-sm">
+                     <div>
+                       <div className="text-muted-foreground">Total</div>
+                       <div className="font-bold text-lg">
+                         {factura.monto_pagado ? formatCurrency(factura.monto_pagado) : formatCurrency(factura.total_a_pagar)}
+                       </div>
+                     </div>
                     {factura.factura_iva && (
                       <div>
                         <div className="text-muted-foreground">IVA</div>
@@ -539,12 +539,12 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
                     </TableCell>
                   )}
 
-                  {/* Total */}
-                  <TableCell>
-                    <div className="font-bold text-lg">
-                      {formatCurrency(factura.total_a_pagar)}
-                    </div>
-                  </TableCell>
+                   {/* Total */}
+                   <TableCell>
+                     <div className="font-bold text-lg">
+                       {factura.monto_pagado ? formatCurrency(factura.monto_pagado) : formatCurrency(factura.total_a_pagar)}
+                     </div>
+                   </TableCell>
 
                   {/* Acciones */}
                   <TableCell>
