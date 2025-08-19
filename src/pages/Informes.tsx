@@ -290,7 +290,9 @@ export default function Informes() {
   };
 
   // Obtener opciones únicas para los filtros
-  const uniqueProveedores = [...new Set(facturas.map(f => ({ nit: f.emisor_nit, nombre: f.emisor_nombre })))];
+  const uniqueProveedores = Array.from(
+    new Map(facturas.map(f => [f.emisor_nit, { nit: f.emisor_nit, nombre: f.emisor_nombre }])).values()
+  );
   const uniqueClasificaciones = [...new Set(facturas.map(f => f.clasificacion_original).filter(Boolean))];
   const uniqueMetodosPago = [...new Set(facturas.map(f => f.metodo_pago).filter(Boolean))];
 
