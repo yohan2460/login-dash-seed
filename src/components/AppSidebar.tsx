@@ -58,6 +58,7 @@ interface FacturasStats {
   gastosPendientes: number;
   gastosPagados: number;
   proveedores: number;
+  sistematizadas: number;
 }
 
 export function AppSidebar() {
@@ -75,7 +76,8 @@ export function AppSidebar() {
     pagadas: 0,
     gastosPendientes: 0,
     gastosPagados: 0,
-    proveedores: 0
+    proveedores: 0,
+    sistematizadas: 0
   });
 
   useEffect(() => {
@@ -93,6 +95,7 @@ export function AppSidebar() {
       const sinClasificar = facturas?.filter(f => f.clasificacion === null).length || 0;
       const mercancia = facturas?.filter(f => f.clasificacion === 'mercancia').length || 0;
       const gastos = facturas?.filter(f => f.clasificacion === 'gasto').length || 0;
+      const sistematizadas = facturas?.filter(f => f.clasificacion === 'sistematizada').length || 0;
       const pendientes = facturas?.filter(f => f.clasificacion === 'mercancia' && f.estado_mercancia !== 'pagada').length || 0;
       const pagadas = facturas?.filter(f => f.clasificacion === 'mercancia' && f.estado_mercancia === 'pagada').length || 0;
       const gastosPendientes = facturas?.filter(f => f.clasificacion === 'gasto' && f.estado_mercancia !== 'pagada').length || 0;
@@ -110,7 +113,8 @@ export function AppSidebar() {
         pagadas,
         gastosPendientes,
         gastosPagados,
-        proveedores: proveedoresUnicos
+        proveedores: proveedoresUnicos,
+        sistematizadas
       });
     } catch (error) {
       console.error('Error fetching stats:', error);
@@ -316,7 +320,7 @@ export function AppSidebar() {
                     <FileText className="w-4 h-4" />
                     <div>
                       <div className="text-sm font-medium">Sistematizada</div>
-                      <div className="text-xs text-muted-foreground">0 facturas</div>
+                      <div className="text-xs text-muted-foreground">{stats.sistematizadas} facturas</div>
                     </div>
                   </div>
                 </div>

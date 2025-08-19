@@ -3,7 +3,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
-import { Eye, Tag, CreditCard, Calendar, Clock, AlertTriangle, CheckCircle, Trash2 } from 'lucide-react';
+import { Eye, Tag, CreditCard, Calendar, Clock, AlertTriangle, CheckCircle, Trash2, FileCheck } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 
@@ -38,9 +38,10 @@ interface FacturasTableProps {
   onPayClick?: (factura: Factura) => void;
   showPaymentInfo?: boolean;
   onDelete?: (facturaId: string) => void;
+  onSistematizarClick?: (factura: Factura) => void;
 }
 
-export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPaymentInfo = false, onDelete }: FacturasTableProps) {
+export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPaymentInfo = false, onDelete, onSistematizarClick }: FacturasTableProps) {
   const { toast } = useToast();
 
   const formatCurrency = (amount: number) => {
@@ -360,6 +361,18 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
                       >
                         <Eye className="w-4 h-4" />
                       </Button>
+                      )}
+
+                    {onSistematizarClick && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => onSistematizarClick(factura)}
+                        className="flex-1 border-purple-200 text-purple-700 hover:bg-purple-50"
+                      >
+                        <FileCheck className="w-4 h-4 mr-1" />
+                        Sistematizar
+                      </Button>
                     )}
 
                     <AlertDialog>
@@ -613,6 +626,17 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
                           className="transition-all duration-200 hover:scale-105"
                         >
                           <Eye className="w-4 h-4" />
+                        </Button>
+                      )}
+
+                      {onSistematizarClick && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => onSistematizarClick(factura)}
+                          className="transition-all duration-200 hover:scale-105 text-purple-700 hover:bg-purple-50"
+                        >
+                          <FileCheck className="w-4 h-4" />
                         </Button>
                       )}
 

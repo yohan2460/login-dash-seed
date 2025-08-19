@@ -18,6 +18,7 @@ import { FacturasTable } from '@/components/FacturasTable';
 import { FacturaClassificationDialog } from '@/components/FacturaClassificationDialog';
 import { PaymentMethodDialog } from '@/components/PaymentMethodDialog';
 import { ModernLayout } from '@/components/ModernLayout';
+import { useToast } from '@/hooks/use-toast';
 
 interface Factura {
   id: string;
@@ -48,6 +49,7 @@ interface Factura {
 export default function ModernDashboard() {
   const { user, loading } = useAuth();
   const { activeCategory } = useDashboard();
+  const { toast } = useToast();
   const [facturas, setFacturas] = useState<Factura[]>([]);
   const [loadingFacturas, setLoadingFacturas] = useState(true);
   const [selectedFactura, setSelectedFactura] = useState<Factura | null>(null);
@@ -134,9 +136,36 @@ export default function ModernDashboard() {
     }).format(amount);
   };
 
+  const handleSistematizarClick = async (factura: Factura) => {
+    try {
+      const { error } = await supabase
+        .from('facturas')
+        .update({ 
+          clasificacion: 'sistematizada'
+        })
+        .eq('id', factura.id);
+
+      if (error) throw error;
+
+      toast({
+        title: "Factura sistematizada",
+        description: `La factura ${factura.numero_factura} ha sido marcada como sistematizada.`,
+      });
+
+      // Refrescar datos
+      fetchFacturas();
+    } catch (error) {
+      console.error('Error updating factura:', error);
+      toast({
+        title: "Error",
+        description: "No se pudo sistematizar la factura",
+        variant: "destructive"
+      });
+    }
+  };
+
   const calcularTotalPagadoBancos = (filtrarPorFechas = true) => {
     let facturasPagadas = facturas.filter(f => f.clasificacion === 'mercancia' && f.estado_mercancia === 'pagada' && f.metodo_pago === 'Pago Banco');
-    
     if (filtrarPorFechas && (dateFrom || dateTo)) {
       facturasPagadas = facturasPagadas.filter(factura => {
         if (!factura.fecha_emision) return false;
@@ -366,6 +395,7 @@ export default function ModernDashboard() {
                     onClassifyClick={handleClassifyClick}
                     onPayClick={handlePayClick}
                     onDelete={handleDelete}
+                    onSistematizarClick={handleSistematizarClick}
                   />
                 </CardContent>
               </Card>
@@ -406,6 +436,7 @@ export default function ModernDashboard() {
                       onClassifyClick={handleClassifyClick}
                       onPayClick={handlePayClick}
                       onDelete={handleDelete}
+                      onSistematizarClick={handleSistematizarClick}
                     />
                   )}
                 </CardContent>
@@ -459,6 +490,7 @@ export default function ModernDashboard() {
                       onClassifyClick={handleClassifyClick}
                       onPayClick={handlePayClick}
                       onDelete={handleDelete}
+                      onSistematizarClick={handleSistematizarClick}
                     />
                   )}
                 </CardContent>
@@ -596,6 +628,7 @@ export default function ModernDashboard() {
                       onClassifyClick={handleClassifyClick}
                       onPayClick={handlePayClick}
                       onDelete={handleDelete}
+                      onSistematizarClick={handleSistematizarClick}
                     />
                   )}
                 </CardContent>
@@ -654,6 +687,7 @@ export default function ModernDashboard() {
                       onClassifyClick={handleClassifyClick}
                       onPayClick={handlePayClick}
                       onDelete={handleDelete}
+                      onSistematizarClick={handleSistematizarClick}
                     />
                   )}
                 </CardContent>
@@ -784,6 +818,7 @@ export default function ModernDashboard() {
                       onPayClick={handlePayClick}
                       showPaymentInfo={true}
                       onDelete={handleDelete}
+                      onSistematizarClick={handleSistematizarClick}
                     />
                   )}
                 </CardContent>
@@ -798,7 +833,7 @@ export default function ModernDashboard() {
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 <ModernStatsCard
                   title="Total Sistematizadas"
-                  value="0"
+                  value={filterFacturasByType('sistematizada').length.toString()}
                   icon={FileText}
                   color="purple"
                 />
@@ -828,11 +863,21 @@ export default function ModernDashboard() {
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-center py-12 text-muted-foreground">
-                    <FileText className="w-12 h-12 mx-auto mb-4 text-muted-foreground/50" />
-                    <p className="text-lg font-medium mb-2">No hay facturas sistematizadas</p>
-                    <p className="text-sm">Las facturas sistematizadas aparecerán aquí una vez que sean procesadas.</p>
-                  </div>
+                  {filterFacturasByType('sistematizada').length === 0 ? (
+                    <div className="text-center py-12 text-muted-foreground">
+                      <FileText className="w-12 h-12 mx-auto mb-4 text-muted-foreground/50" />
+                      <p className="text-lg font-medium mb-2">No hay facturas sistematizadas</p>
+                      <p className="text-sm">Las facturas sistematizadas aparecerán aquí una vez que sean procesadas.</p>
+                    </div>
+                  ) : (
+                    <FacturasTable
+                      facturas={filterFacturasByType('sistematizada')}
+                      onClassifyClick={handleClassifyClick}
+                      onPayClick={handlePayClick}
+                      onDelete={handleDelete}
+                      onSistematizarClick={handleSistematizarClick}
+                    />
+                  )}
                 </CardContent>
               </Card>
             </>
