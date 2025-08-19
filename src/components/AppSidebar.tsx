@@ -46,6 +46,11 @@ const navigationItems = [
     url: "/informes",
     icon: TrendingUp,
   },
+  {
+    title: "Usuarios",
+    url: "/usuarios",
+    icon: Users,
+  },
 ];
 
 interface FacturasStats {
