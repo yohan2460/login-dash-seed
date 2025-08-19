@@ -7,16 +7,43 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Eye, Tag, CreditCard, Calendar, Clock, AlertTriangle, CheckCircle, Trash2, FileCheck, Download } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
-import { Factura } from '@/hooks/useFacturas';
+import { useAuth } from '@/hooks/useAuth';
 import * as XLSX from 'xlsx';
 import { useState } from 'react';
+
+interface Factura {
+  id: string;
+  numero_factura: string;
+  emisor_nombre: string;
+  emisor_nit: string;
+  total_a_pagar: number;
+  pdf_file_path: string | null;
+  clasificacion?: string | null;
+  clasificacion_original?: string | null;
+  created_at: string;
+  factura_iva?: number | null;
+  factura_iva_porcentaje?: number | null;
+  descripcion?: string | null;
+  tiene_retencion?: boolean | null;
+  monto_retencion?: number | null;
+  porcentaje_pronto_pago?: number | null;
+  numero_serie?: string | null;
+  estado_mercancia?: string | null;
+  metodo_pago?: string | null;
+  uso_pronto_pago?: boolean | null;
+  monto_pagado?: number | null;
+  fecha_emision?: string | null;
+  fecha_vencimiento?: string | null;
+  fecha_pago?: string | null;
+  user_id?: string;
+}
 
 interface FacturasTableProps {
   facturas: Factura[];
   onClassifyClick: (factura: Factura) => void;
   onPayClick?: (factura: Factura) => void;
   showPaymentInfo?: boolean;
-  onDelete?: (facturaId: string) => Promise<boolean> | void;
+  onDelete?: (facturaId: string) => void;
   onSistematizarClick?: (factura: Factura) => void;
   showSistematizarButton?: boolean;
   allowDelete?: boolean;
@@ -25,11 +52,12 @@ interface FacturasTableProps {
 
 export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPaymentInfo = false, onDelete, onSistematizarClick, showSistematizarButton = false, allowDelete = true, showOriginalClassification = false }: FacturasTableProps) {
   const { toast } = useToast();
+  const { user } = useAuth();
   const [selectedFacturas, setSelectedFacturas] = useState<string[]>([]);
   const [deletingFactura, setDeletingFactura] = useState<string | null>(null);
 
-  // Validar que facturas sea un array válido
-  const validFacturas = Array.isArray(facturas) ? facturas.filter(f => f && f.id) : [];
+  // Validar que facturas sea un array válido con protección contra null
+  const validFacturas = Array.isArray(facturas) ? facturas.filter(f => f && f.id && typeof f.id === 'string' && f.id.length > 0) : [];
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('es-CO', {
@@ -199,25 +227,94 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
   };
 
   const handleDelete = async (facturaId: string) => {
-    if (!onDelete) {
-      console.error('No delete handler provided');
-      return;
-    }
-
-    console.log('🗑️ Iniciando eliminación de factura:', facturaId);
-    setDeletingFactura(facturaId);
-    
     try {
-      await onDelete(facturaId);
+      console.log('🗑️ INICIO ELIMINACIÓN - ID:', facturaId);
+      console.log('👤 Usuario:', user?.id, user?.email);
+      
+      if (!user) {
+        toast({
+          title: "Error de autenticación",
+          description: "No hay usuario autenticado",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      if (!facturaId) {
+        toast({
+          title: "Error",
+          description: "ID de factura inválido",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      setDeletingFactura(facturaId);
+
+      // Verificar que la factura existe y pertenece al usuario
+      const { data: checkData, error: checkError } = await supabase
+        .from('facturas')
+        .select('id, user_id')
+        .eq('id', facturaId)
+        .single();
+
+      if (checkError) {
+        console.error('❌ Error verificando factura:', checkError);
+        if (checkError.code === 'PGRST116') {
+          toast({
+            title: "Error",
+            description: "La factura no existe o no tienes permisos",
+            variant: "destructive"
+          });
+          return;
+        }
+        throw checkError;
+      }
+
+      console.log('✅ Factura encontrada:', checkData);
+
+      // Ejecutar eliminación
+      const { data: deleteData, error: deleteError } = await supabase
+        .from('facturas')
+        .delete()
+        .eq('id', facturaId)
+        .select();
+
+      console.log('🔄 Respuesta DELETE:', { deleteData, deleteError });
+
+      if (deleteError) {
+        console.error('❌ Error en DELETE:', deleteError);
+        throw deleteError;
+      }
+
+      if (!deleteData || deleteData.length === 0) {
+        console.error('❌ No se eliminaron registros');
+        toast({
+          title: "Error",
+          description: "No se pudo eliminar la factura",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      console.log('✅ ELIMINACIÓN EXITOSA:', deleteData);
+      
       toast({
         title: "Factura eliminada",
         description: "La factura ha sido eliminada exitosamente",
       });
-    } catch (error) {
-      console.error('❌ Error en handleDelete:', error);
+
+      // Llamar callback
+      if (onDelete) {
+        console.log('📞 Llamando callback onDelete...');
+        onDelete(facturaId);
+      }
+
+    } catch (error: any) {
+      console.error('❌ ERROR CRÍTICO:', error);
       toast({
-        title: "Error",
-        description: "No se pudo eliminar la factura",
+        title: "Error al eliminar",
+        description: `Error: ${error?.message || 'Error desconocido'}`,
         variant: "destructive"
       });
     } finally {

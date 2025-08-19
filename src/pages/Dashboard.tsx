@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Navigate } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -11,19 +11,47 @@ import { FacturasTable } from '@/components/FacturasTable';
 import { FacturaClassificationDialog } from '@/components/FacturaClassificationDialog';
 import { PaymentMethodDialog } from '@/components/PaymentMethodDialog';
 import { useAuth } from '@/hooks/useAuth';
-import { useFacturas, Factura } from '@/hooks/useFacturas';
 import { useToast } from '@/hooks/use-toast';
+import { supabase } from '@/integrations/supabase/client';
 import { Separator } from '@/components/ui/separator';
 import { CalendarIcon, Filter, Search, TrendingUp, TrendingDown, Calendar as CalendarLucide, Clock, DollarSign, FileText, Eye } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 
+interface Factura {
+  id: string;
+  numero_factura: string;
+  emisor_nombre: string;
+  emisor_nit: string;
+  total_a_pagar: number;
+  pdf_file_path: string | null;
+  clasificacion?: string | null;
+  clasificacion_original?: string | null;
+  created_at: string;
+  factura_iva?: number | null;
+  factura_iva_porcentaje?: number | null;
+  descripcion?: string | null;
+  tiene_retencion?: boolean | null;
+  monto_retencion?: number | null;
+  porcentaje_pronto_pago?: number | null;
+  numero_serie?: string | null;
+  estado_mercancia?: string | null;
+  metodo_pago?: string | null;
+  uso_pronto_pago?: boolean | null;
+  monto_pagado?: number | null;
+  fecha_emision?: string | null;
+  fecha_vencimiento?: string | null;
+  fecha_pago?: string | null;
+  user_id?: string;
+}
+
 export default function Dashboard() {
   const { user, loading, signOut } = useAuth();
-  const { facturas, loading: loadingFacturas, deleteFactura, updateFactura } = useFacturas();
   const { toast } = useToast();
   
+  const [facturas, setFacturas] = useState<Factura[]>([]);
+  const [loadingFacturas, setLoadingFacturas] = useState(false);
   const [selectedFactura, setSelectedFactura] = useState<Factura | null>(null);
   const [isClassificationDialogOpen, setIsClassificationDialogOpen] = useState(false);
   const [isPaymentDialogOpen, setIsPaymentDialogOpen] = useState(false);
@@ -31,6 +59,38 @@ export default function Dashboard() {
   const [filterType, setFilterType] = useState<string>('all');
   const [dateFrom, setDateFrom] = useState<Date | null>(null);
   const [dateTo, setDateTo] = useState<Date | null>(null);
+
+  useEffect(() => {
+    if (user) {
+      fetchFacturas();
+    }
+  }, [user]);
+
+  const fetchFacturas = async () => {
+    try {
+      setLoadingFacturas(true);
+      const { data, error } = await supabase
+        .from('facturas')
+        .select('*')
+        .order('created_at', { ascending: false });
+      
+      if (error) throw error;
+      
+      // Validar y filtrar datos válidos
+      const validData = (data || []).filter(f => f && f.id && typeof f.id === 'string');
+      console.log('Dashboard: facturas cargadas:', validData.length);
+      setFacturas(validData);
+    } catch (error) {
+      console.error('Error fetching facturas:', error);
+    } finally {
+      setLoadingFacturas(false);
+    }
+  };
+
+  const handleDelete = (facturaId: string) => {
+    console.log('Dashboard handleDelete called with ID:', facturaId);
+    setFacturas(prev => prev.filter(f => f && f.id && f.id !== facturaId));
+  };
 
   if (!user && !loading) {
     return <Navigate to="/auth" replace />;
@@ -47,17 +107,13 @@ export default function Dashboard() {
   };
 
   const handleClassificationUpdated = async () => {
-    // El hook useFacturas se encarga de refrescar automáticamente
+    fetchFacturas();
     setIsClassificationDialogOpen(false);
   };
 
   const handlePaymentProcessed = () => {
-    // El hook useFacturas se encarga de refrescar automáticamente
+    fetchFacturas();
     setIsPaymentDialogOpen(false);
-  };
-
-  const handleSignOut = async () => {
-    await signOut();
   };
 
   const filterFacturasByType = (type: string | null) => {
@@ -97,6 +153,10 @@ export default function Dashboard() {
     }
 
     return filtered;
+  };
+
+  const handleSignOut = async () => {
+    await signOut();
   };
 
   const formatCurrency = (amount: number) => {
@@ -315,7 +375,7 @@ export default function Dashboard() {
                 facturas={filteredFacturas}
                 onClassifyClick={handleClassifyClick}
                 onPayClick={handlePayClick}
-                onDelete={deleteFactura}
+                onDelete={handleDelete}
               />
             )}
           </CardContent>
