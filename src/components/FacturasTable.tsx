@@ -221,21 +221,34 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
 
   const handleDelete = async (facturaId: string) => {
     try {
+      console.log('Intentando eliminar factura con ID:', facturaId);
+      
       const { error } = await supabase
         .from('facturas')
         .delete()
         .eq('id', facturaId);
 
-      if (error) throw error;
+      if (error) {
+        console.error('Error en la eliminación:', error);
+        throw error;
+      }
+
+      console.log('Factura eliminada exitosamente:', facturaId);
 
       toast({
         title: "Factura eliminada",
         description: "La factura ha sido eliminada exitosamente",
       });
 
+      // Llamar callback de eliminación para actualizar la vista padre
       if (onDelete) {
         onDelete(facturaId);
       }
+
+      // Forzar actualización inmediata removiendo la factura del array local
+      const updatedFacturas = facturas.filter(f => f.id !== facturaId);
+      console.log('Facturas después de eliminar:', updatedFacturas.length);
+      
     } catch (error) {
       console.error('Error deleting factura:', error);
       toast({
