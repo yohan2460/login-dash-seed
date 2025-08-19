@@ -75,7 +75,10 @@ export default function Dashboard() {
         ascending: true
       });
       if (error) throw error;
-      setFacturas(data || []);
+      // Validar y filtrar datos válidos
+      const validData = (data || []).filter(factura => factura && factura.id);
+      console.log('Dashboard: facturas cargadas:', validData.length);
+      setFacturas(validData);
     } catch (error) {
       console.error('Error fetching facturas:', error);
     } finally {
@@ -101,7 +104,8 @@ export default function Dashboard() {
   };
 
   const handleDelete = (facturaId: string) => {
-    setFacturas(prev => prev.filter(f => f.id !== facturaId));
+    console.log('Dashboard handleDelete called with ID:', facturaId);
+    setFacturas(prev => prev.filter(f => f && f.id && f.id !== facturaId));
   };
   const handleSignOut = async () => {
     await signOut();

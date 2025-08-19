@@ -81,7 +81,10 @@ export default function ModernDashboard() {
         .order('created_at', { ascending: true });
       
       if (error) throw error;
-      setFacturas(data || []);
+      // Validar y filtrar datos válidos
+      const validData = (data || []).filter(factura => factura && factura.id);
+      console.log('ModernDashboard: facturas cargadas:', validData.length);
+      setFacturas(validData);
     } catch (error) {
       console.error('Error fetching facturas:', error);
     } finally {
@@ -108,7 +111,8 @@ export default function ModernDashboard() {
   };
 
   const handleDelete = (facturaId: string) => {
-    setFacturas(prev => prev.filter(f => f.id !== facturaId));
+    console.log('ModernDashboard handleDelete called with ID:', facturaId);
+    setFacturas(prev => prev.filter(f => f && f.id && f.id !== facturaId));
   };
 
   // Filtering functions
