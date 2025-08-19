@@ -89,7 +89,14 @@ export default function Dashboard() {
 
   const handleDelete = (facturaId: string) => {
     console.log('Dashboard handleDelete called with ID:', facturaId);
-    setFacturas(prev => prev.filter(f => f && f.id && f.id !== facturaId));
+    if (!facturaId) {
+      console.error('Dashboard: ID de factura inválido');
+      return;
+    }
+    setFacturas(prev => {
+      const validPrev = Array.isArray(prev) ? prev : [];
+      return validPrev.filter(f => f && typeof f === 'object' && f.id && f.id !== facturaId);
+    });
   };
 
   if (!user && !loading) {

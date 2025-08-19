@@ -256,6 +256,7 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
         .from('facturas')
         .select('id, user_id')
         .eq('id', facturaId)
+        .eq('user_id', user.id)
         .single();
 
       if (checkError) {
@@ -263,7 +264,7 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
         if (checkError.code === 'PGRST116') {
           toast({
             title: "Error",
-            description: "La factura no existe o no tienes permisos",
+            description: "La factura no existe o no tienes permisos para eliminarla",
             variant: "destructive"
           });
           return;
@@ -271,13 +272,24 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
         throw checkError;
       }
 
+      if (!checkData) {
+        console.error('❌ Factura no encontrada o no pertenece al usuario');
+        toast({
+          title: "Error",
+          description: "No tienes permisos para eliminar esta factura",
+          variant: "destructive"
+        });
+        return;
+      }
+
       console.log('✅ Factura encontrada:', checkData);
 
-      // Ejecutar eliminación
+      // Ejecutar eliminación con user_id check adicional
       const { data: deleteData, error: deleteError } = await supabase
         .from('facturas')
         .delete()
         .eq('id', facturaId)
+        .eq('user_id', user.id)
         .select();
 
       console.log('🔄 Respuesta DELETE:', { deleteData, deleteError });
@@ -288,10 +300,10 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
       }
 
       if (!deleteData || deleteData.length === 0) {
-        console.error('❌ No se eliminaron registros');
+        console.error('❌ No se eliminaron registros - RLS bloqueó la operación');
         toast({
           title: "Error",
-          description: "No se pudo eliminar la factura",
+          description: "No tienes permisos para eliminar esta factura",
           variant: "destructive"
         });
         return;
