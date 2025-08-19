@@ -294,18 +294,26 @@ export default function Informes() {
   };
 
   // Calcular estadísticas
-  const stats = {
-    totalFacturas: filteredFacturas.length,
-    totalMonto: filteredFacturas.reduce((sum, f) => sum + f.total_a_pagar, 0),
-    totalPagado: filteredFacturas.reduce((sum, f) => sum + (f.monto_pagado || 0), 0),
-    totalPendiente: filteredFacturas.filter(f => f.estado_mercancia !== 'pagada').reduce((sum, f) => sum + f.total_a_pagar, 0),
-    pagosMercancia: filteredFacturas.filter(f => f.clasificacion_original === 'Mercancía' && f.estado_mercancia === 'pagada').reduce((sum, f) => sum + (f.monto_pagado || 0), 0),
-    pagosGastos: filteredFacturas.filter(f => f.clasificacion_original === 'Gastos' && f.estado_mercancia === 'pagada').reduce((sum, f) => sum + (f.monto_pagado || 0), 0),
-    pagosTobias: filteredFacturas.filter(f => f.metodo_pago === 'Pago Tobías' && f.estado_mercancia === 'pagada').reduce((sum, f) => sum + (f.monto_pagado || 0), 0),
-    pagosBancos: filteredFacturas.filter(f => f.metodo_pago === 'Pago Banco' && f.estado_mercancia === 'pagada').reduce((sum, f) => sum + (f.monto_pagado || 0), 0),
-    pagosCaja: filteredFacturas.filter(f => f.metodo_pago === 'Pago Caja' && f.estado_mercancia === 'pagada').reduce((sum, f) => sum + (f.monto_pagado || 0), 0),
-    totalImpuestos: filteredFacturas.filter(f => f.estado_mercancia === 'pagada').reduce((sum, f) => sum + (f.factura_iva || 0), 0),
-  };
+  const stats = (() => {
+    console.log('Calculando estadísticas con facturas:', {
+      totalFacturas: filteredFacturas.length,
+      facturasIds: filteredFacturas.map(f => f.id),
+      ultimaActualizacion: new Date().toISOString()
+    });
+
+    return {
+      totalFacturas: filteredFacturas.length,
+      totalMonto: filteredFacturas.reduce((sum, f) => sum + f.total_a_pagar, 0),
+      totalPagado: filteredFacturas.reduce((sum, f) => sum + (f.monto_pagado || 0), 0),
+      totalPendiente: filteredFacturas.filter(f => f.estado_mercancia !== 'pagada').reduce((sum, f) => sum + f.total_a_pagar, 0),
+      pagosMercancia: filteredFacturas.filter(f => f.clasificacion_original === 'Mercancía' && f.estado_mercancia === 'pagada').reduce((sum, f) => sum + (f.monto_pagado || 0), 0),
+      pagosGastos: filteredFacturas.filter(f => f.clasificacion_original === 'Gastos' && f.estado_mercancia === 'pagada').reduce((sum, f) => sum + (f.monto_pagado || 0), 0),
+      pagosTobias: filteredFacturas.filter(f => f.metodo_pago === 'Pago Tobías' && f.estado_mercancia === 'pagada').reduce((sum, f) => sum + (f.monto_pagado || 0), 0),
+      pagosBancos: filteredFacturas.filter(f => f.metodo_pago === 'Pago Banco' && f.estado_mercancia === 'pagada').reduce((sum, f) => sum + (f.monto_pagado || 0), 0),
+      pagosCaja: filteredFacturas.filter(f => f.metodo_pago === 'Pago Caja' && f.estado_mercancia === 'pagada').reduce((sum, f) => sum + (f.monto_pagado || 0), 0),
+      totalImpuestos: filteredFacturas.filter(f => f.estado_mercancia === 'pagada').reduce((sum, f) => sum + (f.factura_iva || 0), 0),
+    };
+  })();
 
   // Obtener opciones únicas para los filtros
   const uniqueProveedores = Array.from(
