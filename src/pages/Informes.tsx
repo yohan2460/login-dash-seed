@@ -85,6 +85,17 @@ export default function Informes() {
     }
   }, [user]);
 
+  // Refrescar datos cada 30 segundos para asegurar sincronización
+  useEffect(() => {
+    if (user) {
+      const interval = setInterval(() => {
+        fetchFacturas();
+      }, 30000);
+
+      return () => clearInterval(interval);
+    }
+  }, [user]);
+
   useEffect(() => {
     applyFilters();
   }, [facturas, filters, searchTerm]);
@@ -580,6 +591,10 @@ export default function Informes() {
               <Button variant="outline" onClick={clearFilters}>
                 <RefreshCw className="w-4 h-4 mr-2" />
                 Limpiar Filtros
+              </Button>
+              <Button variant="outline" onClick={fetchFacturas}>
+                <RefreshCw className="w-4 h-4 mr-2" />
+                Actualizar Datos
               </Button>
             </div>
           </CardContent>
