@@ -7,6 +7,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Eye, Tag, CreditCard, Calendar, Clock, AlertTriangle, CheckCircle, Trash2, FileCheck, Download } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/hooks/useAuth';
 import * as XLSX from 'xlsx';
 import { useState } from 'react';
 
@@ -50,6 +51,7 @@ interface FacturasTableProps {
 
 export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPaymentInfo = false, onDelete, onSistematizarClick, showSistematizarButton = false, allowDelete = true, showOriginalClassification = false }: FacturasTableProps) {
   const { toast } = useToast();
+  const { user } = useAuth();
   const [selectedFacturas, setSelectedFacturas] = useState<string[]>([]);
 
   const formatCurrency = (amount: number) => {
@@ -221,19 +223,59 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
 
   const handleDelete = async (facturaId: string) => {
     try {
+      console.log('=== INICIO DELETE ===');
       console.log('Intentando eliminar factura con ID:', facturaId);
+      console.log('Usuario actual:', user?.id);
+      console.log('Usuario email:', user?.email);
       
-      const { error } = await supabase
+      // Verificar que tenemos el usuario
+      if (!user) {
+        console.error('No hay usuario autenticado');
+        toast({
+          title: "Error de autenticación",
+          description: "No hay usuario autenticado",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      // Verificar que tenemos el ID de la factura
+      if (!facturaId) {
+        console.error('No se proporcionó ID de factura');
+        toast({
+          title: "Error",
+          description: "No se proporcionó ID de factura",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      console.log('Ejecutando DELETE en Supabase...');
+      const { data, error } = await supabase
         .from('facturas')
         .delete()
-        .eq('id', facturaId);
+        .eq('id', facturaId)
+        .select(); // Agregar select para ver qué se eliminó
+
+      console.log('Respuesta de Supabase:', { data, error });
 
       if (error) {
-        console.error('Error en la eliminación:', error);
+        console.error('Error en la eliminación de Supabase:', error);
         throw error;
       }
 
+      if (data && data.length === 0) {
+        console.warn('No se eliminaron registros - posible problema de permisos o factura no encontrada');
+        toast({
+          title: "Advertencia",
+          description: "No se encontró la factura o no tienes permisos para eliminarla",
+          variant: "destructive"
+        });
+        return;
+      }
+
       console.log('Factura eliminada exitosamente:', facturaId);
+      console.log('Registros eliminados:', data);
 
       toast({
         title: "Factura eliminada",
@@ -242,18 +284,25 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
 
       // Llamar callback de eliminación para actualizar la vista padre
       if (onDelete) {
+        console.log('Llamando callback onDelete...');
         onDelete(facturaId);
       }
 
-      // Forzar actualización inmediata removiendo la factura del array local
-      const updatedFacturas = facturas.filter(f => f.id !== facturaId);
-      console.log('Facturas después de eliminar:', updatedFacturas.length);
+      console.log('=== FIN DELETE EXITOSO ===');
       
     } catch (error) {
+      console.error('=== ERROR EN DELETE ===');
       console.error('Error deleting factura:', error);
+      console.error('Error details:', {
+        message: error?.message,
+        code: error?.code,
+        details: error?.details,
+        hint: error?.hint
+      });
+      
       toast({
         title: "Error",
-        description: "No se pudo eliminar la factura",
+        description: `No se pudo eliminar la factura: ${error?.message || 'Error desconocido'}`,
         variant: "destructive"
       });
     }
