@@ -42,9 +42,57 @@ export default function Usuarios() {
 
   useEffect(() => {
     if (user) {
+      console.log('🚀 Initial data fetch for authenticated user');
       fetchUsers();
       fetchUserRoles();
     }
+  }, [user]);
+
+  // Add real-time subscription for user changes
+  useEffect(() => {
+    if (!user) return;
+
+    console.log('📡 Setting up realtime subscriptions');
+    
+    // Subscribe to profiles changes
+    const profilesChannel = supabase
+      .channel('profiles-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'profiles'
+        },
+        (payload) => {
+          console.log('📡 Profiles change detected:', payload.eventType);
+          fetchUsers();
+        }
+      )
+      .subscribe();
+
+    // Subscribe to user_roles changes  
+    const rolesChannel = supabase
+      .channel('user-roles-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'user_roles'
+        },
+        (payload) => {
+          console.log('📡 User roles change detected:', payload.eventType);
+          fetchUserRoles();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      console.log('🔌 Cleaning up realtime subscriptions');
+      supabase.removeChannel(profilesChannel);
+      supabase.removeChannel(rolesChannel);
+    };
   }, [user]);
 
   if (!user && !loading) {
@@ -55,22 +103,32 @@ export default function Usuarios() {
     try {
       setLoadingUsers(true);
       
-      // Get all profiles
+      // Get all profiles with more robust query
       const { data: profiles, error } = await supabase
         .from('profiles')
-        .select('user_id, display_name')
+        .select(`
+          user_id, 
+          display_name,
+          created_at
+        `)
         .order('created_at', { ascending: false });
       
-      if (error) throw error;
+      if (error) {
+        console.error('Error fetching profiles:', error);
+        throw error;
+      }
 
-      // Transform to user format
+      console.log('📊 Fetched profiles:', profiles?.length || 0);
+
+      // Transform to user format with better data handling
       const userList = profiles?.map(profile => ({
         id: profile.user_id,
         email: profile.display_name || 'Sin email',
-        created_at: new Date().toISOString(),
+        created_at: profile.created_at || new Date().toISOString(),
         display_name: profile.display_name
       })) || [];
 
+      console.log('👥 Setting users:', userList.length);
       setUsers(userList);
     } catch (error) {
       console.error('Error fetching users:', error);
@@ -79,6 +137,7 @@ export default function Usuarios() {
         description: "No se pudieron cargar los usuarios",
         variant: "destructive"
       });
+      setUsers([]); // Reset on error
     } finally {
       setLoadingUsers(false);
     }
@@ -86,14 +145,21 @@ export default function Usuarios() {
 
   const fetchUserRoles = async () => {
     try {
+      console.log('🔄 Fetching user roles...');
       const { data, error } = await supabase
         .from('user_roles')
         .select('user_id, role');
       
-      if (error) throw error;
+      if (error) {
+        console.error('Error fetching user roles:', error);
+        throw error;
+      }
+      
+      console.log('🛡️ Fetched roles:', data?.length || 0);
       setUserRoles(data || []);
     } catch (error) {
       console.error('Error fetching user roles:', error);
+      setUserRoles([]); // Reset on error
     }
   };
 
@@ -126,6 +192,8 @@ export default function Usuarios() {
         throw new Error(data.error);
       }
 
+      console.log('✅ User creation successful');
+      
       toast({
         title: "Usuario creado",
         description: `Usuario ${formData.email} creado exitosamente`,
@@ -134,9 +202,15 @@ export default function Usuarios() {
       setFormData({ email: '', password: '', displayName: '' });
       setIsCreateDialogOpen(false);
       
-      // Refresh users list
-      await fetchUsers();
-      await fetchUserRoles();
+      // Force refresh with small delay to ensure backend is updated
+      console.log('🔄 Refreshing user data after creation...');
+      setTimeout(async () => {
+        await Promise.all([
+          fetchUsers(),
+          fetchUserRoles()
+        ]);
+        console.log('✅ Data refresh after creation completed');
+      }, 500);
 
     } catch (error: any) {
       console.error('Error creating user:', error);
@@ -152,29 +226,42 @@ export default function Usuarios() {
 
   const handleDeleteUser = async (userId: string) => {
     try {
+      console.log('🗑️ Starting user deletion:', userId);
       setDeletingUserId(userId);
 
       const { data, error } = await supabase.functions.invoke('admin-delete-user', {
         body: { userId }
       });
 
-      if (error) throw error;
+      if (error) {
+        console.error('❌ Function invocation error:', error);
+        throw error;
+      }
 
       if (data.error) {
+        console.error('❌ Function returned error:', data.error);
         throw new Error(data.error);
       }
 
+      console.log('✅ User deletion successful');
+      
       toast({
         title: "Usuario eliminado",
         description: "El usuario ha sido eliminado exitosamente",
       });
 
-      // Refresh users list
-      await fetchUsers();
-      await fetchUserRoles();
+      // Force refresh with small delay to ensure backend is updated
+      console.log('🔄 Refreshing user data...');
+      setTimeout(async () => {
+        await Promise.all([
+          fetchUsers(),
+          fetchUserRoles()
+        ]);
+        console.log('✅ Data refresh completed');
+      }, 500);
 
     } catch (error: any) {
-      console.error('Error deleting user:', error);
+      console.error('❌ Error deleting user:', error);
       toast({
         title: "Error al eliminar usuario",
         description: error.message || 'Error desconocido',
