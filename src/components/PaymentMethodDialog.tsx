@@ -4,7 +4,8 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { CreditCard, Building2, Percent } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { CreditCard, Building2, Percent, Banknote } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 
@@ -38,13 +39,24 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
   const [processing, setProcessing] = useState(false);
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<string>('');
   const [usedProntoPago, setUsedProntoPago] = useState<string>('');
+  const [amountPaid, setAmountPaid] = useState<string>('');
   const { toast } = useToast();
 
   const handlePayment = async () => {
-    if (!factura || !selectedPaymentMethod || !usedProntoPago) {
+    if (!factura || !selectedPaymentMethod || !usedProntoPago || !amountPaid) {
       toast({
         title: "Campos requeridos",
-        description: "Por favor selecciona el método de pago y si se aplicó pronto pago",
+        description: "Por favor completa todos los campos requeridos",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    const amountNumber = parseFloat(amountPaid);
+    if (isNaN(amountNumber) || amountNumber <= 0) {
+      toast({
+        title: "Monto inválido",
+        description: "Por favor ingresa un monto válido",
         variant: "destructive"
       });
       return;
@@ -52,19 +64,13 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
 
     setProcessing(true);
     try {
-      // Calculate actual amount paid
-      const discountAmount = usedProntoPago === 'yes' && factura.porcentaje_pronto_pago 
-        ? (factura.total_a_pagar * factura.porcentaje_pronto_pago) / 100 
-        : 0;
-      const actualAmountPaid = factura.total_a_pagar - discountAmount;
-
       const { error } = await supabase
         .from('facturas')
         .update({ 
           estado_mercancia: 'pagada',
           metodo_pago: selectedPaymentMethod,
           uso_pronto_pago: usedProntoPago === 'yes',
-          monto_pagado: actualAmountPaid
+          monto_pagado: amountNumber
         })
         .eq('id', factura.id);
 
@@ -82,6 +88,7 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
       // Reset form
       setSelectedPaymentMethod('');
       setUsedProntoPago('');
+      setAmountPaid('');
     } catch (error) {
       console.error('Error updating payment status:', error);
       toast({
@@ -153,8 +160,36 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
                     </Label>
                   </CardContent>
                 </Card>
+
+                <Card className={`cursor-pointer transition-all duration-200 ${selectedPaymentMethod === 'Caja' ? 'ring-2 ring-primary bg-accent/50' : 'hover:bg-accent/20'}`}>
+                  <CardContent className="p-4">
+                    <Label htmlFor="caja" className="cursor-pointer flex items-center space-x-3 w-full">
+                      <RadioGroupItem value="Caja" id="caja" />
+                      <div className="p-2 bg-orange-100 rounded-lg">
+                        <Banknote className="w-5 h-5 text-orange-600" />
+                      </div>
+                      <div className="text-left">
+                        <div className="font-medium">Caja</div>
+                        <div className="text-sm text-muted-foreground">Pago en efectivo</div>
+                      </div>
+                    </Label>
+                  </CardContent>
+                </Card>
               </div>
             </RadioGroup>
+          </div>
+
+          {/* Monto pagado */}
+          <div className="space-y-3">
+            <Label className="text-base font-medium">Monto pagado:</Label>
+            <Input
+              type="number"
+              placeholder="Ingresa el monto pagado"
+              value={amountPaid}
+              onChange={(e) => setAmountPaid(e.target.value)}
+              step="0.01"
+              min="0"
+            />
           </div>
 
           {/* ¿Se aplicó pronto pago? */}
@@ -185,7 +220,7 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
             </Button>
             <Button 
               onClick={handlePayment} 
-              disabled={processing || !selectedPaymentMethod || !usedProntoPago}
+              disabled={processing || !selectedPaymentMethod || !usedProntoPago || !amountPaid}
               className="min-w-[120px]"
             >
               {processing ? "Procesando..." : "Confirmar Pago"}
