@@ -3,9 +3,12 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
-import { Eye, Tag, CreditCard, Calendar, Clock, AlertTriangle, CheckCircle, Trash2, FileCheck } from 'lucide-react';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Eye, Tag, CreditCard, Calendar, Clock, AlertTriangle, CheckCircle, Trash2, FileCheck, Download } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import * as XLSX from 'xlsx';
+import { useState } from 'react';
 
 interface Factura {
   id: string;
@@ -47,6 +50,7 @@ interface FacturasTableProps {
 
 export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPaymentInfo = false, onDelete, onSistematizarClick, showSistematizarButton = false, allowDelete = true, showOriginalClassification = false }: FacturasTableProps) {
   const { toast } = useToast();
+  const [selectedFacturas, setSelectedFacturas] = useState<string[]>([]);
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('es-CO', {
@@ -83,6 +87,105 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
         variant: "destructive"
       });
     }
+  };
+
+  const toggleSelection = (facturaId: string) => {
+    setSelectedFacturas(prev => 
+      prev.includes(facturaId) 
+        ? prev.filter(id => id !== facturaId)
+        : [...prev, facturaId]
+    );
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedFacturas.length === facturas.length) {
+      setSelectedFacturas([]);
+    } else {
+      setSelectedFacturas(facturas.map(f => f.id));
+    }
+  };
+
+  const exportToExcel = () => {
+    if (selectedFacturas.length === 0) {
+      toast({
+        title: "Ninguna factura seleccionada",
+        description: "Selecciona al menos una factura para exportar",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    const selectedData = facturas.filter(f => selectedFacturas.includes(f.id));
+    
+    // Preparar datos para Excel
+    const excelData = selectedData.map(factura => ({
+      'Número de Factura': factura.numero_factura,
+      'Emisor': factura.emisor_nombre,
+      'NIT Emisor': factura.emisor_nit,
+      'Número de Serie': factura.numero_serie || '',
+      'Descripción': factura.descripcion || '',
+      'Clasificación': factura.clasificacion || 'Sin clasificar',
+      'Clasificación Original': factura.clasificacion_original || '',
+      'Total a Pagar': factura.total_a_pagar,
+      'IVA': factura.factura_iva || 0,
+      'Porcentaje IVA': factura.factura_iva_porcentaje || 0,
+      'Tiene Retención': factura.tiene_retencion ? 'Sí' : 'No',
+      'Monto Retención': factura.monto_retencion || 0,
+      'Porcentaje Pronto Pago': factura.porcentaje_pronto_pago || 0,
+      'Uso Pronto Pago': factura.uso_pronto_pago ? 'Sí' : 'No',
+      'Estado Mercancía': factura.estado_mercancia || '',
+      'Método de Pago': factura.metodo_pago || '',
+      'Monto Pagado': factura.monto_pagado || 0,
+      'Fecha de Emisión': factura.fecha_emision ? new Date(factura.fecha_emision).toLocaleDateString('es-CO') : '',
+      'Fecha de Vencimiento': factura.fecha_vencimiento ? new Date(factura.fecha_vencimiento).toLocaleDateString('es-CO') : '',
+      'Fecha de Pago': factura.fecha_pago ? new Date(factura.fecha_pago).toLocaleDateString('es-CO') : '',
+      'Fecha de Creación': new Date(factura.created_at).toLocaleDateString('es-CO')
+    }));
+
+    // Crear libro de Excel
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.json_to_sheet(excelData);
+    
+    // Ajustar ancho de columnas
+    const colWidths = [
+      { wch: 15 }, // Número de Factura
+      { wch: 30 }, // Emisor
+      { wch: 15 }, // NIT Emisor
+      { wch: 15 }, // Número de Serie
+      { wch: 40 }, // Descripción
+      { wch: 15 }, // Clasificación
+      { wch: 20 }, // Clasificación Original
+      { wch: 15 }, // Total a Pagar
+      { wch: 12 }, // IVA
+      { wch: 15 }, // Porcentaje IVA
+      { wch: 15 }, // Tiene Retención
+      { wch: 15 }, // Monto Retención
+      { wch: 20 }, // Porcentaje Pronto Pago
+      { wch: 15 }, // Uso Pronto Pago
+      { wch: 15 }, // Estado Mercancía
+      { wch: 15 }, // Método de Pago
+      { wch: 15 }, // Monto Pagado
+      { wch: 15 }, // Fecha de Emisión
+      { wch: 18 }, // Fecha de Vencimiento
+      { wch: 15 }, // Fecha de Pago
+      { wch: 18 }  // Fecha de Creación
+    ];
+    ws['!cols'] = colWidths;
+
+    XLSX.utils.book_append_sheet(wb, ws, 'Facturas');
+    
+    // Generar archivo
+    const fecha = new Date().toISOString().slice(0, 10);
+    const filename = `facturas_exportadas_${fecha}.xlsx`;
+    XLSX.writeFile(wb, filename);
+
+    toast({
+      title: "Exportación exitosa",
+      description: `Se exportaron ${selectedFacturas.length} facturas a Excel`,
+    });
+
+    // Limpiar selección
+    setSelectedFacturas([]);
   };
 
   const getClassificationBadge = (clasificacion: string | null | undefined) => {
@@ -180,13 +283,46 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
   // Renderizado móvil y de escritorio
   return (
     <div className="space-y-4">
+      {/* Controles de selección y exportación */}
+      {facturas.length > 0 && (
+        <div className="flex items-center justify-between bg-muted/30 p-4 rounded-lg">
+          <div className="flex items-center space-x-4">
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                checked={selectedFacturas.length === facturas.length}
+                onCheckedChange={toggleSelectAll}
+                indeterminate={selectedFacturas.length > 0 && selectedFacturas.length < facturas.length}
+              />
+              <span className="text-sm font-medium">
+                Seleccionar todas ({selectedFacturas.length} de {facturas.length} seleccionadas)
+              </span>
+            </div>
+          </div>
+          <Button
+            onClick={exportToExcel}
+            disabled={selectedFacturas.length === 0}
+            size="sm"
+            className="flex items-center space-x-2"
+          >
+            <Download className="w-4 h-4" />
+            <span>Exportar a Excel</span>
+          </Button>
+        </div>
+      )}
       {/* Vista móvil */}
       <div className="block lg:hidden">
         <div className="space-y-4">
           {facturas.map(factura => (
             <Card key={factura.id} className="overflow-hidden">
               <CardContent className="p-4">
-                <div className="space-y-3">
+                {/* Checkbox de selección */}
+                <div className="flex items-start space-x-3">
+                  <Checkbox
+                     checked={selectedFacturas.includes(factura.id)}
+                     onCheckedChange={() => toggleSelection(factura.id)}
+                     className="mt-1"
+                   />
+                   <div className="flex-1 space-y-3">
                   {/* Header con número y estado */}
                   <div className="flex items-start justify-between">
                     <div>
@@ -431,7 +567,7 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
                       </AlertDialogContent>
                     </AlertDialog>
                     )}
-                  </div>
+                 </div>
                 </div>
               </CardContent>
             </Card>
@@ -445,6 +581,13 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
           <Table>
             <TableHeader>
               <TableRow className="bg-muted/50">
+                <TableHead className="w-10">
+                  <Checkbox
+                    checked={selectedFacturas.length === facturas.length}
+                    onCheckedChange={toggleSelectAll}
+                    indeterminate={selectedFacturas.length > 0 && selectedFacturas.length < facturas.length}
+                  />
+                </TableHead>
                 <TableHead className="font-semibold">Factura</TableHead>
                 <TableHead className="font-semibold">Emisor</TableHead>
                 <TableHead className="font-semibold">Estado</TableHead>
@@ -460,6 +603,12 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
             <TableBody>
               {facturas.map(factura => (
                 <TableRow key={factura.id} className="hover:bg-muted/30 transition-colors">
+                  <TableCell>
+                    <Checkbox
+                      checked={selectedFacturas.includes(factura.id)}
+                      onCheckedChange={() => toggleSelection(factura.id)}
+                    />
+                  </TableCell>
                   {/* Información de factura */}
                   <TableCell className="font-medium">
                     <div className="space-y-1">
