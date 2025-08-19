@@ -78,7 +78,7 @@ export default function ModernDashboard() {
       const { data, error } = await supabase
         .from('facturas')
         .select('*')
-        .order('created_at', { ascending: true });
+        .order('created_at', { ascending: false });
       
       if (error) throw error;
       // Validar y filtrar datos válidos
