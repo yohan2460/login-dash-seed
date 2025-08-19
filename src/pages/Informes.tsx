@@ -85,6 +85,31 @@ export default function Informes() {
     }
   }, [user]);
 
+  // Escuchar cambios en tiempo real de la base de datos
+  useEffect(() => {
+    if (user) {
+      const channel = supabase
+        .channel('facturas-changes')
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'facturas'
+          },
+          () => {
+            console.log('Cambio detectado en facturas, actualizando...');
+            fetchFacturas();
+          }
+        )
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(channel);
+      };
+    }
+  }, [user]);
+
   // Refrescar datos cada 30 segundos para asegurar sincronización
   useEffect(() => {
     if (user) {
