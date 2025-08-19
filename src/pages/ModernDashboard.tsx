@@ -629,6 +629,7 @@ export default function ModernDashboard() {
                       onPayClick={handlePayClick}
                       onDelete={handleDelete}
                       onSistematizarClick={handleSistematizarClick}
+                      showSistematizarButton={true}
                     />
                   )}
                 </CardContent>
@@ -819,6 +820,7 @@ export default function ModernDashboard() {
                       showPaymentInfo={true}
                       onDelete={handleDelete}
                       onSistematizarClick={handleSistematizarClick}
+                      showSistematizarButton={true}
                     />
                   )}
                 </CardContent>

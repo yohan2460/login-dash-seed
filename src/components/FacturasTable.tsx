@@ -39,9 +39,10 @@ interface FacturasTableProps {
   showPaymentInfo?: boolean;
   onDelete?: (facturaId: string) => void;
   onSistematizarClick?: (factura: Factura) => void;
+  showSistematizarButton?: boolean;
 }
 
-export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPaymentInfo = false, onDelete, onSistematizarClick }: FacturasTableProps) {
+export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPaymentInfo = false, onDelete, onSistematizarClick, showSistematizarButton = false }: FacturasTableProps) {
   const { toast } = useToast();
 
   const formatCurrency = (amount: number) => {
@@ -363,7 +364,7 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
                       </Button>
                       )}
 
-                    {onSistematizarClick && (
+                    {onSistematizarClick && showSistematizarButton && (
                       <AlertDialog>
                         <AlertDialogTrigger asChild>
                           <Button
@@ -646,7 +647,7 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
                         </Button>
                       )}
 
-                      {onSistematizarClick && (
+                      {onSistematizarClick && showSistematizarButton && (
                         <AlertDialog>
                           <AlertDialogTrigger asChild>
                             <Button
