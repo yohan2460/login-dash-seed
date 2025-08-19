@@ -52,7 +52,8 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
       return;
     }
 
-    const amountNumber = parseFloat(amountPaid);
+    const cleanAmount = amountPaid.replace(/,/g, '');
+    const amountNumber = parseFloat(cleanAmount);
     if (isNaN(amountNumber) || amountNumber <= 0) {
       toast({
         title: "Monto inválido",
@@ -183,12 +184,13 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
           <div className="space-y-3">
             <Label className="text-base font-medium">Monto pagado:</Label>
             <Input
-              type="number"
-              placeholder="Ingresa el monto pagado"
+              type="text"
+              placeholder="Ingresa el monto pagado (ej: 1,250,000.50)"
               value={amountPaid}
-              onChange={(e) => setAmountPaid(e.target.value)}
-              step="0.01"
-              min="0"
+              onChange={(e) => {
+                const value = e.target.value.replace(/[^0-9.,]/g, '');
+                setAmountPaid(value);
+              }}
             />
           </div>
 
