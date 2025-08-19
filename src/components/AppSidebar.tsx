@@ -305,6 +305,21 @@ export function AppSidebar() {
                     </div>
                   </div>
                 </div>
+                
+                <div 
+                  className={`flex items-center justify-between p-2 rounded-lg cursor-pointer transition-colors ${
+                    activeCategory === 'sistematizada' ? 'bg-primary/10 text-primary' : 'hover:bg-muted/50'
+                  }`}
+                  onClick={() => setActiveCategory('sistematizada')}
+                >
+                  <div className="flex items-center space-x-2">
+                    <FileText className="w-4 h-4" />
+                    <div>
+                      <div className="text-sm font-medium">Sistematizada</div>
+                      <div className="text-xs text-muted-foreground">0 facturas</div>
+                    </div>
+                  </div>
+                </div>
               </div>
             </SidebarGroupContent>
           </SidebarGroup>

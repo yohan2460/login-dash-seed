@@ -4,14 +4,14 @@ import { useAuth } from '@/hooks/useAuth';
 import { useDashboard } from '@/contexts/DashboardContext';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 import { 
   FileText, Package, CreditCard, TrendingUp, Receipt, 
-  Calculator, Minus, Percent, Filter, CalendarIcon, Banknote, DollarSign 
+  Calculator, Minus, Percent, Filter, CalendarIcon, Banknote, DollarSign, CheckCircle
 } from 'lucide-react';
 import { ModernStatsCard } from '@/components/ModernStatsCard';
 import { FacturasTable } from '@/components/FacturasTable';
@@ -786,6 +786,53 @@ export default function ModernDashboard() {
                       onDelete={handleDelete}
                     />
                   )}
+                </CardContent>
+              </Card>
+            </>
+          )}
+
+          {/* Sistematizada Section */}
+          {activeCategory === 'sistematizada' && (
+            <>
+              {/* Stats Cards for Sistematizada */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <ModernStatsCard
+                  title="Total Sistematizadas"
+                  value="0"
+                  icon={FileText}
+                  color="purple"
+                />
+                <ModernStatsCard
+                  title="Pendientes de Proceso"
+                  value="0"
+                  icon={Package}
+                  color="orange"
+                />
+                <ModernStatsCard
+                  title="Procesadas"
+                  value="0"
+                  icon={CheckCircle}
+                  color="green"
+                />
+              </div>
+
+              {/* Sistematizada Table */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <FileText className="w-5 h-5" />
+                    Facturas Sistematizadas
+                  </CardTitle>
+                  <CardDescription>
+                    Gestión de facturas que han sido sistematizadas en el proceso
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-center py-12 text-muted-foreground">
+                    <FileText className="w-12 h-12 mx-auto mb-4 text-muted-foreground/50" />
+                    <p className="text-lg font-medium mb-2">No hay facturas sistematizadas</p>
+                    <p className="text-sm">Las facturas sistematizadas aparecerán aquí una vez que sean procesadas.</p>
+                  </div>
                 </CardContent>
               </Card>
             </>
