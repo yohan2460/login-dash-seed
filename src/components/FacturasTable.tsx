@@ -54,6 +54,9 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
   const { user } = useAuth();
   const [selectedFacturas, setSelectedFacturas] = useState<string[]>([]);
 
+  // Validar que facturas sea un array válido
+  const validFacturas = Array.isArray(facturas) ? facturas.filter(f => f && f.id) : [];
+
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('es-CO', {
       style: 'currency',
@@ -100,10 +103,10 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
   };
 
   const toggleSelectAll = () => {
-    if (selectedFacturas.length === facturas.length) {
+    if (selectedFacturas.length === validFacturas.length) {
       setSelectedFacturas([]);
     } else {
-      setSelectedFacturas(facturas.map(f => f.id));
+      setSelectedFacturas(validFacturas.map(f => f.id));
     }
   };
 
@@ -117,7 +120,7 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
       return;
     }
 
-    const selectedData = facturas.filter(f => selectedFacturas.includes(f.id));
+    const selectedData = validFacturas.filter(f => selectedFacturas.includes(f.id));
     
     // Preparar datos para Excel
     const excelData = selectedData.map(factura => ({
@@ -346,16 +349,16 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
   return (
     <div className="space-y-4">
       {/* Controles de selección y exportación */}
-      {facturas.length > 0 && (
+      {validFacturas.length > 0 && (
         <div className="flex items-center justify-between bg-muted/30 p-4 rounded-lg">
           <div className="flex items-center space-x-4">
             <div className="flex items-center space-x-2">
               <Checkbox
-                checked={selectedFacturas.length === facturas.length}
+                checked={selectedFacturas.length === validFacturas.length}
                 onCheckedChange={toggleSelectAll}
               />
               <span className="text-sm font-medium">
-                Seleccionar todas ({selectedFacturas.length} de {facturas.length} seleccionadas)
+                Seleccionar todas ({selectedFacturas.length} de {validFacturas.length} seleccionadas)
               </span>
             </div>
           </div>
@@ -373,7 +376,7 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
       {/* Vista móvil */}
       <div className="block lg:hidden">
         <div className="space-y-4">
-          {facturas.map(factura => (
+          {validFacturas.map(factura => (
             <Card key={factura.id} className="overflow-hidden">
               <CardContent className="p-4">
                 {/* Checkbox de selección */}
@@ -643,12 +646,12 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
           <Table>
             <TableHeader>
               <TableRow className="bg-muted/50">
-                <TableHead className="w-10">
-                  <Checkbox
-                    checked={selectedFacturas.length === facturas.length}
-                    onCheckedChange={toggleSelectAll}
-                  />
-                </TableHead>
+                 <TableHead className="w-10">
+                   <Checkbox
+                     checked={selectedFacturas.length === validFacturas.length}
+                     onCheckedChange={toggleSelectAll}
+                   />
+                 </TableHead>
                 <TableHead className="font-semibold">Factura</TableHead>
                 <TableHead className="font-semibold">Emisor</TableHead>
                 <TableHead className="font-semibold">Estado</TableHead>
@@ -662,7 +665,7 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
               </TableRow>
             </TableHeader>
             <TableBody>
-              {facturas.map(factura => (
+              {validFacturas.map(factura => (
                 <TableRow key={factura.id} className="hover:bg-muted/30 transition-colors">
                   <TableCell>
                     <Checkbox
