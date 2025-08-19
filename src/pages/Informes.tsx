@@ -435,12 +435,12 @@ export default function Informes() {
               {/* Proveedor */}
               <div>
                 <Label htmlFor="proveedor">Proveedor</Label>
-                <Select value={filters.proveedor} onValueChange={(value) => setFilters(prev => ({ ...prev, proveedor: value }))}>
+                <Select value={filters.proveedor || 'todos'} onValueChange={(value) => setFilters(prev => ({ ...prev, proveedor: value === 'todos' ? '' : value }))}>
                   <SelectTrigger>
                     <SelectValue placeholder="Seleccionar proveedor" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">Todos los proveedores</SelectItem>
+                    <SelectItem value="todos">Todos los proveedores</SelectItem>
                     {uniqueProveedores.map(proveedor => (
                       <SelectItem key={proveedor.nit} value={proveedor.nit}>
                         {proveedor.nombre}
@@ -453,12 +453,12 @@ export default function Informes() {
               {/* Clasificación */}
               <div>
                 <Label htmlFor="clasificacion">Clasificación</Label>
-                <Select value={filters.clasificacion} onValueChange={(value) => setFilters(prev => ({ ...prev, clasificacion: value }))}>
+                <Select value={filters.clasificacion || 'todas'} onValueChange={(value) => setFilters(prev => ({ ...prev, clasificacion: value === 'todas' ? '' : value }))}>
                   <SelectTrigger>
                     <SelectValue placeholder="Seleccionar clasificación" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">Todas las clasificaciones</SelectItem>
+                    <SelectItem value="todas">Todas las clasificaciones</SelectItem>
                     <SelectItem value="sistematizada">Sistematizada</SelectItem>
                     {uniqueClasificaciones.map(clasificacion => (
                       <SelectItem key={clasificacion} value={clasificacion}>
@@ -472,12 +472,12 @@ export default function Informes() {
               {/* Estado de Pago */}
               <div>
                 <Label htmlFor="estadoPago">Estado de Pago</Label>
-                <Select value={filters.estadoPago} onValueChange={(value) => setFilters(prev => ({ ...prev, estadoPago: value }))}>
+                <Select value={filters.estadoPago || 'todos-estados'} onValueChange={(value) => setFilters(prev => ({ ...prev, estadoPago: value === 'todos-estados' ? '' : value }))}>
                   <SelectTrigger>
                     <SelectValue placeholder="Seleccionar estado" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">Todos los estados</SelectItem>
+                    <SelectItem value="todos-estados">Todos los estados</SelectItem>
                     <SelectItem value="pagada">Pagada</SelectItem>
                     <SelectItem value="pendiente">Pendiente</SelectItem>
                     <SelectItem value="vencida">Vencida</SelectItem>
@@ -488,12 +488,12 @@ export default function Informes() {
               {/* Método de Pago */}
               <div>
                 <Label htmlFor="metodoPago">Método de Pago</Label>
-                <Select value={filters.metodoPago} onValueChange={(value) => setFilters(prev => ({ ...prev, metodoPago: value }))}>
+                <Select value={filters.metodoPago || 'todos-metodos'} onValueChange={(value) => setFilters(prev => ({ ...prev, metodoPago: value === 'todos-metodos' ? '' : value }))}>
                   <SelectTrigger>
                     <SelectValue placeholder="Seleccionar método" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">Todos los métodos</SelectItem>
+                    <SelectItem value="todos-metodos">Todos los métodos</SelectItem>
                     {uniqueMetodosPago.map(metodo => (
                       <SelectItem key={metodo} value={metodo}>
                         {metodo}
