@@ -99,6 +99,10 @@ export default function Dashboard() {
   const handlePaymentProcessed = () => {
     fetchFacturas();
   };
+
+  const handleDelete = (facturaId: string) => {
+    setFacturas(prev => prev.filter(f => f.id !== facturaId));
+  };
   const handleSignOut = async () => {
     await signOut();
   };
@@ -409,6 +413,7 @@ export default function Dashboard() {
                           facturas={filterFacturasByType(null)}
                           onClassifyClick={handleClassifyClick}
                           onPayClick={handlePayClick}
+                          onDelete={handleDelete}
                         />
                       )}
                     </TabsContent>
@@ -587,6 +592,7 @@ export default function Dashboard() {
                               facturas={filterFacturasByMercanciaState(null)}
                               onClassifyClick={handleClassifyClick}
                               onPayClick={handlePayClick}
+                              onDelete={handleDelete}
                             />
                           )}
                         </TabsContent>
@@ -679,6 +685,7 @@ export default function Dashboard() {
                               facturas={getFilteredPaidFacturas()}
                               onClassifyClick={handleClassifyClick}
                               showPaymentInfo={true}
+                              onDelete={handleDelete}
                             />
                           )}
                         </TabsContent>
@@ -695,6 +702,7 @@ export default function Dashboard() {
                         <FacturasTable
                           facturas={filterFacturasByType('gasto')}
                           onClassifyClick={handleClassifyClick}
+                          onDelete={handleDelete}
                         />
                       )}
                     </TabsContent>

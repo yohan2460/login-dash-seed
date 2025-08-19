@@ -101,6 +101,10 @@ export default function ModernDashboard() {
     fetchFacturas();
   };
 
+  const handleDelete = (facturaId: string) => {
+    setFacturas(prev => prev.filter(f => f.id !== facturaId));
+  };
+
   // Filtering functions
   const filterFacturasByType = (type: string | null) => {
     return facturas.filter(f => f.clasificacion === type);
@@ -327,6 +331,7 @@ export default function ModernDashboard() {
                     facturas={facturas}
                     onClassifyClick={handleClassifyClick}
                     onPayClick={handlePayClick}
+                    onDelete={handleDelete}
                   />
                 </CardContent>
               </Card>
@@ -366,6 +371,7 @@ export default function ModernDashboard() {
                       facturas={filterFacturasByType(null)}
                       onClassifyClick={handleClassifyClick}
                       onPayClick={handlePayClick}
+                      onDelete={handleDelete}
                     />
                   )}
                 </CardContent>
@@ -418,6 +424,7 @@ export default function ModernDashboard() {
                       facturas={filterFacturasByMercanciaState(null)}
                       onClassifyClick={handleClassifyClick}
                       onPayClick={handlePayClick}
+                      onDelete={handleDelete}
                     />
                   )}
                 </CardContent>
@@ -540,6 +547,7 @@ export default function ModernDashboard() {
                       facturas={getFilteredPaidFacturas()}
                       onClassifyClick={handleClassifyClick}
                       onPayClick={handlePayClick}
+                      onDelete={handleDelete}
                     />
                   )}
                 </CardContent>
@@ -597,6 +605,7 @@ export default function ModernDashboard() {
                       facturas={filterFacturasByGastoState(null)}
                       onClassifyClick={handleClassifyClick}
                       onPayClick={handlePayClick}
+                      onDelete={handleDelete}
                     />
                   )}
                 </CardContent>
@@ -720,6 +729,7 @@ export default function ModernDashboard() {
                       onClassifyClick={handleClassifyClick}
                       onPayClick={handlePayClick}
                       showPaymentInfo={true}
+                      onDelete={handleDelete}
                     />
                   )}
                 </CardContent>

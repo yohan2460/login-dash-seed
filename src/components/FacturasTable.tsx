@@ -2,7 +2,8 @@ import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
-import { Eye, Tag, CreditCard, Calendar, Clock, AlertTriangle, CheckCircle } from 'lucide-react';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
+import { Eye, Tag, CreditCard, Calendar, Clock, AlertTriangle, CheckCircle, Trash2 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 
@@ -35,9 +36,10 @@ interface FacturasTableProps {
   onClassifyClick: (factura: Factura) => void;
   onPayClick?: (factura: Factura) => void;
   showPaymentInfo?: boolean;
+  onDelete?: (facturaId: string) => void;
 }
 
-export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPaymentInfo = false }: FacturasTableProps) {
+export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPaymentInfo = false, onDelete }: FacturasTableProps) {
   const { toast } = useToast();
 
   const formatCurrency = (amount: number) => {
@@ -106,6 +108,33 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
     
     return diffDays;
+  };
+
+  const handleDelete = async (facturaId: string) => {
+    try {
+      const { error } = await supabase
+        .from('facturas')
+        .delete()
+        .eq('id', facturaId);
+
+      if (error) throw error;
+
+      toast({
+        title: "Factura eliminada",
+        description: "La factura ha sido eliminada exitosamente",
+      });
+
+      if (onDelete) {
+        onDelete(facturaId);
+      }
+    } catch (error) {
+      console.error('Error deleting factura:', error);
+      toast({
+        title: "Error",
+        description: "No se pudo eliminar la factura",
+        variant: "destructive"
+      });
+    }
   };
 
   const getDaysIndicator = (daysUntilDue: number | null) => {
@@ -318,6 +347,35 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
                         <Eye className="w-4 h-4" />
                       </Button>
                     )}
+
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="px-3 border-red-200 text-red-700 hover:bg-red-50"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>¿Eliminar factura?</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            Esta acción no se puede deshacer. Se eliminará permanentemente la factura #{factura.numero_factura} de {factura.emisor_nombre}.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                          <AlertDialogAction
+                            onClick={() => handleDelete(factura.id)}
+                            className="bg-red-600 hover:bg-red-700"
+                          >
+                            Eliminar
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
                   </div>
                 </div>
               </CardContent>
@@ -521,6 +579,35 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
                           <Eye className="w-4 h-4" />
                         </Button>
                       )}
+
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="transition-all duration-200 hover:scale-105 text-red-700 hover:bg-red-50"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>¿Eliminar factura?</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              Esta acción no se puede deshacer. Se eliminará permanentemente la factura #{factura.numero_factura} de {factura.emisor_nombre}.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                            <AlertDialogAction
+                              onClick={() => handleDelete(factura.id)}
+                              className="bg-red-600 hover:bg-red-700"
+                            >
+                              Eliminar
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
                     </div>
                   </TableCell>
                 </TableRow>
