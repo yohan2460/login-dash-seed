@@ -11,13 +11,15 @@ import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 import { 
   FileText, Package, CreditCard, TrendingUp, Receipt, 
-  Calculator, Minus, Percent, Filter, CalendarIcon, Banknote, DollarSign, CheckCircle
+  Calculator, Minus, Percent, Filter, CalendarIcon, Banknote, DollarSign, CheckCircle, Plus
 } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ModernStatsCard } from '@/components/ModernStatsCard';
 import { FacturasTable } from '@/components/FacturasTable';
 import { FacturaClassificationDialog } from '@/components/FacturaClassificationDialog';
 import { PaymentMethodDialog } from '@/components/PaymentMethodDialog';
+import { ManualFacturaDialog } from '@/components/ManualFacturaDialog';
+import { NotaCreditoDialog } from '@/components/NotaCreditoDialog';
 import { ModernLayout } from '@/components/ModernLayout';
 import { useToast } from '@/hooks/use-toast';
 
@@ -47,6 +49,10 @@ interface Factura {
   fecha_emision?: string | null;
   fecha_vencimiento?: string | null;
   fecha_pago?: string | null;
+  es_nota_credito?: boolean;
+  factura_original_id?: string | null;
+  valor_nota_credito?: number | null;
+  total_con_descuento?: number | null;
 }
 
 export default function ModernDashboard() {
@@ -59,6 +65,9 @@ export default function ModernDashboard() {
   const [isClassificationDialogOpen, setIsClassificationDialogOpen] = useState(false);
   const [selectedPaymentFactura, setSelectedPaymentFactura] = useState<Factura | null>(null);
   const [isPaymentDialogOpen, setIsPaymentDialogOpen] = useState(false);
+  const [isManualFacturaDialogOpen, setIsManualFacturaDialogOpen] = useState(false);
+  const [selectedNotaCreditoFactura, setSelectedNotaCreditoFactura] = useState<Factura | null>(null);
+  const [isNotaCreditoDialogOpen, setIsNotaCreditoDialogOpen] = useState(false);
   const [dateFrom, setDateFrom] = useState<Date | undefined>(undefined);
   const [dateTo, setDateTo] = useState<Date | undefined>(undefined);
   const [sistematizadaFilter, setSistematizadaFilter] = useState<string>('all'); // 'all', 'mercancia', 'gasto'
@@ -84,6 +93,14 @@ export default function ModernDashboard() {
       // Validar y filtrar datos válidos
       const validData = (data || []).filter(factura => factura && factura.id);
       console.log('ModernDashboard: facturas cargadas:', validData.length);
+      
+      // Debug: mostrar facturas con notas
+      validData.forEach(factura => {
+        if (factura.notas) {
+          console.log('📋 Factura con notas:', factura.numero_factura, 'notas:', factura.notas);
+        }
+      });
+      
       setFacturas(validData);
     } catch (error) {
       console.error('Error fetching facturas:', error);
@@ -108,6 +125,19 @@ export default function ModernDashboard() {
 
   const handlePaymentProcessed = () => {
     fetchFacturas();
+  };
+
+  const handleNotaCreditoClick = (factura: Factura) => {
+    setSelectedNotaCreditoFactura(factura);
+    setIsNotaCreditoDialogOpen(true);
+  };
+
+  const handleNotaCreditoProcessed = () => {
+    console.log('🔄 Refrescando facturas después de procesar nota de crédito...');
+    // Agregar un pequeño delay para asegurar que los cambios se hayan guardado
+    setTimeout(() => {
+      fetchFacturas();
+    }, 500);
   };
 
   const handleDelete = (facturaId: string) => {
@@ -357,6 +387,17 @@ export default function ModernDashboard() {
       title="Dashboard"
       subtitle="Gestión completa de facturas y proveedores"
     >
+      {/* Botón para agregar factura manual */}
+      <div className="flex justify-end mb-6">
+        <Button 
+          onClick={() => setIsManualFacturaDialogOpen(true)}
+          className="bg-primary hover:bg-primary/90"
+        >
+          <Plus className="w-4 h-4 mr-2" />
+          Agregar Factura Manual
+        </Button>
+      </div>
+
       {loadingFacturas ? (
         <div className="flex items-center justify-center py-12">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
@@ -416,6 +457,7 @@ export default function ModernDashboard() {
                     onPayClick={handlePayClick}
                     onDelete={handleDelete}
                     onSistematizarClick={handleSistematizarClick}
+                    onNotaCreditoClick={handleNotaCreditoClick}
                   />
                 </CardContent>
               </Card>
@@ -457,6 +499,7 @@ export default function ModernDashboard() {
                       onPayClick={handlePayClick}
                       onDelete={handleDelete}
                       onSistematizarClick={handleSistematizarClick}
+                      onNotaCreditoClick={handleNotaCreditoClick}
                     />
                   )}
                 </CardContent>
@@ -511,6 +554,7 @@ export default function ModernDashboard() {
                       onPayClick={handlePayClick}
                       onDelete={handleDelete}
                       onSistematizarClick={handleSistematizarClick}
+                      onNotaCreditoClick={handleNotaCreditoClick}
                     />
                   )}
                 </CardContent>
@@ -649,6 +693,7 @@ export default function ModernDashboard() {
                       onPayClick={handlePayClick}
                       onDelete={handleDelete}
                       onSistematizarClick={handleSistematizarClick}
+                      onNotaCreditoClick={handleNotaCreditoClick}
                       showSistematizarButton={true}
                     />
                   )}
@@ -709,6 +754,7 @@ export default function ModernDashboard() {
                       onPayClick={handlePayClick}
                       onDelete={handleDelete}
                       onSistematizarClick={handleSistematizarClick}
+                      onNotaCreditoClick={handleNotaCreditoClick}
                     />
                   )}
                 </CardContent>
@@ -840,6 +886,7 @@ export default function ModernDashboard() {
                       showPaymentInfo={true}
                       onDelete={handleDelete}
                       onSistematizarClick={handleSistematizarClick}
+                      onNotaCreditoClick={handleNotaCreditoClick}
                       showSistematizarButton={true}
                     />
                   )}
@@ -920,6 +967,7 @@ export default function ModernDashboard() {
                       onPayClick={handlePayClick}
                       onDelete={handleDelete}
                       onSistematizarClick={handleSistematizarClick}
+                      onNotaCreditoClick={handleNotaCreditoClick}
                       allowDelete={false}
                       showOriginalClassification={true}
                     />
@@ -945,6 +993,19 @@ export default function ModernDashboard() {
         isOpen={isPaymentDialogOpen}
         onClose={() => setIsPaymentDialogOpen(false)}
         onPaymentProcessed={handlePaymentProcessed}
+      />
+
+      <ManualFacturaDialog
+        isOpen={isManualFacturaDialogOpen}
+        onClose={() => setIsManualFacturaDialogOpen(false)}
+        onFacturaCreated={fetchFacturas}
+      />
+
+      <NotaCreditoDialog
+        factura={selectedNotaCreditoFactura}
+        isOpen={isNotaCreditoDialogOpen}
+        onClose={() => setIsNotaCreditoDialogOpen(false)}
+        onNotaCreditoProcessed={handleNotaCreditoProcessed}
       />
     </ModernLayout>
   );

@@ -22,10 +22,12 @@ export type Database = {
           descripcion: string | null
           emisor_nit: string
           emisor_nombre: string
+          es_nota_credito: boolean | null
           estado_mercancia: string | null
           factura_cufe: string | null
           factura_iva: number | null
           factura_iva_porcentaje: number | null
+          factura_original_id: string | null
           fecha_emision: string | null
           fecha_pago: string | null
           fecha_vencimiento: string | null
@@ -41,9 +43,12 @@ export type Database = {
           porcentaje_pronto_pago: number | null
           tiene_retencion: boolean | null
           total_a_pagar: number
+          total_con_descuento: number | null
+          total_original: number | null
           updated_at: string
           user_id: string
           uso_pronto_pago: boolean | null
+          valor_nota_credito: number | null
         }
         Insert: {
           clasificacion?: string | null
@@ -52,10 +57,12 @@ export type Database = {
           descripcion?: string | null
           emisor_nit: string
           emisor_nombre: string
+          es_nota_credito?: boolean | null
           estado_mercancia?: string | null
           factura_cufe?: string | null
           factura_iva?: number | null
           factura_iva_porcentaje?: number | null
+          factura_original_id?: string | null
           fecha_emision?: string | null
           fecha_pago?: string | null
           fecha_vencimiento?: string | null
@@ -71,9 +78,12 @@ export type Database = {
           porcentaje_pronto_pago?: number | null
           tiene_retencion?: boolean | null
           total_a_pagar: number
+          total_con_descuento?: number | null
+          total_original?: number | null
           updated_at?: string
           user_id: string
           uso_pronto_pago?: boolean | null
+          valor_nota_credito?: number | null
         }
         Update: {
           clasificacion?: string | null
@@ -82,10 +92,12 @@ export type Database = {
           descripcion?: string | null
           emisor_nit?: string
           emisor_nombre?: string
+          es_nota_credito?: boolean | null
           estado_mercancia?: string | null
           factura_cufe?: string | null
           factura_iva?: number | null
           factura_iva_porcentaje?: number | null
+          factura_original_id?: string | null
           fecha_emision?: string | null
           fecha_pago?: string | null
           fecha_vencimiento?: string | null
@@ -101,9 +113,12 @@ export type Database = {
           porcentaje_pronto_pago?: number | null
           tiene_retencion?: boolean | null
           total_a_pagar?: number
+          total_con_descuento?: number | null
+          total_original?: number | null
           updated_at?: string
           user_id?: string
           uso_pronto_pago?: boolean | null
+          valor_nota_credito?: number | null
         }
         Relationships: []
       }

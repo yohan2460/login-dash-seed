@@ -4,7 +4,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Eye, Tag, CreditCard, Calendar, Clock, AlertTriangle, CheckCircle, Trash2, FileCheck, Download } from 'lucide-react';
+import { Eye, Tag, CreditCard, Calendar, Clock, AlertTriangle, CheckCircle, Trash2, FileCheck, Download, Minus } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
@@ -36,6 +36,10 @@ interface Factura {
   fecha_vencimiento?: string | null;
   fecha_pago?: string | null;
   user_id?: string;
+  es_nota_credito?: boolean;
+  factura_original_id?: string | null;
+  valor_nota_credito?: number | null;
+  total_con_descuento?: number | null;
 }
 
 interface FacturasTableProps {
@@ -48,9 +52,10 @@ interface FacturasTableProps {
   showSistematizarButton?: boolean;
   allowDelete?: boolean;
   showOriginalClassification?: boolean;
+  onNotaCreditoClick?: (factura: Factura) => void;
 }
 
-export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPaymentInfo = false, onDelete, onSistematizarClick, showSistematizarButton = false, allowDelete = true, showOriginalClassification = false }: FacturasTableProps) {
+export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPaymentInfo = false, onDelete, onSistematizarClick, showSistematizarButton = false, allowDelete = true, showOriginalClassification = false, onNotaCreditoClick }: FacturasTableProps) {
   const { toast } = useToast();
   const { user } = useAuth();
   const [selectedFacturas, setSelectedFacturas] = useState<string[]>([]);
@@ -64,6 +69,98 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
       style: 'currency',
       currency: 'COP'
     }).format(amount);
+  };
+
+  // Función para calcular el total real de una factura considerando notas de crédito
+  const calcularTotalReal = (factura: Factura) => {
+    // Para notas de crédito relacionadas, mostrar $0
+    if (factura.clasificacion === 'nota_credito' && factura.notas) {
+      try {
+        const notasData = JSON.parse(factura.notas);
+        if (notasData.tipo === 'nota_credito' && notasData.factura_original_id) {
+          return 0; // Nota de crédito relacionada muestra $0
+        }
+      } catch (error) {
+        // Si no se puede parsear, usar total original
+      }
+    }
+
+    // Para facturas normales, verificar si tiene notas de crédito aplicadas
+    if (factura.notas && factura.clasificacion !== 'nota_credito') {
+      try {
+        const notasData = JSON.parse(factura.notas);
+        console.log('📊 Procesando factura:', factura.numero_factura, 'notasData:', notasData);
+        
+        // Buscar si tiene notas de crédito aplicadas
+        if (notasData.notas_credito && notasData.notas_credito.length > 0) {
+          // Calcular el total de descuentos
+          const totalDescuentos = notasData.notas_credito.reduce((sum: number, nc: any) => {
+            return sum + (nc.valor_descuento || 0);
+          }, 0);
+          
+          console.log('💰 Total descuentos:', totalDescuentos, 'Total original:', factura.total_a_pagar);
+          
+          // Retornar el valor original menos los descuentos
+          const nuevoTotal = factura.total_a_pagar - totalDescuentos;
+          console.log('🔢 Nuevo total calculado:', nuevoTotal);
+          return nuevoTotal;
+        }
+        
+        // Si existe total_con_descuentos (método alternativo)
+        if (notasData.total_con_descuentos !== undefined) {
+          console.log('📈 Usando total_con_descuentos:', notasData.total_con_descuentos);
+          return notasData.total_con_descuentos;
+        }
+      } catch (error) {
+        console.error('Error parsing notas:', error);
+      }
+    }
+
+    return factura.total_a_pagar;
+  };
+
+  // Función para obtener el valor original de una nota de crédito
+  const getValorOriginalNotaCredito = (factura: Factura) => {
+    if (factura.clasificacion === 'nota_credito' && calcularTotalReal(factura) === 0) {
+      return factura.total_a_pagar; // Valor original de la nota de crédito
+    }
+    return null;
+  };
+
+  // Función para obtener información de notas de crédito aplicadas
+  const getNotasCreditoInfo = (factura: Factura) => {
+    if (!factura.notas) return null;
+    
+    try {
+      const notasData = JSON.parse(factura.notas);
+      if (notasData.notas_credito && notasData.notas_credito.length > 0) {
+        return notasData.notas_credito;
+      }
+    } catch (error) {
+      return null;
+    }
+    
+    return null;
+  };
+
+  // Función para obtener información de factura original (para notas de crédito)
+  const getFacturaOriginalInfo = (factura: Factura) => {
+    if (factura.clasificacion !== 'nota_credito' || !factura.notas) return null;
+    
+    try {
+      const notasData = JSON.parse(factura.notas);
+      if (notasData.tipo === 'nota_credito') {
+        return {
+          numero_factura_original: notasData.numero_factura_original,
+          emisor_original: notasData.emisor_original,
+          valor_descuento: notasData.valor_descuento
+        };
+      }
+    } catch (error) {
+      return null;
+    }
+    
+    return null;
   };
 
   const viewPDF = async (factura: Factura) => {
@@ -195,21 +292,36 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
     setSelectedFacturas([]);
   };
 
-  const getClassificationBadge = (clasificacion: string | null | undefined) => {
+  const getClassificationBadge = (clasificacion: string | null | undefined, esNotaCredito?: boolean) => {
+    // Verificar si es nota de crédito por clasificación (versión temporal)
+    if (esNotaCredito || clasificacion === 'nota_credito') {
+      return (
+        <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300">
+          <Minus className="w-3 h-3 mr-1" />
+          Nota Crédito
+        </span>
+      );
+    }
+    
     if (!clasificacion) return null;
     
     const styles = {
       mercancia: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300',
-      gasto: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300'
+      gasto: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300',
+      nota_credito: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300'
     };
 
     const labels = {
       mercancia: 'Mercancía',
-      gasto: 'Gasto'
+      gasto: 'Gasto',
+      nota_credito: 'Nota Crédito'
     };
+
+    const icon = clasificacion === 'nota_credito' ? <Minus className="w-3 h-3 mr-1" /> : null;
 
     return (
       <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${styles[clasificacion as keyof typeof styles]}`}>
+        {icon}
         {labels[clasificacion as keyof typeof labels]}
       </span>
     );
@@ -251,12 +363,11 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
 
       setDeletingFactura(facturaId);
 
-      // Verificar que la factura existe y pertenece al usuario
+      // Verificar que la factura existe (sin filtrar por user_id para permitir que admins eliminen facturas del sistema)
       const { data: checkData, error: checkError } = await supabase
         .from('facturas')
         .select('id, user_id')
         .eq('id', facturaId)
-        .eq('user_id', user.id)
         .single();
 
       if (checkError) {
@@ -264,7 +375,7 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
         if (checkError.code === 'PGRST116') {
           toast({
             title: "Error",
-            description: "La factura no existe o no tienes permisos para eliminarla",
+            description: "La factura no existe",
             variant: "destructive"
           });
           return;
@@ -273,10 +384,10 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
       }
 
       if (!checkData) {
-        console.error('❌ Factura no encontrada o no pertenece al usuario');
+        console.error('❌ Factura no encontrada');
         toast({
           title: "Error",
-          description: "No tienes permisos para eliminar esta factura",
+          description: "La factura no existe",
           variant: "destructive"
         });
         return;
@@ -284,12 +395,11 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
 
       console.log('✅ Factura encontrada:', checkData);
 
-      // Ejecutar eliminación con user_id check adicional
+      // Ejecutar eliminación - las políticas RLS se encargarán de verificar permisos
       const { data: deleteData, error: deleteError } = await supabase
         .from('facturas')
         .delete()
         .eq('id', facturaId)
-        .eq('user_id', user.id)
         .select();
 
       console.log('🔄 Respuesta DELETE:', { deleteData, deleteError });
@@ -423,7 +533,7 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
                       )}
                     </div>
                     <div className="flex flex-col items-end space-y-2">
-                      {getClassificationBadge(factura.clasificacion) || (
+                      {getClassificationBadge(factura.clasificacion, factura.es_nota_credito) || (
                         <Badge variant="outline" className="text-xs">Sin clasificar</Badge>
                       )}
                       {showOriginalClassification && factura.clasificacion_original && (
@@ -448,6 +558,28 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
                     <div className="text-sm">
                       <span className="font-medium">Descripción: </span>
                       {factura.descripcion}
+                    </div>
+                  )}
+
+                  {/* Información adicional de notas de crédito */}
+                  {factura.clasificacion === 'nota_credito' && getFacturaOriginalInfo(factura) && (
+                    <div className="text-sm p-2 bg-red-50 dark:bg-red-900/20 rounded border-l-2 border-red-500">
+                      <span className="font-medium text-red-700 dark:text-red-300">Nota de Crédito:</span>
+                      <div className="text-red-600 dark:text-red-400 text-xs">
+                        Descuento de {formatCurrency(getFacturaOriginalInfo(factura)?.valor_descuento || 0)} aplicado a la factura #{getFacturaOriginalInfo(factura)?.numero_factura_original}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Mostrar notas de crédito aplicadas */}
+                  {getNotasCreditoInfo(factura) && (
+                    <div className="text-sm p-2 bg-green-50 dark:bg-green-900/20 rounded border-l-2 border-green-500">
+                      <span className="font-medium text-green-700 dark:text-green-300">Notas de Crédito Aplicadas:</span>
+                      {getNotasCreditoInfo(factura)?.map((nota: any, index: number) => (
+                        <div key={index} className="text-green-600 dark:text-green-400 text-xs">
+                          • #{nota.numero_factura}: {formatCurrency(nota.valor_descuento)}
+                        </div>
+                      ))}
                     </div>
                   )}
 
@@ -496,9 +628,32 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
                    <div className="grid grid-cols-2 gap-4 text-sm">
                      <div>
                        <div className="text-muted-foreground">Total</div>
-                       <div className="font-bold text-lg">
-                         {factura.monto_pagado ? formatCurrency(factura.monto_pagado) : formatCurrency(factura.total_a_pagar)}
+                       <div className={`font-bold text-lg ${calcularTotalReal(factura) < factura.total_a_pagar && factura.clasificacion !== 'nota_credito' ? 'text-green-600' : ''}`}>
+                         {factura.monto_pagado ? formatCurrency(factura.monto_pagado) : formatCurrency(calcularTotalReal(factura))}
                        </div>
+                       {/* Mostrar valor original para notas de crédito relacionadas */}
+                       {getValorOriginalNotaCredito(factura) && (
+                         <div className="text-xs text-muted-foreground">
+                           ({formatCurrency(getValorOriginalNotaCredito(factura)!)})
+                         </div>
+                       )}
+                       {calcularTotalReal(factura) !== factura.total_a_pagar && factura.clasificacion !== 'nota_credito' && (
+                         <div className="text-xs text-muted-foreground line-through">
+                           Original: {formatCurrency(factura.total_a_pagar)}
+                         </div>
+                       )}
+                       {/* Mostrar información de nota de crédito si aplica */}
+                       {factura.clasificacion === 'nota_credito' && getFacturaOriginalInfo(factura) && (
+                         <div className="text-xs text-red-600 mt-1">
+                           Aplica a: #{getFacturaOriginalInfo(factura)?.numero_factura_original}
+                         </div>
+                       )}
+                       {/* Mostrar notas de crédito aplicadas */}
+                       {getNotasCreditoInfo(factura) && (
+                         <div className="text-xs text-green-600 mt-1">
+                           {getNotasCreditoInfo(factura)?.length} nota(s) de crédito aplicada(s)
+                         </div>
+                       )}
                      </div>
                     {factura.factura_iva && (
                       <div>
@@ -581,6 +736,19 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
                       >
                         <CreditCard className="w-4 h-4 mr-1" />
                         Pagar
+                      </Button>
+                    )}
+
+                    {/* Botón Nota de Crédito - Solo para facturas normales */}
+                    {(!factura.es_nota_credito && factura.clasificacion !== 'nota_credito') && onNotaCreditoClick && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => onNotaCreditoClick(factura)}
+                        className="flex-1 border-red-200 text-red-700 hover:bg-red-50"
+                      >
+                        <Minus className="w-4 h-4 mr-1" />
+                        Nota Crédito
                       </Button>
                     )}
                     
@@ -710,6 +878,17 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
                           {factura.descripcion}
                         </div>
                       )}
+                      {/* Información de asociaciones para notas de crédito */}
+                      {factura.clasificacion === 'nota_credito' && getFacturaOriginalInfo(factura) && (
+                        <div className="text-xs text-red-600 max-w-32 truncate" title={`Aplica a: ${getFacturaOriginalInfo(factura)?.numero_factura_original}`}>
+                          → #{getFacturaOriginalInfo(factura)?.numero_factura_original}
+                        </div>
+                      )}
+                      {getNotasCreditoInfo(factura) && (
+                        <div className="text-xs text-green-600 max-w-32 truncate">
+                          {getNotasCreditoInfo(factura)?.length} NC aplicadas
+                        </div>
+                      )}
                     </div>
                   </TableCell>
 
@@ -726,7 +905,7 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
                   {/* Estado y clasificación */}
                   <TableCell>
                     <div className="space-y-2">
-                      {getClassificationBadge(factura.clasificacion) || (
+                      {getClassificationBadge(factura.clasificacion, factura.es_nota_credito) || (
                         <Badge variant="outline" className="text-xs">
                           <AlertTriangle className="w-3 h-3 mr-1" />
                           Sin clasificar
@@ -846,9 +1025,35 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
 
                    {/* Total */}
                    <TableCell>
-                     <div className="font-bold text-lg">
-                       {factura.monto_pagado ? formatCurrency(factura.monto_pagado) : formatCurrency(factura.total_a_pagar)}
+                     <div className={`font-bold text-lg ${calcularTotalReal(factura) < factura.total_a_pagar && factura.clasificacion !== 'nota_credito' ? 'text-green-600' : ''}`}>
+                       {factura.monto_pagado ? formatCurrency(factura.monto_pagado) : formatCurrency(calcularTotalReal(factura))}
                      </div>
+                     {/* Mostrar valor original para notas de crédito relacionadas */}
+                     {getValorOriginalNotaCredito(factura) && (
+                       <div className="text-xs text-muted-foreground">
+                         ({formatCurrency(getValorOriginalNotaCredito(factura)!)})
+                       </div>
+                     )}
+                     {calcularTotalReal(factura) !== factura.total_a_pagar && factura.clasificacion !== 'nota_credito' && (
+                       <div className="text-xs text-muted-foreground line-through">
+                         Original: {formatCurrency(factura.total_a_pagar)}
+                       </div>
+                     )}
+                     
+                     {/* Información de nota de crédito si aplica */}
+                     {factura.clasificacion === 'nota_credito' && getFacturaOriginalInfo(factura) && (
+                       <div className="text-xs text-red-600 mt-1">
+                         Aplica a: #{getFacturaOriginalInfo(factura)?.numero_factura_original}
+                       </div>
+                     )}
+                     
+                     {/* Mostrar notas de crédito aplicadas */}
+                     {getNotasCreditoInfo(factura) && (
+                       <div className="text-xs text-green-600 mt-1">
+                         {getNotasCreditoInfo(factura)?.length} nota(s) de crédito
+                       </div>
+                     )}
+                     
                      {factura.metodo_pago && (
                        <div className="mt-1">
                          <Badge 
@@ -884,6 +1089,18 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
                           className="transition-all duration-200 hover:scale-105 text-green-700 hover:bg-green-50"
                         >
                           <CreditCard className="w-4 h-4" />
+                        </Button>
+                      )}
+
+                      {/* Botón Nota de Crédito - Solo para facturas normales */}
+                      {(!factura.es_nota_credito && factura.clasificacion !== 'nota_credito') && onNotaCreditoClick && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => onNotaCreditoClick(factura)}
+                          className="transition-all duration-200 hover:scale-105 text-red-700 hover:bg-red-50"
+                        >
+                          <Minus className="w-4 h-4" />
                         </Button>
                       )}
                       
