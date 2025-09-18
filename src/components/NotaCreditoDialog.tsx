@@ -24,6 +24,7 @@ interface Factura {
   es_nota_credito?: boolean;
   factura_original_id?: string | null;
   valor_nota_credito?: number | null;
+  notas?: string | null;
 }
 
 interface NotaCreditoDialogProps {

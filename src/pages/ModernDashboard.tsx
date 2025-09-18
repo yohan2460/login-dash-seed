@@ -53,6 +53,7 @@ interface Factura {
   factura_original_id?: string | null;
   valor_nota_credito?: number | null;
   total_con_descuento?: number | null;
+  notas?: string | null;
 }
 
 export default function ModernDashboard() {
