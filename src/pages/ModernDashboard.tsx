@@ -72,6 +72,7 @@ export default function ModernDashboard() {
   const [dateFrom, setDateFrom] = useState<Date | undefined>(undefined);
   const [dateTo, setDateTo] = useState<Date | undefined>(undefined);
   const [sistematizadaFilter, setSistematizadaFilter] = useState<string>('all'); // 'all', 'mercancia', 'gasto'
+  const [ordenFiltro, setOrdenFiltro] = useState<string>('mas-reciente'); // 'mas-reciente', 'mas-vieja', 'proxima-vencer'
 
   useEffect(() => {
     if (user) {
@@ -373,6 +374,37 @@ export default function ModernDashboard() {
     return sistematizadas;
   };
 
+  // Función para aplicar filtros de orden a las facturas
+  const getOrderedFacturas = (facturasToOrder: Factura[]) => {
+    let ordered = [...facturasToOrder];
+    
+    switch (ordenFiltro) {
+      case 'mas-vieja':
+        // Ordenar por fecha de emisión más vieja primero
+        ordered.sort((a, b) => {
+          if (!a.fecha_emision) return 1;
+          if (!b.fecha_emision) return -1;
+          return new Date(a.fecha_emision).getTime() - new Date(b.fecha_emision).getTime();
+        });
+        break;
+      case 'proxima-vencer':
+        // Ordenar por proximidad al vencimiento
+        ordered.sort((a, b) => {
+          if (!a.fecha_vencimiento) return 1;
+          if (!b.fecha_vencimiento) return -1;
+          return new Date(a.fecha_vencimiento).getTime() - new Date(b.fecha_vencimiento).getTime();
+        });
+        break;
+      case 'mas-reciente':
+      default:
+        // Ordenar por más reciente (fecha de creación)
+        ordered.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+        break;
+    }
+    
+    return ordered;
+  };
+
   if (loading) {
     return (
       <ModernLayout>
@@ -448,12 +480,28 @@ export default function ModernDashboard() {
               </div>
               
               <Card>
-                <CardHeader>
-                  <CardTitle>Todas las Facturas</CardTitle>
+                <CardHeader className="flex flex-row items-center justify-between">
+                  <div>
+                    <CardTitle>Todas las Facturas</CardTitle>
+                    <CardDescription>Gestiona y organiza todas las facturas del sistema</CardDescription>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Filter className="w-4 h-4 text-muted-foreground" />
+                    <Select value={ordenFiltro} onValueChange={setOrdenFiltro}>
+                      <SelectTrigger className="w-48">
+                        <SelectValue placeholder="Ordenar por..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="mas-reciente">Más reciente</SelectItem>
+                        <SelectItem value="mas-vieja">Más vieja (por emisión)</SelectItem>
+                        <SelectItem value="proxima-vencer">Próxima a vencer</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </CardHeader>
                 <CardContent>
                   <FacturasTable
-                    facturas={facturas}
+                    facturas={getOrderedFacturas(facturas)}
                     onClassifyClick={handleClassifyClick}
                     onPayClick={handlePayClick}
                     onDelete={handleDelete}
