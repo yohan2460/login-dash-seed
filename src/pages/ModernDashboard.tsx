@@ -248,7 +248,7 @@ export default function ModernDashboard() {
 
   const calcularTotalImpuestos = () => {
     return facturas
-      .filter(f => f.clasificacion === 'mercancia')
+      .filter(f => f.clasificacion === null)
       .reduce((total, factura) => total + (factura.factura_iva || 0), 0);
   };
 
