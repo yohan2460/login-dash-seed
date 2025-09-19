@@ -355,7 +355,8 @@ export default function Informes() {
       pagosTobias: filteredFacturas.filter(f => f.metodo_pago === 'Pago Tobías' && f.estado_mercancia === 'pagada').reduce((sum, f) => sum + (f.monto_pagado || 0), 0),
       pagosBancos: filteredFacturas.filter(f => f.metodo_pago === 'Pago Banco' && f.estado_mercancia === 'pagada').reduce((sum, f) => sum + (f.monto_pagado || 0), 0),
       pagosCaja: filteredFacturas.filter(f => f.metodo_pago === 'Pago Caja' && f.estado_mercancia === 'pagada').reduce((sum, f) => sum + (f.monto_pagado || 0), 0),
-      totalImpuestos: filteredFacturas.filter(f => f.estado_mercancia === 'pagada').reduce((sum, f) => sum + (f.factura_iva || 0), 0),
+      totalImpuestosPagados: filteredFacturas.filter(f => f.estado_mercancia === 'pagada').reduce((sum, f) => sum + (f.factura_iva || 0), 0),
+      totalImpuestos: filteredFacturas.reduce((sum, f) => sum + (f.factura_iva || 0), 0),
     };
   })();
 
@@ -383,7 +384,7 @@ export default function Informes() {
     >
       <div className="space-y-6">
         {/* Estadísticas Generales */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-7 gap-4">
           <Card>
             <CardContent className="p-4">
               <div className="flex items-center">
@@ -455,6 +456,18 @@ export default function Informes() {
               </div>
             </CardContent>
           </Card>
+
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center">
+                <Receipt className="h-6 w-6 text-teal-600" />
+                <div className="ml-3">
+                  <p className="text-xs font-medium text-muted-foreground">Total Impuestos</p>
+                  <p className="text-sm font-bold">{formatCurrency(stats.totalImpuestos)}</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
         </div>
 
         {/* Estadísticas de Métodos de Pago */}
@@ -501,7 +514,7 @@ export default function Informes() {
                 <Receipt className="h-6 w-6 text-red-600" />
                 <div className="ml-3">
                   <p className="text-xs font-medium text-muted-foreground">Total Impuestos Pagados</p>
-                  <p className="text-lg font-bold">{formatCurrency(stats.totalImpuestos)}</p>
+                  <p className="text-lg font-bold">{formatCurrency(stats.totalImpuestosPagados)}</p>
                 </div>
               </div>
             </CardContent>
