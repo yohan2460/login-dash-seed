@@ -252,6 +252,35 @@ export default function ModernDashboard() {
       .reduce((total, factura) => total + (factura.factura_iva || 0), 0);
   };
 
+  // Funciones específicas para la sección de Mercancía
+  const calcularTotalFacturasMercancia = () => {
+    return facturas
+      .filter(f => f.clasificacion === 'mercancia')
+      .reduce((total, factura) => total + factura.total_a_pagar, 0);
+  };
+
+  const calcularTotalImpuestosMercancia = () => {
+    return facturas
+      .filter(f => f.clasificacion === 'mercancia')
+      .reduce((total, factura) => total + (factura.factura_iva || 0), 0);
+  };
+
+  const calcularTotalRetencionesMercancia = () => {
+    return facturas
+      .filter(f => f.clasificacion === 'mercancia')
+      .reduce((total, factura) => total + (factura.monto_retencion || 0), 0);
+  };
+
+  const calcularTotalProntoPagoMercancia = () => {
+    return facturas
+      .filter(f => f.clasificacion === 'mercancia' && f.uso_pronto_pago)
+      .reduce((total, factura) => {
+        const montoBase = factura.total_a_pagar - (factura.factura_iva || 0);
+        const descuento = montoBase * ((factura.porcentaje_pronto_pago || 0) / 100);
+        return total + descuento;
+      }, 0);
+  };
+
   const getFilteredPaidFacturas = () => {
     let facturasPagadas = facturas.filter(f => f.clasificacion === 'mercancia' && f.estado_mercancia === 'pagada');
     
@@ -562,25 +591,25 @@ export default function ModernDashboard() {
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                 <ModernStatsCard
                   title="Total Impuestos"
-                  value={formatCurrency(calcularTotalImpuestos())}
+                  value={formatCurrency(calcularTotalImpuestosMercancia())}
                   icon={Receipt}
                   color="red"
                 />
                 <ModernStatsCard
                   title="Total Retenciones"
-                  value={formatCurrency(0)}
+                  value={formatCurrency(calcularTotalRetencionesMercancia())}
                   icon={Minus}
                   color="green"
                 />
                 <ModernStatsCard
                   title="Ahorro Pronto Pago"
-                  value={formatCurrency(0)}
+                  value={formatCurrency(calcularTotalProntoPagoMercancia())}
                   icon={Percent}
                   color="purple"
                 />
                 <ModernStatsCard
                   title="Total Facturas"
-                  value={formatCurrency(calcularTotalFacturas())}
+                  value={formatCurrency(calcularTotalFacturasMercancia())}
                   icon={Calculator}
                   color="blue"
                 />
