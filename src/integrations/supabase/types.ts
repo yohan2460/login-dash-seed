@@ -44,6 +44,7 @@ export type Database = {
           updated_at: string
           user_id: string
           uso_pronto_pago: boolean | null
+          valor_real_a_pagar: number | null
         }
         Insert: {
           clasificacion?: string | null
@@ -74,6 +75,7 @@ export type Database = {
           updated_at?: string
           user_id: string
           uso_pronto_pago?: boolean | null
+          valor_real_a_pagar?: number | null
         }
         Update: {
           clasificacion?: string | null
@@ -104,6 +106,7 @@ export type Database = {
           updated_at?: string
           user_id?: string
           uso_pronto_pago?: boolean | null
+          valor_real_a_pagar?: number | null
         }
         Relationships: []
       }

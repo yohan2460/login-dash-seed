@@ -6,6 +6,12 @@ import ModernDashboard from "./pages/ModernDashboard";
 import FacturasPorProveedor from "./pages/FacturasPorProveedor";
 import Informes from "./pages/Informes";
 import Usuarios from "./pages/Usuarios";
+import { SinClasificar } from "./pages/SinClasificar";
+import { MercanciaPendiente } from "./pages/MercanciaPendiente";
+import { MercanciaPagada } from "./pages/MercanciaPagada";
+import { GastosPendientes } from "./pages/GastosPendientes";
+import { GastosPagados } from "./pages/GastosPagados";
+import { Sistematizadas } from "./pages/Sistematizadas";
 import { DashboardProvider } from "./contexts/DashboardContext";
 
 function App() {
@@ -18,6 +24,15 @@ function App() {
         <Route path="/facturas-por-proveedor" element={<FacturasPorProveedor />} />
         <Route path="/informes" element={<Informes />} />
         <Route path="/usuarios" element={<Usuarios />} />
+
+        {/* Rutas por Estado de Facturas */}
+        <Route path="/sin-clasificar" element={<SinClasificar />} />
+        <Route path="/mercancia-pendiente" element={<MercanciaPendiente />} />
+        <Route path="/mercancia-pagada" element={<MercanciaPagada />} />
+        <Route path="/gastos-pendientes" element={<GastosPendientes />} />
+        <Route path="/gastos-pagados" element={<GastosPagados />} />
+        <Route path="/sistematizadas" element={<Sistematizadas />} />
+
         <Route path="*" element={<NotFound />} />
       </Routes>
     </DashboardProvider>

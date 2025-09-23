@@ -41,6 +41,7 @@ interface Factura {
   valor_nota_credito?: number | null;
   total_con_descuento?: number | null;
   notas?: string | null;
+  valor_real_a_pagar?: number | null;
 }
 
 interface FacturasTableProps {
@@ -54,9 +55,13 @@ interface FacturasTableProps {
   allowDelete?: boolean;
   showOriginalClassification?: boolean;
   onNotaCreditoClick?: (factura: Factura) => void;
+  refreshData?: () => void;
+  showActions?: boolean;
+  showClassifyButton?: boolean;
+  showValorRealAPagar?: boolean;
 }
 
-export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPaymentInfo = false, onDelete, onSistematizarClick, showSistematizarButton = false, allowDelete = true, showOriginalClassification = false, onNotaCreditoClick }: FacturasTableProps) {
+export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPaymentInfo = false, onDelete, onSistematizarClick, showSistematizarButton = false, allowDelete = true, showOriginalClassification = false, onNotaCreditoClick, refreshData, showActions = true, showClassifyButton = true, showValorRealAPagar = false }: FacturasTableProps) {
   const { toast } = useToast();
   const { user } = useAuth();
   const [selectedFacturas, setSelectedFacturas] = useState<string[]>([]);
@@ -75,6 +80,26 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
   const calcularMontoRetencionReal = (factura: Factura) => {
     if (!factura.monto_retencion || factura.monto_retencion === 0) return 0;
     return factura.total_a_pagar * (factura.monto_retencion / 100);
+  };
+
+  const calcularValorRealAPagar = (factura: Factura) => {
+    let valorReal = factura.total_a_pagar;
+
+    // Restar retención si aplica
+    if (factura.tiene_retencion && factura.monto_retencion) {
+      const retencion = calcularMontoRetencionReal(factura);
+      valorReal -= retencion;
+    }
+
+    // Restar descuento por pronto pago si está disponible
+    // (Mostramos el valor con descuento disponible, no solo cuando ya se aplicó)
+    if (factura.porcentaje_pronto_pago && factura.porcentaje_pronto_pago > 0) {
+      const montoBase = factura.total_a_pagar - (factura.factura_iva || 0);
+      const descuento = montoBase * (factura.porcentaje_pronto_pago / 100);
+      valorReal -= descuento;
+    }
+
+    return valorReal;
   };
 
   // Función para calcular el total real de una factura considerando notas de crédito
@@ -438,6 +463,12 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
         onDelete(facturaId);
       }
 
+      // Refrescar datos si se proporciona la función
+      if (refreshData) {
+        console.log('🔄 Refrescando datos...');
+        refreshData();
+      }
+
     } catch (error: any) {
       console.error('❌ ERROR CRÍTICO:', error);
       toast({
@@ -660,6 +691,15 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
                            {getNotasCreditoInfo(factura)?.length} nota(s) de crédito aplicada(s)
                          </div>
                        )}
+                       {/* Mostrar valor real a pagar si se requiere */}
+                       {showValorRealAPagar && (
+                         <div className="mt-2 p-2 bg-red-50 dark:bg-red-900/20 rounded border-l-2 border-red-500">
+                           <div className="text-xs text-red-700 dark:text-red-300 font-medium">Valor Real a Pagar:</div>
+                           <div className="text-sm font-bold text-red-600">
+                             {formatCurrency(calcularValorRealAPagar(factura))}
+                           </div>
+                         </div>
+                       )}
                      </div>
                     {factura.factura_iva && (
                       <div>
@@ -722,7 +762,9 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
                   )}
 
                   {/* Acciones */}
+                  {showActions && (
                   <div className="flex gap-2 pt-2 border-t">
+                    {showClassifyButton && (
                     <Button
                       variant="outline"
                       size="sm"
@@ -732,6 +774,7 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
                       <Tag className="w-4 h-4 mr-1" />
                       Clasificar
                     </Button>
+                    )}
                     
                     {((factura.clasificacion === 'mercancia' && factura.estado_mercancia !== 'pagada') || (factura.clasificacion === 'gasto' && (!factura.estado_mercancia || factura.estado_mercancia !== 'pagada'))) && onPayClick && (
                       <Button
@@ -829,6 +872,7 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
                     </AlertDialog>
                     )}
                   </div>
+                  )}
                 </div>
                </div>
               </CardContent>
@@ -858,7 +902,12 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
                   <TableHead className="font-semibold">Información de Pago</TableHead>
                 )}
                 <TableHead className="font-semibold">Total</TableHead>
+                {showValorRealAPagar && (
+                  <TableHead className="font-semibold">Valor Real a Pagar</TableHead>
+                )}
+                {showActions && (
                 <TableHead className="font-semibold text-center">Acciones</TableHead>
+                )}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -1075,9 +1124,23 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
                      )}
                    </TableCell>
 
+                  {/* Valor Real a Pagar */}
+                  {showValorRealAPagar && (
+                    <TableCell>
+                      <div className="font-bold text-lg text-red-600">
+                        {formatCurrency(calcularValorRealAPagar(factura))}
+                      </div>
+                      <div className="text-xs text-muted-foreground mt-1">
+                        Después de retenciones y descuentos
+                      </div>
+                    </TableCell>
+                  )}
+
                   {/* Acciones */}
+                  {showActions && (
                   <TableCell>
                     <div className="flex items-center justify-center space-x-2">
+                      {showClassifyButton && (
                       <Button
                         variant="ghost"
                         size="sm"
@@ -1086,6 +1149,7 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
                       >
                         <Tag className="w-4 h-4" />
                       </Button>
+                      )}
                       
                       {((factura.clasificacion === 'mercancia' && factura.estado_mercancia !== 'pagada') || (factura.clasificacion === 'gasto' && (!factura.estado_mercancia || factura.estado_mercancia !== 'pagada'))) && onPayClick && (
                         <Button
@@ -1181,6 +1245,7 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
                       )}
                     </div>
                   </TableCell>
+                  )}
                 </TableRow>
               ))}
             </TableBody>

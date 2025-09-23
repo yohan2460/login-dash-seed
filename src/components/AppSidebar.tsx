@@ -38,7 +38,7 @@ const navigationItems = [
   },
   {
     title: "Por Proveedor",
-    url: "/facturas-por-proveedor", 
+    url: "/facturas-por-proveedor",
     icon: Building2,
   },
   {
@@ -50,6 +50,51 @@ const navigationItems = [
     title: "Usuarios",
     url: "/usuarios",
     icon: Users,
+  },
+];
+
+const facturasByStateItems = [
+  {
+    title: "Sin Clasificar",
+    url: "/sin-clasificar",
+    icon: FileText,
+    color: "orange",
+    description: "Facturas pendientes de clasificación"
+  },
+  {
+    title: "Mercancía Pendiente",
+    url: "/mercancia-pendiente",
+    icon: Package,
+    color: "blue",
+    description: "Mercancía por pagar"
+  },
+  {
+    title: "Mercancía Pagada",
+    url: "/mercancia-pagada",
+    icon: Package,
+    color: "green",
+    description: "Mercancía ya pagada"
+  },
+  {
+    title: "Gastos Pendientes",
+    url: "/gastos-pendientes",
+    icon: CreditCard,
+    color: "red",
+    description: "Gastos por pagar"
+  },
+  {
+    title: "Gastos Pagados",
+    url: "/gastos-pagados",
+    icon: CreditCard,
+    color: "green",
+    description: "Gastos ya pagados"
+  },
+  {
+    title: "Sistematizadas",
+    url: "/sistematizadas",
+    icon: CheckCircle,
+    color: "purple",
+    description: "Facturas procesadas"
   },
 ];
 
@@ -163,12 +208,39 @@ export function AppSidebar() {
               {navigationItems.map((item) => (
                 <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton asChild className="h-12">
-                    <NavLink 
-                      to={item.url} 
+                    <NavLink
+                      to={item.url}
                       className={`flex items-center space-x-3 px-4 py-3 rounded-lg transition-all duration-200 ${getNavCls(isActive(item.url))}`}
                     >
                       <item.icon className="w-5 h-5 flex-shrink-0" />
                       <span className="font-medium">{item.title}</span>
+                    </NavLink>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        {/* FACTURAS POR ESTADO */}
+        <SidebarGroup className="mt-6">
+          <SidebarGroupLabel className="text-xs font-medium text-muted-foreground mb-4">
+            FACTURAS POR ESTADO
+          </SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu className="space-y-1">
+              {facturasByStateItems.map((item) => (
+                <SidebarMenuItem key={item.title}>
+                  <SidebarMenuButton asChild className="h-auto">
+                    <NavLink
+                      to={item.url}
+                      className={`flex items-center space-x-3 px-3 py-2 rounded-lg transition-all duration-200 ${getNavCls(isActive(item.url))}`}
+                    >
+                      <item.icon className="w-4 h-4 flex-shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-medium">{item.title}</div>
+                        <div className="text-xs text-muted-foreground">{item.description}</div>
+                      </div>
                     </NavLink>
                   </SidebarMenuButton>
                 </SidebarMenuItem>

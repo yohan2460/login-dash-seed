@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -27,6 +27,7 @@ interface Factura {
   numero_serie?: string | null;
   estado_mercancia?: string | null;
   fecha_pago?: string | null;
+  valor_real_a_pagar?: number | null;
 }
 
 interface PaymentMethodDialogProps {
@@ -42,6 +43,66 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
   const [usedProntoPago, setUsedProntoPago] = useState<string>('');
   const [amountPaid, setAmountPaid] = useState<string>('');
   const { toast } = useToast();
+
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('es-CO', {
+      style: 'currency',
+      currency: 'COP'
+    }).format(amount);
+  };
+
+  const calcularMontoRetencionReal = (factura: Factura) => {
+    if (!factura.tiene_retencion || !factura.monto_retencion) return 0;
+    return (factura.total_a_pagar * factura.monto_retencion) / 100;
+  };
+
+  // Calcular valor real disponible (con descuento pronto pago si está disponible)
+  const calcularValorRealDisponible = (factura: Factura) => {
+    let valorReal = factura.total_a_pagar;
+
+    // Restar retención si aplica
+    if (factura.tiene_retencion && factura.monto_retencion) {
+      const retencion = calcularMontoRetencionReal(factura);
+      valorReal -= retencion;
+    }
+
+    // Restar descuento por pronto pago si está disponible
+    if (factura.porcentaje_pronto_pago && factura.porcentaje_pronto_pago > 0) {
+      const montoBase = factura.total_a_pagar - (factura.factura_iva || 0);
+      const descuento = montoBase * (factura.porcentaje_pronto_pago / 100);
+      valorReal -= descuento;
+    }
+
+    return valorReal;
+  };
+
+  // Calcular valor final basado en la selección del usuario
+  const calcularValorFinal = (factura: Factura) => {
+    let valorReal = factura.total_a_pagar;
+
+    // Restar retención si aplica
+    if (factura.tiene_retencion && factura.monto_retencion) {
+      const retencion = calcularMontoRetencionReal(factura);
+      valorReal -= retencion;
+    }
+
+    // Restar descuento por pronto pago solo si el usuario seleccionó "yes"
+    if (factura.porcentaje_pronto_pago && usedProntoPago === 'yes') {
+      const montoBase = factura.total_a_pagar - (factura.factura_iva || 0);
+      const descuento = montoBase * (factura.porcentaje_pronto_pago / 100);
+      valorReal -= descuento;
+    }
+
+    return valorReal;
+  };
+
+  // Actualizar automáticamente el monto pagado cuando cambie el pronto pago
+  useEffect(() => {
+    if (factura) {
+      const valorReal = calcularValorFinal(factura);
+      setAmountPaid(new Intl.NumberFormat('es-CO').format(valorReal));
+    }
+  }, [usedProntoPago, factura]);
 
   const handlePayment = async () => {
     if (!factura || !selectedPaymentMethod || !usedProntoPago || !amountPaid) {
@@ -117,16 +178,32 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
           <div className="text-sm text-muted-foreground mb-4 p-3 bg-muted/50 rounded-lg">
             <p><strong>Factura:</strong> {factura.numero_factura}</p>
             <p><strong>Emisor:</strong> {factura.emisor_nombre}</p>
-            <p><strong>Total:</strong> {new Intl.NumberFormat('es-CO', {
-              style: 'currency',
-              currency: 'COP'
-            }).format(factura.total_a_pagar)}</p>
-            {factura.porcentaje_pronto_pago && (
-              <p className="text-green-600 font-medium">
-                <strong>Descuento pronto pago disponible:</strong> {factura.porcentaje_pronto_pago}% 
-                (${new Intl.NumberFormat('es-CO').format((factura.total_a_pagar * factura.porcentaje_pronto_pago) / 100)})
+            <p><strong>Total Original:</strong> {formatCurrency(factura.total_a_pagar)}</p>
+
+            {/* Mostrar retención si aplica */}
+            {factura.tiene_retencion && factura.monto_retencion && (
+              <p className="text-orange-600 text-xs">
+                <strong>Retención:</strong> -{formatCurrency(calcularMontoRetencionReal(factura))} ({factura.monto_retencion}%)
               </p>
             )}
+
+            {/* Mostrar descuento por pronto pago si está disponible */}
+            {factura.porcentaje_pronto_pago && (
+              <p className="text-green-600 text-xs">
+                <strong>Descuento pronto pago disponible:</strong> {factura.porcentaje_pronto_pago}%
+                (-{formatCurrency((factura.total_a_pagar - (factura.factura_iva || 0)) * factura.porcentaje_pronto_pago / 100)})
+              </p>
+            )}
+
+            {/* Valor real a pagar destacado */}
+            <div className="mt-3 p-2 bg-red-50 dark:bg-red-900/20 rounded border-l-2 border-red-500">
+              <p className="text-red-700 dark:text-red-300 font-bold text-base">
+                <strong>Valor Real a Pagar:</strong> {formatCurrency(calcularValorRealDisponible(factura))}
+              </p>
+              <p className="text-xs text-red-600 dark:text-red-400">
+                (Valor óptimo con retenciones{factura.porcentaje_pronto_pago ? ' y descuento por pronto pago aplicados' : ''})
+              </p>
+            </div>
           </div>
 
           {/* Método de pago */}
@@ -213,6 +290,31 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
                 </div>
               </div>
             )}
+
+            {/* Monto sugerido basado en valor real a pagar */}
+            <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+              <div className="text-sm font-medium text-blue-800 mb-1">
+                💡 Monto sugerido:
+              </div>
+              <div className="text-lg font-bold text-blue-700">
+                {formatCurrency(calcularValorFinal(factura))}
+              </div>
+              <div className="text-xs text-blue-600 mt-1">
+                Incluye retenciones{usedProntoPago === 'yes' && factura.porcentaje_pronto_pago ? ' y descuento por pronto pago' : ''}
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="mt-2 border-blue-300 text-blue-700 hover:bg-blue-50"
+                onClick={() => {
+                  const valorReal = calcularValorFinal(factura);
+                  setAmountPaid(new Intl.NumberFormat('es-CO').format(valorReal));
+                }}
+              >
+                Usar este monto
+              </Button>
+            </div>
           </div>
 
           {/* ¿Se aplicó pronto pago? */}
