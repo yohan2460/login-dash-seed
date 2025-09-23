@@ -92,10 +92,9 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
     }
 
     // Restar descuento por pronto pago si está disponible
-    // (Mostramos el valor con descuento disponible, no solo cuando ya se aplicó)
+    // El descuento se calcula sobre el total a pagar (incluyendo IVA)
     if (factura.porcentaje_pronto_pago && factura.porcentaje_pronto_pago > 0) {
-      const montoBase = factura.total_a_pagar - (factura.factura_iva || 0);
-      const descuento = montoBase * (factura.porcentaje_pronto_pago / 100);
+      const descuento = factura.total_a_pagar * (factura.porcentaje_pronto_pago / 100);
       valorReal -= descuento;
     }
 
