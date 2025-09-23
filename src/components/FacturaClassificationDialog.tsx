@@ -36,6 +36,8 @@ export function FacturaClassificationDialog({
   const [descripcion, setDescripcion] = useState<string>('');
   const [tieneRetencion, setTieneRetencion] = useState<boolean>(false);
   const [montoRetencion, setMontoRetencion] = useState<string>('');
+  const [customRetencion, setCustomRetencion] = useState<string>('');
+  const [isCustomRetencion, setIsCustomRetencion] = useState<boolean>(false);
   const [porcentajeProntoPago, setPorcentajeProntoPago] = useState<string>('');
   const [numeroSerie, setNumeroSerie] = useState<string>('');
   const [estadoMercancia, setEstadoMercancia] = useState<string>('');
@@ -51,7 +53,7 @@ export function FacturaClassificationDialog({
         clasificacion: classification,
         descripcion: descripcion || null,
         tiene_retencion: tieneRetencion,
-        monto_retencion: tieneRetencion && montoRetencion ? parseFloat(montoRetencion) : 0,
+        monto_retencion: tieneRetencion && (isCustomRetencion ? customRetencion : montoRetencion) ? parseFloat(isCustomRetencion ? customRetencion : montoRetencion) : 0,
         porcentaje_pronto_pago: porcentajeProntoPago && porcentajeProntoPago !== "0" ? parseFloat(porcentajeProntoPago) : null,
         numero_serie: classification === 'mercancia' ? numeroSerie || null : null,
         // Always set estado_mercancia to 'pendiente' for mercancia, null for gastos
@@ -77,6 +79,8 @@ export function FacturaClassificationDialog({
       setDescripcion('');
       setTieneRetencion(false);
       setMontoRetencion('');
+      setCustomRetencion('');
+      setIsCustomRetencion(false);
       setPorcentajeProntoPago('');
       setNumeroSerie('');
       setEstadoMercancia('');
@@ -170,18 +174,66 @@ export function FacturaClassificationDialog({
               </div>
 
               {tieneRetencion && (
-                <div>
-                  <Label htmlFor="monto_retencion" className="text-sm font-medium">
-                    Monto de retención
+                <div className="space-y-3">
+                  <Label className="text-sm font-medium">
+                    Porcentaje de retención
                   </Label>
-                  <Input
-                    id="monto_retencion"
-                    type="number"
-                    value={montoRetencion}
-                    onChange={(e) => setMontoRetencion(e.target.value)}
-                    placeholder="Ingrese el monto de la retención..."
-                    className="mt-1"
-                  />
+
+                  <Select
+                    value={isCustomRetencion ? 'custom' : montoRetencion}
+                    onValueChange={(value) => {
+                      if (value === 'custom') {
+                        setIsCustomRetencion(true);
+                        setMontoRetencion('');
+                      } else {
+                        setIsCustomRetencion(false);
+                        setMontoRetencion(value);
+                        setCustomRetencion('');
+                      }
+                    }}
+                  >
+                    <SelectTrigger className="bg-background border-input">
+                      <SelectValue placeholder="Seleccionar porcentaje de retención" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-background border-input shadow-lg z-50">
+                      <SelectItem value="1" className="hover:bg-accent">1%</SelectItem>
+                      <SelectItem value="1.5" className="hover:bg-accent">1.5%</SelectItem>
+                      <SelectItem value="2" className="hover:bg-accent">2%</SelectItem>
+                      <SelectItem value="2.5" className="hover:bg-accent">2.5%</SelectItem>
+                      <SelectItem value="3" className="hover:bg-accent">3%</SelectItem>
+                      <SelectItem value="3.5" className="hover:bg-accent">3.5%</SelectItem>
+                      <SelectItem value="4" className="hover:bg-accent">4%</SelectItem>
+                      <SelectItem value="custom" className="hover:bg-accent">Porcentaje personalizado</SelectItem>
+                    </SelectContent>
+                  </Select>
+
+                  {isCustomRetencion && (
+                    <div>
+                      <Label htmlFor="custom_retencion" className="text-sm font-medium">
+                        Porcentaje personalizado
+                      </Label>
+                      <Input
+                        id="custom_retencion"
+                        type="number"
+                        step="0.1"
+                        min="0"
+                        max="100"
+                        value={customRetencion}
+                        onChange={(e) => setCustomRetencion(e.target.value)}
+                        placeholder="Ej: 2.3"
+                        className="mt-1"
+                      />
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Ingrese el porcentaje (ej: 2.3 para 2.3%)
+                      </p>
+                    </div>
+                  )}
+
+                  {tieneRetencion && (isCustomRetencion ? customRetencion : montoRetencion) && factura && (
+                    <p className="text-sm text-muted-foreground">
+                      Retención estimada: ${((factura.total_a_pagar * parseFloat(isCustomRetencion ? customRetencion : montoRetencion)) / 100).toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </p>
+                  )}
                 </div>
               )}
 

@@ -72,6 +72,11 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
     }).format(amount);
   };
 
+  const calcularMontoRetencionReal = (factura: Factura) => {
+    if (!factura.monto_retencion || factura.monto_retencion === 0) return 0;
+    return factura.total_a_pagar * (factura.monto_retencion / 100);
+  };
+
   // Función para calcular el total real de una factura considerando notas de crédito
   const calcularTotalReal = (factura: Factura) => {
     // Para notas de crédito relacionadas, mostrar $0
@@ -235,7 +240,7 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
       'IVA': factura.factura_iva || 0,
       'Porcentaje IVA': factura.factura_iva_porcentaje || 0,
       'Tiene Retención': factura.tiene_retencion ? 'Sí' : 'No',
-      'Monto Retención': factura.monto_retencion || 0,
+      'Monto Retención': calcularMontoRetencionReal(factura),
       'Porcentaje Pronto Pago': factura.porcentaje_pronto_pago || 0,
       'Uso Pronto Pago': factura.uso_pronto_pago ? 'Sí' : 'No',
       'Estado Mercancía': factura.estado_mercancia || '',
@@ -679,7 +684,7 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
                         Retención
                         {factura.monto_retencion && (
                           <span className="ml-1">
-                            {formatCurrency(factura.monto_retencion)}
+                            {formatCurrency(calcularMontoRetencionReal(factura))}
                           </span>
                         )}
                       </Badge>
@@ -982,7 +987,7 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
                         <div>
                           <span className="text-xs text-muted-foreground">Retención: </span>
                           <span className="font-medium text-green-600">
-                            {factura.monto_retencion ? formatCurrency(factura.monto_retencion) : 'Sí'}
+                            {factura.monto_retencion ? formatCurrency(calcularMontoRetencionReal(factura)) : 'Sí'}
                           </span>
                         </div>
                       )}

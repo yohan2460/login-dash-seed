@@ -176,6 +176,11 @@ export default function ModernDashboard() {
     }).format(amount);
   };
 
+  const calcularMontoRetencionReal = (factura: Factura) => {
+    if (!factura.monto_retencion || factura.monto_retencion === 0) return 0;
+    return factura.total_a_pagar * (factura.monto_retencion / 100);
+  };
+
   const handleSistematizarClick = async (factura: Factura) => {
     try {
       const { error } = await supabase
@@ -267,8 +272,8 @@ export default function ModernDashboard() {
 
   const calcularTotalRetencionesMercancia = () => {
     return facturas
-      .filter(f => f.clasificacion === 'mercancia')
-      .reduce((total, factura) => total + (factura.monto_retencion || 0), 0);
+      .filter(f => f.clasificacion === 'mercancia' && f.estado_mercancia !== 'pagada')
+      .reduce((total, factura) => total + calcularMontoRetencionReal(factura), 0);
   };
 
   const calcularTotalProntoPagoMercancia = () => {
@@ -577,7 +582,6 @@ export default function ModernDashboard() {
                       onPayClick={handlePayClick}
                       onDelete={handleDelete}
                       onSistematizarClick={handleSistematizarClick}
-                      onNotaCreditoClick={handleNotaCreditoClick}
                     />
                   )}
                 </CardContent>
@@ -792,7 +796,7 @@ export default function ModernDashboard() {
                 />
                 <ModernStatsCard
                   title="Total Retenciones"
-                  value={formatCurrency(filterFacturasByGastoState(null).reduce((total, factura) => total + (factura.monto_retencion || 0), 0))}
+                  value={formatCurrency(filterFacturasByGastoState(null).reduce((total, factura) => total + calcularMontoRetencionReal(factura), 0))}
                   icon={Minus}
                   color="green"
                 />
