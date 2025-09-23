@@ -11,6 +11,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { Package, CreditCard, Lightbulb, Loader2 } from 'lucide-react';
 import { SerieNumberSuggestion } from '@/utils/serieNumberSuggestion';
+import { calcularValorRealAPagar } from '@/utils/calcularValorReal';
 
 interface Factura {
   id: string;
@@ -32,6 +33,7 @@ interface FacturaUpdateData {
   estado_mercancia: string | null;
   total_a_pagar: number;
   factura_iva: number;
+  valor_real_a_pagar: number;
 }
 
 interface FacturaClassificationDialogProps {
@@ -152,7 +154,17 @@ export function FacturaClassificationDialog({
       console.log(`📊 IVA original: ${formatCurrency(factura.factura_iva || 0)}`);
       console.log(`📊 IVA nuevo: ${formatCurrency(nuevoIVA)}`);
 
-      // Construir los datos para la tabla facturas (incluyendo IVA)
+      // Construir los datos para la tabla facturas (incluyendo IVA y valor real a pagar)
+      const facturaParaCalculo = {
+        total_a_pagar: nuevoTotal,
+        tiene_retencion: tieneRetencion,
+        monto_retencion: tieneRetencion && (isCustomRetencion ? customRetencion : montoRetencion) ? parseFloat(isCustomRetencion ? customRetencion : montoRetencion) : 0,
+        porcentaje_pronto_pago: porcentajeProntoPago && porcentajeProntoPago !== "0" ? parseFloat(porcentajeProntoPago) : null,
+        factura_iva: nuevoIVA
+      };
+
+      const valorRealAPagar = calcularValorRealAPagar(facturaParaCalculo);
+
       const updateData: FacturaUpdateData = {
         clasificacion: classification,
         descripcion: descripcion || null,
@@ -162,8 +174,11 @@ export function FacturaClassificationDialog({
         numero_serie: classification === 'mercancia' ? numeroSerie || null : null,
         estado_mercancia: classification === 'mercancia' ? 'pendiente' : null,
         total_a_pagar: nuevoTotal,
-        factura_iva: nuevoIVA
+        factura_iva: nuevoIVA,
+        valor_real_a_pagar: valorRealAPagar
       };
+
+      console.log(`📊 Valor real a pagar calculado: ${formatCurrency(valorRealAPagar)}`);
 
       console.log('📝 Datos a enviar a tabla facturas:', updateData);
 

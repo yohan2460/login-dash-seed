@@ -3,7 +3,8 @@ import { Navigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { FileText } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { FileText, Plus } from 'lucide-react';
 import { ModernStatsCard } from '@/components/ModernStatsCard';
 import { FacturasTable } from '@/components/FacturasTable';
 import { FacturaClassificationDialog } from '@/components/FacturaClassificationDialog';
@@ -89,11 +90,20 @@ export function SinClasificar() {
     <ModernLayout>
       <div className="space-y-8">
         {/* Header */}
-        <div className="flex flex-col space-y-2">
-          <h1 className="text-3xl font-bold tracking-tight">Facturas Sin Clasificar</h1>
-          <p className="text-muted-foreground">
-            Gestiona las facturas que aún no han sido clasificadas como mercancía o gasto.
-          </p>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between space-y-2 sm:space-y-0">
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight">Facturas Sin Clasificar</h1>
+            <p className="text-muted-foreground">
+              Gestiona las facturas que aún no han sido clasificadas como mercancía o gasto.
+            </p>
+          </div>
+          <Button
+            onClick={() => setIsManualDialogOpen(true)}
+            className="flex items-center gap-2"
+          >
+            <Plus className="w-4 h-4" />
+            Crear Factura Manual
+          </Button>
         </div>
 
         {/* Stats Cards */}

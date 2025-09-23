@@ -30,6 +30,7 @@ export type Database = {
           fecha_pago: string | null
           fecha_vencimiento: string | null
           id: string
+          ingresado_sistema: boolean | null
           metodo_pago: string | null
           monto_pagado: number | null
           monto_retencion: number | null
@@ -61,6 +62,7 @@ export type Database = {
           fecha_pago?: string | null
           fecha_vencimiento?: string | null
           id?: string
+          ingresado_sistema?: boolean | null
           metodo_pago?: string | null
           monto_pagado?: number | null
           monto_retencion?: number | null
@@ -92,6 +94,7 @@ export type Database = {
           fecha_pago?: string | null
           fecha_vencimiento?: string | null
           id?: string
+          ingresado_sistema?: boolean | null
           metodo_pago?: string | null
           monto_pagado?: number | null
           monto_retencion?: number | null

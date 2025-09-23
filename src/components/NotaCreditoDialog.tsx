@@ -11,6 +11,7 @@ import { Search, CreditCard, AlertTriangle, Calculator, FileText, Minus } from '
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
+import { calcularValorRealAPagar, calcularTotalReal } from '@/utils/calcularValorReal';
 
 interface Factura {
   id: string;
@@ -220,10 +221,31 @@ export function NotaCreditoDialog({ factura, isOpen, onClose, onNotaCreditoProce
       console.log('📝 Actualizando factura original con ID:', selectedFactura.id);
       console.log('📋 Datos a guardar:', JSON.stringify(notasOriginal, null, 2));
 
+      // Crear objeto de factura actualizado para calcular el nuevo valor real a pagar
+      const facturaActualizada = {
+        ...selectedFactura,
+        notas: JSON.stringify(notasOriginal)
+      };
+
+      // Primero calcular el total real (considerando notas de crédito)
+      const totalReal = calcularTotalReal(facturaActualizada);
+
+      // Luego calcular el valor real a pagar basado en el nuevo total
+      const facturaConNuevoTotal = {
+        ...facturaActualizada,
+        total_a_pagar: totalReal
+      };
+
+      const nuevoValorRealAPagar = calcularValorRealAPagar(facturaConNuevoTotal);
+
+      console.log('💰 Total real calculado:', formatCurrency(totalReal));
+      console.log('💰 Nuevo valor real a pagar calculado:', formatCurrency(nuevoValorRealAPagar));
+
       const { error: updateOriginalError } = await supabase
         .from('facturas')
         .update({
-          notas: JSON.stringify(notasOriginal)
+          notas: JSON.stringify(notasOriginal),
+          valor_real_a_pagar: nuevoValorRealAPagar
         })
         .eq('id', selectedFactura.id);
 

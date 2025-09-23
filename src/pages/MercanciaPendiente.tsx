@@ -3,7 +3,7 @@ import { Navigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Package, DollarSign, Calculator, TrendingUp } from 'lucide-react';
+import { Package, DollarSign, Calculator, TrendingUp, Archive, AlertTriangle } from 'lucide-react';
 import { ModernStatsCard } from '@/components/ModernStatsCard';
 import { FacturasTable } from '@/components/FacturasTable';
 import { PaymentMethodDialog } from '@/components/PaymentMethodDialog';
@@ -30,6 +30,7 @@ interface Factura {
   fecha_emision?: string | null;
   fecha_vencimiento?: string | null;
   valor_real_a_pagar?: number | null;
+  ingresado_sistema?: boolean | null;
 }
 
 export function MercanciaPendiente() {
@@ -50,7 +51,7 @@ export function MercanciaPendiente() {
     try {
       const { data, error } = await supabase
         .from('facturas')
-        .select('*')
+        .select('*, ingresado_sistema')
         .eq('clasificacion', 'mercancia')
         .neq('estado_mercancia', 'pagada')
         .order('created_at', { ascending: false });
@@ -67,6 +68,29 @@ export function MercanciaPendiente() {
   const handlePay = (factura: Factura) => {
     setSelectedFactura(factura);
     setIsPaymentDialogOpen(true);
+  };
+
+  const handleIngresoSistema = async (factura: Factura) => {
+    try {
+      const nuevoEstadoSistema = !factura.ingresado_sistema;
+
+      const { error } = await supabase
+        .from('facturas')
+        .update({ ingresado_sistema: nuevoEstadoSistema })
+        .eq('id', factura.id);
+
+      if (error) throw error;
+
+      // Actualizar localmente para feedback inmediato
+      setFacturas(prev => prev.map(f =>
+        f.id === factura.id
+          ? { ...f, ingresado_sistema: nuevoEstadoSistema }
+          : f
+      ));
+
+    } catch (error) {
+      console.error('Error updating ingresado_sistema:', error);
+    }
   };
 
   const formatCurrency = (amount: number) => {
@@ -126,6 +150,14 @@ export function MercanciaPendiente() {
     return facturas.reduce((total, factura) => total + calcularValorRealAPagar(factura), 0);
   };
 
+  const calcularFacturasPendientes = () => {
+    return facturas.filter(f => !f.ingresado_sistema).length;
+  };
+
+  const calcularFacturasIngresadas = () => {
+    return facturas.filter(f => f.ingresado_sistema === true).length;
+  };
+
   if (loading) {
     return <div>Cargando...</div>;
   }
@@ -146,7 +178,7 @@ export function MercanciaPendiente() {
         </div>
 
         {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-6 gap-6">
           <ModernStatsCard
             title="Total Facturas"
             value={facturas.length.toString()}
@@ -154,10 +186,16 @@ export function MercanciaPendiente() {
             color="blue"
           />
           <ModernStatsCard
-            title="Monto Total"
-            value={formatCurrency(calcularTotalFacturas())}
-            icon={DollarSign}
-            color="green"
+            title="Pendientes de Ingreso"
+            value={calcularFacturasPendientes().toString()}
+            icon={AlertTriangle}
+            color="orange"
+          />
+          <ModernStatsCard
+            title="Ingresadas al Sistema"
+            value={calcularFacturasIngresadas().toString()}
+            icon={Archive}
+            color="blue"
           />
           <ModernStatsCard
             title="Valor Real a Pagar"
@@ -169,13 +207,13 @@ export function MercanciaPendiente() {
             title="Total Retenciones"
             value={formatCurrency(calcularTotalRetenciones())}
             icon={Calculator}
-            color="orange"
+            color="purple"
           />
           <ModernStatsCard
             title="Ahorro Pronto Pago"
             value={formatCurrency(calcularTotalProntoPago())}
             icon={TrendingUp}
-            color="purple"
+            color="green"
           />
         </div>
 
@@ -208,6 +246,8 @@ export function MercanciaPendiente() {
                 refreshData={fetchFacturas}
                 showClassifyButton={false}
                 showValorRealAPagar={true}
+                showIngresoSistema={true}
+                onIngresoSistemaClick={handleIngresoSistema}
               />
             )}
           </CardContent>

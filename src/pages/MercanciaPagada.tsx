@@ -12,6 +12,7 @@ import { Package, DollarSign, CalendarIcon, Banknote } from 'lucide-react';
 import { ModernStatsCard } from '@/components/ModernStatsCard';
 import { FacturasTable } from '@/components/FacturasTable';
 import { ModernLayout } from '@/components/ModernLayout';
+import { useToast } from '@/hooks/use-toast';
 
 interface Factura {
   id: string;
@@ -29,10 +30,14 @@ interface Factura {
   fecha_emision?: string | null;
   factura_iva?: number | null;
   descripcion?: string | null;
+  ingresado_sistema?: boolean | null;
+  monto_pagado?: number | null;
+  valor_real_a_pagar?: number | null;
 }
 
 export function MercanciaPagada() {
   const { user, loading } = useAuth();
+  const { toast } = useToast();
   const [facturas, setFacturas] = useState<Factura[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [dateFrom, setDateFrom] = useState<Date | undefined>(undefined);
@@ -49,7 +54,7 @@ export function MercanciaPagada() {
     try {
       const { data, error } = await supabase
         .from('facturas')
-        .select('*')
+        .select('*, ingresado_sistema, valor_real_a_pagar')
         .eq('clasificacion', 'mercancia')
         .eq('estado_mercancia', 'pagada')
         .order('created_at', { ascending: false });
@@ -63,11 +68,22 @@ export function MercanciaPagada() {
     }
   };
 
-  const formatCurrency = (amount: number) => {
+  const formatCurrency = (amount: number | null | undefined) => {
+    if (amount == null || isNaN(Number(amount))) {
+      return new Intl.NumberFormat('es-CO', {
+        style: 'currency',
+        currency: 'COP',
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0
+      }).format(0);
+    }
+    const numericAmount = Math.round(Number(amount));
     return new Intl.NumberFormat('es-CO', {
       style: 'currency',
-      currency: 'COP'
-    }).format(amount);
+      currency: 'COP',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0
+    }).format(numericAmount);
   };
 
   const getFilteredFacturas = () => {
@@ -91,25 +107,38 @@ export function MercanciaPagada() {
   const calcularTotalPagadoBancos = () => {
     return getFilteredFacturas()
       .filter(f => f.metodo_pago === 'Pago Banco')
-      .reduce((total, factura) => total + factura.total_a_pagar, 0);
+      .reduce((total, factura) => {
+        const monto = factura.valor_real_a_pagar ?? factura.total_a_pagar ?? 0;
+        return total + Math.round(Number(monto));
+      }, 0);
   };
 
   const calcularTotalPagadoTobias = () => {
     return getFilteredFacturas()
       .filter(f => f.metodo_pago === 'Pago Tobías')
-      .reduce((total, factura) => total + factura.total_a_pagar, 0);
+      .reduce((total, factura) => {
+        const monto = factura.valor_real_a_pagar ?? factura.total_a_pagar ?? 0;
+        return total + Math.round(Number(monto));
+      }, 0);
   };
 
   const calcularTotalPagadoCaja = () => {
     return getFilteredFacturas()
       .filter(f => f.metodo_pago === 'Caja')
-      .reduce((total, factura) => total + factura.total_a_pagar, 0);
+      .reduce((total, factura) => {
+        const monto = factura.valor_real_a_pagar ?? factura.total_a_pagar ?? 0;
+        return total + Math.round(Number(monto));
+      }, 0);
   };
 
   const calcularTotalGeneral = () => {
     return getFilteredFacturas()
-      .reduce((total, factura) => total + factura.total_a_pagar, 0);
+      .reduce((total, factura) => {
+        const monto = factura.valor_real_a_pagar ?? factura.total_a_pagar ?? 0;
+        return total + Math.round(Number(monto));
+      }, 0);
   };
+
 
   if (loading) {
     return <div>Cargando...</div>;
@@ -282,6 +311,7 @@ export function MercanciaPagada() {
                 refreshData={fetchFacturas}
                 showActions={false}
                 showClassifyButton={false}
+                showIngresoSistema={true}
               />
             )}
           </CardContent>

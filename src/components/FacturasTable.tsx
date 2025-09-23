@@ -4,12 +4,13 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Eye, Tag, CreditCard, Calendar, Clock, AlertTriangle, CheckCircle, Trash2, FileCheck, Download, Minus } from 'lucide-react';
+import { Eye, Tag, CreditCard, Calendar, Clock, AlertTriangle, CheckCircle, Trash2, FileCheck, Download, Minus, Archive } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 import * as XLSX from 'xlsx';
 import { useState } from 'react';
+import { calcularValorRealAPagar, calcularMontoRetencionReal, calcularTotalReal } from '@/utils/calcularValorReal';
 
 interface Factura {
   id: string;
@@ -42,6 +43,7 @@ interface Factura {
   total_con_descuento?: number | null;
   notas?: string | null;
   valor_real_a_pagar?: number | null;
+  ingresado_sistema?: boolean | null;
 }
 
 interface FacturasTableProps {
@@ -59,9 +61,11 @@ interface FacturasTableProps {
   showActions?: boolean;
   showClassifyButton?: boolean;
   showValorRealAPagar?: boolean;
+  showIngresoSistema?: boolean;
+  onIngresoSistemaClick?: (factura: Factura) => void;
 }
 
-export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPaymentInfo = false, onDelete, onSistematizarClick, showSistematizarButton = false, allowDelete = true, showOriginalClassification = false, onNotaCreditoClick, refreshData, showActions = true, showClassifyButton = true, showValorRealAPagar = false }: FacturasTableProps) {
+export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPaymentInfo = false, onDelete, onSistematizarClick, showSistematizarButton = false, allowDelete = true, showOriginalClassification = false, onNotaCreditoClick, refreshData, showActions = true, showClassifyButton = true, showValorRealAPagar = false, showIngresoSistema = false, onIngresoSistemaClick }: FacturasTableProps) {
   const { toast } = useToast();
   const { user } = useAuth();
   const [selectedFacturas, setSelectedFacturas] = useState<string[]>([]);
@@ -77,77 +81,7 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
     }).format(amount);
   };
 
-  const calcularMontoRetencionReal = (factura: Factura) => {
-    if (!factura.monto_retencion || factura.monto_retencion === 0) return 0;
-    return factura.total_a_pagar * (factura.monto_retencion / 100);
-  };
 
-  const calcularValorRealAPagar = (factura: Factura) => {
-    let valorReal = factura.total_a_pagar;
-
-    // Restar retención si aplica
-    if (factura.tiene_retencion && factura.monto_retencion) {
-      const retencion = calcularMontoRetencionReal(factura);
-      valorReal -= retencion;
-    }
-
-    // Restar descuento por pronto pago si está disponible
-    // El descuento se calcula sobre el total a pagar (incluyendo IVA)
-    if (factura.porcentaje_pronto_pago && factura.porcentaje_pronto_pago > 0) {
-      const descuento = factura.total_a_pagar * (factura.porcentaje_pronto_pago / 100);
-      valorReal -= descuento;
-    }
-
-    return valorReal;
-  };
-
-  // Función para calcular el total real de una factura considerando notas de crédito
-  const calcularTotalReal = (factura: Factura) => {
-    // Para notas de crédito relacionadas, mostrar $0
-    if (factura.clasificacion === 'nota_credito' && factura.notas) {
-      try {
-        const notasData = JSON.parse(factura.notas);
-        if (notasData.tipo === 'nota_credito' && notasData.factura_original_id) {
-          return 0; // Nota de crédito relacionada muestra $0
-        }
-      } catch (error) {
-        // Si no se puede parsear, usar total original
-      }
-    }
-
-    // Para facturas normales, verificar si tiene notas de crédito aplicadas
-    if (factura.notas && factura.clasificacion !== 'nota_credito') {
-      try {
-        const notasData = JSON.parse(factura.notas);
-        console.log('📊 Procesando factura:', factura.numero_factura, 'notasData:', notasData);
-        
-        // Buscar si tiene notas de crédito aplicadas
-        if (notasData.notas_credito && notasData.notas_credito.length > 0) {
-          // Calcular el total de descuentos
-          const totalDescuentos = notasData.notas_credito.reduce((sum: number, nc: any) => {
-            return sum + (nc.valor_descuento || 0);
-          }, 0);
-          
-          console.log('💰 Total descuentos:', totalDescuentos, 'Total original:', factura.total_a_pagar);
-          
-          // Retornar el valor original menos los descuentos
-          const nuevoTotal = factura.total_a_pagar - totalDescuentos;
-          console.log('🔢 Nuevo total calculado:', nuevoTotal);
-          return nuevoTotal;
-        }
-        
-        // Si existe total_con_descuentos (método alternativo)
-        if (notasData.total_con_descuentos !== undefined) {
-          console.log('📈 Usando total_con_descuentos:', notasData.total_con_descuentos);
-          return notasData.total_con_descuentos;
-        }
-      } catch (error) {
-        console.error('Error parsing notas:', error);
-      }
-    }
-
-    return factura.total_a_pagar;
-  };
 
   // Función para obtener el valor original de una nota de crédito
   const getValorOriginalNotaCredito = (factura: Factura) => {
@@ -320,6 +254,24 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
 
     // Limpiar selección
     setSelectedFacturas([]);
+  };
+
+  const getEstadoSistemaBadge = (ingresadoSistema: boolean | null | undefined) => {
+    if (ingresadoSistema === true) {
+      return (
+        <Badge variant="secondary" className="bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300">
+          <Archive className="w-3 h-3 mr-1" />
+          Ingresado al Sistema
+        </Badge>
+      );
+    }
+
+    return (
+      <Badge variant="outline" className="text-orange-600 border-orange-300">
+        <AlertTriangle className="w-3 h-3 mr-1" />
+        Pendiente de Ingreso
+      </Badge>
+    );
   };
 
   const getClassificationBadge = (clasificacion: string | null | undefined, esNotaCredito?: boolean) => {
@@ -581,6 +533,26 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
                     </div>
                   </div>
 
+                  {/* Estado del Sistema */}
+                  {showIngresoSistema && (
+                    <div className="flex items-center justify-between">
+                      {onIngresoSistemaClick ? (
+                        <div className="flex items-center space-x-2">
+                          <Checkbox
+                            checked={factura.ingresado_sistema === true}
+                            onCheckedChange={() => {
+                              onIngresoSistemaClick(factura);
+                            }}
+                          />
+                          <span className="text-sm font-medium">Ingresado al Sistema</span>
+                        </div>
+                      ) : (
+                        <span className="text-sm font-medium">Estado del Sistema</span>
+                      )}
+                      {getEstadoSistemaBadge(factura.ingresado_sistema)}
+                    </div>
+                  )}
+
                   {/* Información del emisor */}
                   <div className="space-y-1">
                     <div className="font-medium">{factura.emisor_nombre}</div>
@@ -665,7 +637,7 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
                      <div>
                        <div className="text-muted-foreground">Total</div>
                        <div className={`font-bold text-lg ${calcularTotalReal(factura) < factura.total_a_pagar && factura.clasificacion !== 'nota_credito' ? 'text-green-600' : ''}`}>
-                         {factura.monto_pagado ? formatCurrency(factura.monto_pagado) : formatCurrency(calcularTotalReal(factura))}
+                         {factura.valor_real_a_pagar ? formatCurrency(factura.valor_real_a_pagar) : (factura.monto_pagado ? formatCurrency(factura.monto_pagado) : formatCurrency(calcularTotalReal(factura)))}
                        </div>
                        {/* Mostrar valor original para notas de crédito relacionadas */}
                        {getValorOriginalNotaCredito(factura) && (
@@ -748,11 +720,11 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
                             {factura.metodo_pago}
                           </Badge>
                         </div>
-                        {factura.monto_pagado && (
+                        {(factura.valor_real_a_pagar || factura.monto_pagado) && (
                           <div>
                             <div className="text-muted-foreground">Monto pagado</div>
                             <div className="font-bold text-green-600">
-                              {formatCurrency(factura.monto_pagado)}
+                              {formatCurrency(factura.valor_real_a_pagar || factura.monto_pagado)}
                             </div>
                           </div>
                         )}
@@ -903,6 +875,9 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
                 <TableHead className="font-semibold">Total</TableHead>
                 {showValorRealAPagar && (
                   <TableHead className="font-semibold">Valor Real a Pagar</TableHead>
+                )}
+                {showIngresoSistema && (
+                  <TableHead className="font-semibold text-center">Estado Sistema</TableHead>
                 )}
                 {showActions && (
                 <TableHead className="font-semibold text-center">Acciones</TableHead>
@@ -1060,14 +1035,14 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
                               {factura.metodo_pago}
                             </Badge>
                           )}
-                          {factura.monto_pagado && (
+                          {(factura.valor_real_a_pagar || factura.monto_pagado) && (
                             <div>
                               <div className="text-green-600 font-bold">
-                                {formatCurrency(factura.monto_pagado)}
+                                {formatCurrency(factura.valor_real_a_pagar || factura.monto_pagado)}
                               </div>
                               {factura.uso_pronto_pago && factura.porcentaje_pronto_pago && (
                                 <div className="text-xs text-green-600">
-                                  Ahorro: {formatCurrency(factura.total_a_pagar - factura.monto_pagado)}
+                                  Ahorro: {formatCurrency(factura.total_a_pagar - (factura.valor_real_a_pagar || factura.monto_pagado || 0))}
                                 </div>
                               )}
                             </div>
@@ -1080,7 +1055,7 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
                    {/* Total */}
                    <TableCell>
                      <div className={`font-bold text-lg ${calcularTotalReal(factura) < factura.total_a_pagar && factura.clasificacion !== 'nota_credito' ? 'text-green-600' : ''}`}>
-                       {factura.monto_pagado ? formatCurrency(factura.monto_pagado) : formatCurrency(calcularTotalReal(factura))}
+                       {factura.valor_real_a_pagar ? formatCurrency(factura.valor_real_a_pagar) : (factura.monto_pagado ? formatCurrency(factura.monto_pagado) : formatCurrency(calcularTotalReal(factura)))}
                      </div>
                      {/* Mostrar valor original para notas de crédito relacionadas */}
                      {getValorOriginalNotaCredito(factura) && (
@@ -1131,6 +1106,23 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
                       </div>
                       <div className="text-xs text-muted-foreground mt-1">
                         Después de retenciones y descuentos
+                      </div>
+                    </TableCell>
+                  )}
+
+                  {/* Estado Sistema */}
+                  {showIngresoSistema && (
+                    <TableCell className="text-center">
+                      <div className="flex flex-col items-center space-y-2">
+                        {onIngresoSistemaClick && (
+                          <Checkbox
+                            checked={factura.ingresado_sistema === true}
+                            onCheckedChange={() => {
+                              onIngresoSistemaClick(factura);
+                            }}
+                          />
+                        )}
+                        {getEstadoSistemaBadge(factura.ingresado_sistema)}
                       </div>
                     </TableCell>
                   )}

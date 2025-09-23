@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { CreditCard, Building2, Percent, Banknote } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { calcularValorRealAPagar, calcularMontoRetencionReal } from '@/utils/calcularValorReal';
 
 interface Factura {
   id: string;
@@ -51,55 +52,48 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
     }).format(amount);
   };
 
-  const calcularMontoRetencionReal = (factura: Factura) => {
-    if (!factura.tiene_retencion || !factura.monto_retencion) return 0;
-    return (factura.total_a_pagar * factura.monto_retencion) / 100;
+
+  // Obtener valor real disponible (prioritariamente de BD, sino calculado)
+  const obtenerValorRealDisponible = (factura: Factura) => {
+    // Si ya tenemos el valor_real_a_pagar en la BD, usarlo
+    if (factura.valor_real_a_pagar !== null && factura.valor_real_a_pagar !== undefined) {
+      return factura.valor_real_a_pagar;
+    }
+
+    // Si no, calcularlo dinámicamente
+    return calcularValorRealAPagar(factura);
   };
 
-  // Calcular valor real disponible (con descuento pronto pago si está disponible)
-  const calcularValorRealDisponible = (factura: Factura) => {
-    let valorReal = factura.total_a_pagar;
-
-    // Restar retención si aplica
-    if (factura.tiene_retencion && factura.monto_retencion) {
-      const retencion = calcularMontoRetencionReal(factura);
-      valorReal -= retencion;
+  // Obtener valor final basado en la selección del usuario
+  const obtenerValorFinal = (factura: Factura) => {
+    // Si el usuario no ha seleccionado aún, usar el valor de la BD
+    if (!usedProntoPago) {
+      return obtenerValorRealDisponible(factura);
     }
 
-    // Restar descuento por pronto pago si está disponible
-    if (factura.porcentaje_pronto_pago && factura.porcentaje_pronto_pago > 0) {
-      const montoBase = factura.total_a_pagar - (factura.factura_iva || 0);
-      const descuento = montoBase * (factura.porcentaje_pronto_pago / 100);
-      valorReal -= descuento;
+    // Si el usuario seleccionó "Sí, con descuento", usar el valor real a pagar (que ya incluye descuento)
+    if (usedProntoPago === 'yes') {
+      return obtenerValorRealDisponible(factura);
     }
 
-    return valorReal;
-  };
+    // Si el usuario seleccionó "No, sin descuento", recalcular SIN el descuento de pronto pago
+    if (usedProntoPago === 'no') {
+      // Calcular dinámicamente sin el descuento de pronto pago
+      const facturaParaCalculo = {
+        ...factura,
+        porcentaje_pronto_pago: null // Anular el pronto pago
+      };
 
-  // Calcular valor final basado en la selección del usuario
-  const calcularValorFinal = (factura: Factura) => {
-    let valorReal = factura.total_a_pagar;
-
-    // Restar retención si aplica
-    if (factura.tiene_retencion && factura.monto_retencion) {
-      const retencion = calcularMontoRetencionReal(factura);
-      valorReal -= retencion;
+      return calcularValorRealAPagar(facturaParaCalculo);
     }
 
-    // Restar descuento por pronto pago solo si el usuario seleccionó "yes"
-    if (factura.porcentaje_pronto_pago && usedProntoPago === 'yes') {
-      const montoBase = factura.total_a_pagar - (factura.factura_iva || 0);
-      const descuento = montoBase * (factura.porcentaje_pronto_pago / 100);
-      valorReal -= descuento;
-    }
-
-    return valorReal;
+    return obtenerValorRealDisponible(factura);
   };
 
   // Actualizar automáticamente el monto pagado cuando cambie el pronto pago
   useEffect(() => {
     if (factura) {
-      const valorReal = calcularValorFinal(factura);
+      const valorReal = obtenerValorFinal(factura);
       setAmountPaid(new Intl.NumberFormat('es-CO').format(valorReal));
     }
   }, [usedProntoPago, factura]);
@@ -127,14 +121,21 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
 
     setProcessing(true);
     try {
+      // Calcular el valor real a pagar basado en la decisión final del usuario
+      const facturaParaCalculo = {
+        ...factura,
+        porcentaje_pronto_pago: usedProntoPago === 'yes' ? factura.porcentaje_pronto_pago : null
+      };
+      const valorRealAPagar = calcularValorRealAPagar(facturaParaCalculo);
+
       const { error } = await supabase
         .from('facturas')
-        .update({ 
+        .update({
           estado_mercancia: 'pagada',
           metodo_pago: selectedPaymentMethod,
           uso_pronto_pago: usedProntoPago === 'yes',
-          monto_pagado: amountNumber,
-          fecha_pago: new Date().toISOString()
+          fecha_pago: new Date().toISOString(),
+          valor_real_a_pagar: valorRealAPagar
         })
         .eq('id', factura.id);
 
@@ -191,14 +192,14 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
             {factura.porcentaje_pronto_pago && (
               <p className="text-green-600 text-xs">
                 <strong>Descuento pronto pago disponible:</strong> {factura.porcentaje_pronto_pago}%
-                (-{formatCurrency((factura.total_a_pagar - (factura.factura_iva || 0)) * factura.porcentaje_pronto_pago / 100)})
+                (-{formatCurrency(factura.total_a_pagar * factura.porcentaje_pronto_pago / 100)})
               </p>
             )}
 
             {/* Valor real a pagar destacado */}
             <div className="mt-3 p-2 bg-red-50 dark:bg-red-900/20 rounded border-l-2 border-red-500">
               <p className="text-red-700 dark:text-red-300 font-bold text-base">
-                <strong>Valor Real a Pagar:</strong> {formatCurrency(calcularValorRealDisponible(factura))}
+                <strong>Valor Real a Pagar:</strong> {formatCurrency(obtenerValorRealDisponible(factura))}
               </p>
               <p className="text-xs text-red-600 dark:text-red-400">
                 (Valor óptimo con retenciones{factura.porcentaje_pronto_pago ? ' y descuento por pronto pago aplicados' : ''})
@@ -271,36 +272,24 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
                 setAmountPaid(value);
               }}
             />
-            {usedProntoPago === 'yes' && factura.porcentaje_pronto_pago && (
-              <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
-                <div className="text-sm font-medium text-green-800 mb-1">
-                  💡 Monto sugerido con descuento:
-                </div>
-                <div className="text-lg font-bold text-green-700">
-                  {new Intl.NumberFormat('es-CO', {
-                    style: 'currency',
-                    currency: 'COP'
-                  }).format(factura.total_a_pagar - (factura.total_a_pagar * factura.porcentaje_pronto_pago / 100))}
-                </div>
-                <div className="text-xs text-green-600 mt-1">
-                  Ahorro: {new Intl.NumberFormat('es-CO', {
-                    style: 'currency',
-                    currency: 'COP'
-                  }).format(factura.total_a_pagar * factura.porcentaje_pronto_pago / 100)} ({factura.porcentaje_pronto_pago}%)
-                </div>
-              </div>
-            )}
 
             {/* Monto sugerido basado en valor real a pagar */}
             <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
               <div className="text-sm font-medium text-blue-800 mb-1">
-                💡 Monto sugerido:
+                💡 Monto sugerido (Valor Real a Pagar):
               </div>
               <div className="text-lg font-bold text-blue-700">
-                {formatCurrency(calcularValorFinal(factura))}
+                {formatCurrency(obtenerValorFinal(factura))}
               </div>
               <div className="text-xs text-blue-600 mt-1">
-                Incluye retenciones{usedProntoPago === 'yes' && factura.porcentaje_pronto_pago ? ' y descuento por pronto pago' : ''}
+                {usedProntoPago === 'no'
+                  ? 'Recalculado sin descuento de pronto pago'
+                  : usedProntoPago === 'yes'
+                    ? 'Con descuento de pronto pago aplicado'
+                    : factura.valor_real_a_pagar
+                      ? 'Valor calculado desde la base de datos'
+                      : 'Valor calculado dinámicamente'
+                }
               </div>
               <Button
                 type="button"
@@ -308,7 +297,7 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
                 size="sm"
                 className="mt-2 border-blue-300 text-blue-700 hover:bg-blue-50"
                 onClick={() => {
-                  const valorReal = calcularValorFinal(factura);
+                  const valorReal = obtenerValorFinal(factura);
                   setAmountPaid(new Intl.NumberFormat('es-CO').format(valorReal));
                 }}
               >
