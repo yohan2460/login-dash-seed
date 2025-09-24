@@ -31,7 +31,7 @@ $$;
 -- Recrear los triggers
 CREATE TRIGGER update_profiles_updated_at
   BEFORE UPDATE ON public.profiles
-  FOR EACH ROW
+  FOR EACH        
   EXECUTE FUNCTION public.update_updated_at_column();
 
 CREATE TRIGGER on_auth_user_created

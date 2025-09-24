@@ -242,16 +242,7 @@ export function GastosPagados() {
         </div>
 
         {/* Summary Card */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-2xl">Total General Pagado</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-3xl font-bold text-green-600">
-              {formatCurrency(calcularTotalGeneral())}
-            </div>
-          </CardContent>
-        </Card>
+     
 
         {/* Table */}
         <Card>

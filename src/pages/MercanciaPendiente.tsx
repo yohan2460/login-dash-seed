@@ -11,6 +11,7 @@ import { ModernStatsCard } from '@/components/ModernStatsCard';
 import { FacturasTable } from '@/components/FacturasTable';
 import { PaymentMethodDialog } from '@/components/PaymentMethodDialog';
 import { EditFacturaDialog } from '@/components/EditFacturaDialog';
+import { MultiplePaymentDialog } from '@/components/MultiplePaymentDialog';
 import { ModernLayout } from '@/components/ModernLayout';
 
 interface Factura {
@@ -47,6 +48,8 @@ export function MercanciaPendiente() {
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [sortByDate, setSortByDate] = useState<'newest' | 'oldest'>('newest');
   const [searchKeyword, setSearchKeyword] = useState('');
+  const [selectedFacturasForPayment, setSelectedFacturasForPayment] = useState<Factura[]>([]);
+  const [isMultiplePaymentDialogOpen, setIsMultiplePaymentDialogOpen] = useState(false);
 
   useEffect(() => {
     if (user) {
@@ -81,6 +84,11 @@ export function MercanciaPendiente() {
   const handleEdit = (factura: Factura) => {
     setSelectedFacturaForEdit(factura);
     setIsEditDialogOpen(true);
+  };
+
+  const handleMultiplePayment = (facturas: Factura[]) => {
+    setSelectedFacturasForPayment(facturas);
+    setIsMultiplePaymentDialogOpen(true);
   };
 
   const handleIngresoSistema = async (factura: Factura) => {
@@ -346,6 +354,8 @@ export function MercanciaPendiente() {
                 onIngresoSistemaClick={handleIngresoSistema}
                 showEditButton={true}
                 onEditClick={handleEdit}
+                showMultiplePayment={true}
+                onMultiplePayClick={handleMultiplePayment}
               />
             )}
           </CardContent>
@@ -371,6 +381,17 @@ export function MercanciaPendiente() {
           }}
           factura={selectedFacturaForEdit}
           onSave={fetchFacturas}
+        />
+
+        {/* Multiple Payment Dialog */}
+        <MultiplePaymentDialog
+          isOpen={isMultiplePaymentDialogOpen}
+          onClose={() => {
+            setIsMultiplePaymentDialogOpen(false);
+            setSelectedFacturasForPayment([]);
+          }}
+          facturas={selectedFacturasForPayment}
+          onPaymentProcessed={fetchFacturas}
         />
       </div>
     </ModernLayout>

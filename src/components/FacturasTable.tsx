@@ -66,9 +66,11 @@ interface FacturasTableProps {
   onIngresoSistemaClick?: (factura: Factura) => void;
   showEditButton?: boolean;
   onEditClick?: (factura: Factura) => void;
+  showMultiplePayment?: boolean;
+  onMultiplePayClick?: (facturas: Factura[]) => void;
 }
 
-export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPaymentInfo = false, onDelete, onSistematizarClick, showSistematizarButton = false, allowDelete = true, showOriginalClassification = false, onNotaCreditoClick, refreshData, showActions = true, showClassifyButton = true, showValorRealAPagar = false, showIngresoSistema = false, onIngresoSistemaClick, showEditButton = false, onEditClick }: FacturasTableProps) {
+export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPaymentInfo = false, onDelete, onSistematizarClick, showSistematizarButton = false, allowDelete = true, showOriginalClassification = false, onNotaCreditoClick, refreshData, showActions = true, showClassifyButton = true, showValorRealAPagar = false, showIngresoSistema = false, onIngresoSistemaClick, showEditButton = false, onEditClick, showMultiplePayment = false, onMultiplePayClick }: FacturasTableProps) {
   const { toast } = useToast();
   const { user } = useAuth();
   const [selectedFacturas, setSelectedFacturas] = useState<string[]>([]);
@@ -505,15 +507,31 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
               </span>
             </div>
           </div>
-          <Button
-            onClick={exportToExcel}
-            disabled={selectedFacturas.length === 0}
-            size="sm"
-            className="flex items-center space-x-2"
-          >
-            <Download className="w-4 h-4" />
-            <span>Exportar a Excel</span>
-          </Button>
+          <div className="flex items-center space-x-2">
+            {showMultiplePayment && onMultiplePayClick && (
+              <Button
+                onClick={() => {
+                  const selectedInvoices = validFacturas.filter(f => selectedFacturas.includes(f.id));
+                  onMultiplePayClick(selectedInvoices);
+                }}
+                disabled={selectedFacturas.length === 0}
+                size="sm"
+                className="flex items-center space-x-2 bg-green-600 hover:bg-green-700"
+              >
+                <CreditCard className="w-4 h-4" />
+                <span>Pago Múltiple ({selectedFacturas.length})</span>
+              </Button>
+            )}
+            <Button
+              onClick={exportToExcel}
+              disabled={selectedFacturas.length === 0}
+              size="sm"
+              className="flex items-center space-x-2"
+            >
+              <Download className="w-4 h-4" />
+              <span>Exportar a Excel</span>
+            </Button>
+          </div>
         </div>
       )}
       {/* Vista móvil */}
