@@ -151,7 +151,7 @@ export function MercanciaPendiente() {
 
   const calcularTotalProntoPago = () => {
     return facturas
-      .filter(f => f.uso_pronto_pago)
+      .filter(f => f.porcentaje_pronto_pago && f.porcentaje_pronto_pago > 0)
       .reduce((total, factura) => {
         const montoBase = factura.total_a_pagar - (factura.factura_iva || 0);
         const descuento = montoBase * ((factura.porcentaje_pronto_pago || 0) / 100);
@@ -279,7 +279,18 @@ export function MercanciaPendiente() {
             icon={Package}
             color="blue"
           />
-        
+          <ModernStatsCard
+            title="Monto Total Facturas"
+            value={formatCurrency(calcularTotalFacturas())}
+            icon={DollarSign}
+            color="blue"
+          />
+          <ModernStatsCard
+            title="Total Impuestos"
+            value={formatCurrency(calcularTotalImpuestos())}
+            icon={Calculator}
+            color="purple"
+          />
           <ModernStatsCard
             title="Valor Real a Pagar"
             value={formatCurrency(calcularTotalValorReal())}
