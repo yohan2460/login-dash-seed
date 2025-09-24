@@ -1127,6 +1127,19 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
                         </Button>
                       )}
 
+                      {/* Botón Nota de Crédito - Solo para facturas normales */}
+                      {(!factura.es_nota_credito && factura.clasificacion !== 'nota_credito') && onNotaCreditoClick && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => onNotaCreditoClick(factura)}
+                          className="h-8 w-8 p-0 hover:bg-red-50"
+                          title="Nota Crédito"
+                        >
+                          <Minus className="w-3.5 h-3.5 text-red-600" />
+                        </Button>
+                      )}
+
                       {/* Botón Editar */}
                       {showEditButton && onEditClick && (
                         <Button

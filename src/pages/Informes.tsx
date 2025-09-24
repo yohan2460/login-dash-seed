@@ -41,6 +41,7 @@ interface Factura {
   metodo_pago: string | null;
   factura_iva: number | null;
   monto_pagado: number | null;
+  valor_real_a_pagar: number | null;
   uso_pronto_pago: boolean | null;
   porcentaje_pronto_pago: number | null;
   fecha_emision: string | null;
@@ -282,7 +283,7 @@ export default function Informes() {
       'Fecha de Emisión': factura.fecha_emision ? new Date(factura.fecha_emision).toLocaleDateString('es-CO') : 'No especificada',
       'Fecha de Vencimiento': factura.fecha_vencimiento ? new Date(factura.fecha_vencimiento).toLocaleDateString('es-CO') : 'No especificada',
       'Total de la Factura': factura.total_a_pagar,
-      'Total Pagado': factura.monto_pagado || 0,
+      'Total Pagado': factura.valor_real_a_pagar || factura.monto_pagado || 0,
       'Estado': factura.estado_mercancia || 'Pendiente',
       'Método de Pago': factura.metodo_pago || 'No especificado',
       'Fecha de Pago': factura.fecha_pago ? new Date(factura.fecha_pago).toLocaleDateString('es-CO') : 'No pagada',
@@ -348,13 +349,13 @@ export default function Informes() {
     return {
       totalFacturas: filteredFacturas.length,
       totalMonto: filteredFacturas.reduce((sum, f) => sum + f.total_a_pagar, 0),
-      totalPagado: filteredFacturas.reduce((sum, f) => sum + (f.monto_pagado || 0), 0),
+      totalPagado: filteredFacturas.reduce((sum, f) => sum + (f.valor_real_a_pagar || f.monto_pagado || 0), 0),
       totalPendiente: filteredFacturas.filter(f => f.estado_mercancia !== 'pagada').reduce((sum, f) => sum + f.total_a_pagar, 0),
-      pagosMercancia: filteredFacturas.filter(f => f.clasificacion_original === 'Mercancía' && f.estado_mercancia === 'pagada').reduce((sum, f) => sum + (f.monto_pagado || 0), 0),
-      pagosGastos: filteredFacturas.filter(f => f.clasificacion_original === 'Gastos' && f.estado_mercancia === 'pagada').reduce((sum, f) => sum + (f.monto_pagado || 0), 0),
-      pagosTobias: filteredFacturas.filter(f => f.metodo_pago === 'Pago Tobías' && f.estado_mercancia === 'pagada').reduce((sum, f) => sum + (f.monto_pagado || 0), 0),
-      pagosBancos: filteredFacturas.filter(f => f.metodo_pago === 'Pago Banco' && f.estado_mercancia === 'pagada').reduce((sum, f) => sum + (f.monto_pagado || 0), 0),
-      pagosCaja: filteredFacturas.filter(f => f.metodo_pago === 'Pago Caja' && f.estado_mercancia === 'pagada').reduce((sum, f) => sum + (f.monto_pagado || 0), 0),
+      pagosMercancia: filteredFacturas.filter(f => f.clasificacion_original === 'Mercancía' && f.estado_mercancia === 'pagada').reduce((sum, f) => sum + (f.valor_real_a_pagar || f.monto_pagado || 0), 0),
+      pagosGastos: filteredFacturas.filter(f => f.clasificacion_original === 'Gastos' && f.estado_mercancia === 'pagada').reduce((sum, f) => sum + (f.valor_real_a_pagar || f.monto_pagado || 0), 0),
+      pagosTobias: filteredFacturas.filter(f => f.metodo_pago === 'Pago Tobías' && f.estado_mercancia === 'pagada').reduce((sum, f) => sum + (f.valor_real_a_pagar || f.monto_pagado || 0), 0),
+      pagosBancos: filteredFacturas.filter(f => f.metodo_pago === 'Pago Banco' && f.estado_mercancia === 'pagada').reduce((sum, f) => sum + (f.valor_real_a_pagar || f.monto_pagado || 0), 0),
+      pagosCaja: filteredFacturas.filter(f => f.metodo_pago === 'Pago Caja' && f.estado_mercancia === 'pagada').reduce((sum, f) => sum + (f.valor_real_a_pagar || f.monto_pagado || 0), 0),
       totalImpuestosPagados: filteredFacturas.filter(f => f.estado_mercancia === 'pagada').reduce((sum, f) => sum + (f.factura_iva || 0), 0),
       totalImpuestos: filteredFacturas.reduce((sum, f) => sum + (f.factura_iva || 0), 0),
     };
@@ -745,7 +746,7 @@ export default function Informes() {
                         <TableCell className="font-semibold text-blue-600">{formatDate(factura.fecha_pago)}</TableCell>
                         <TableCell className="font-semibold">{formatCurrency(factura.total_a_pagar)}</TableCell>
                         <TableCell className="font-semibold text-green-600">
-                          {formatCurrency(factura.monto_pagado || 0)}
+                          {formatCurrency(factura.valor_real_a_pagar || factura.monto_pagado || 0)}
                         </TableCell>
                         <TableCell>
                           <Badge variant={factura.estado_mercancia === 'pagada' ? 'default' : 'destructive'}>

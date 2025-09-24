@@ -32,10 +32,10 @@ interface NotaCreditoDialogProps {
   factura: Factura | null;
   isOpen: boolean;
   onClose: () => void;
-  onNotaCreditoProcessed: () => void;
+  onNotaCreditoCreated: () => void;
 }
 
-export function NotaCreditoDialog({ factura, isOpen, onClose, onNotaCreditoProcessed }: NotaCreditoDialogProps) {
+export function NotaCreditoDialog({ factura, isOpen, onClose, onNotaCreditoCreated }: NotaCreditoDialogProps) {
   const { user } = useAuth();
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
@@ -213,9 +213,9 @@ export function NotaCreditoDialog({ factura, isOpen, onClose, onNotaCreditoProce
 
       // Calcular el nuevo total
       const totalDescuentos = notasOriginal.notas_credito.reduce((sum: number, nc: any) => sum + nc.valor_descuento, 0);
-      const nuevoTotal = selectedFactura.total_a_pagar - totalDescuentos;
-      
-      notasOriginal.total_con_descuentos = nuevoTotal;
+      const nuevoTotalOriginal = selectedFactura.total_a_pagar - totalDescuentos;
+
+      notasOriginal.total_con_descuentos = nuevoTotalOriginal;
       notasOriginal.total_original = selectedFactura.total_a_pagar;
 
       console.log('📝 Actualizando factura original con ID:', selectedFactura.id);
@@ -224,26 +224,20 @@ export function NotaCreditoDialog({ factura, isOpen, onClose, onNotaCreditoProce
       // Crear objeto de factura actualizado para calcular el nuevo valor real a pagar
       const facturaActualizada = {
         ...selectedFactura,
+        total_a_pagar: nuevoTotalOriginal, // Usar el nuevo total original
         notas: JSON.stringify(notasOriginal)
       };
 
-      // Primero calcular el total real (considerando notas de crédito)
-      const totalReal = calcularTotalReal(facturaActualizada);
+      // Calcular el valor real a pagar basado en el nuevo total original
+      const nuevoValorRealAPagar = calcularValorRealAPagar(facturaActualizada);
 
-      // Luego calcular el valor real a pagar basado en el nuevo total
-      const facturaConNuevoTotal = {
-        ...facturaActualizada,
-        total_a_pagar: totalReal
-      };
-
-      const nuevoValorRealAPagar = calcularValorRealAPagar(facturaConNuevoTotal);
-
-      console.log('💰 Total real calculado:', formatCurrency(totalReal));
+      console.log('💰 Nuevo total original:', formatCurrency(nuevoTotalOriginal));
       console.log('💰 Nuevo valor real a pagar calculado:', formatCurrency(nuevoValorRealAPagar));
 
       const { error: updateOriginalError } = await supabase
         .from('facturas')
         .update({
+          total_a_pagar: nuevoTotalOriginal,  // Actualizar el valor original también
           notas: JSON.stringify(notasOriginal),
           valor_real_a_pagar: nuevoValorRealAPagar
         })
@@ -261,7 +255,7 @@ export function NotaCreditoDialog({ factura, isOpen, onClose, onNotaCreditoProce
         description: `Se ha vinculado la nota de crédito ${factura.numero_factura} con la factura ${selectedFactura.numero_factura}. Valor: ${formatCurrency(valorNotaCredito)}`,
       });
 
-      onNotaCreditoProcessed();
+      onNotaCreditoCreated();
       onClose();
 
     } catch (error: any) {

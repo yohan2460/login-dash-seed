@@ -11,6 +11,7 @@ import { ModernStatsCard } from '@/components/ModernStatsCard';
 import { FacturasTable } from '@/components/FacturasTable';
 import { FacturaClassificationDialog } from '@/components/FacturaClassificationDialog';
 import { ManualFacturaDialog } from '@/components/ManualFacturaDialog';
+import { NotaCreditoDialog } from '@/components/NotaCreditoDialog';
 import { ModernLayout } from '@/components/ModernLayout';
 
 interface Factura {
@@ -35,6 +36,8 @@ export function SinClasificar() {
   const [selectedFactura, setSelectedFactura] = useState<Factura | null>(null);
   const [isClassificationDialogOpen, setIsClassificationDialogOpen] = useState(false);
   const [isManualDialogOpen, setIsManualDialogOpen] = useState(false);
+  const [selectedFacturaForNotaCredito, setSelectedFacturaForNotaCredito] = useState<Factura | null>(null);
+  const [isNotaCreditoDialogOpen, setIsNotaCreditoDialogOpen] = useState(false);
   const [sortByDate, setSortByDate] = useState<'newest' | 'oldest'>('newest');
   const [searchKeyword, setSearchKeyword] = useState('');
 
@@ -65,6 +68,11 @@ export function SinClasificar() {
   const handleClassify = (factura: Factura) => {
     setSelectedFactura(factura);
     setIsClassificationDialogOpen(true);
+  };
+
+  const handleNotaCredito = (factura: Factura) => {
+    setSelectedFacturaForNotaCredito(factura);
+    setIsNotaCreditoDialogOpen(true);
   };
 
   const formatCurrency = (amount: number) => {
@@ -240,6 +248,7 @@ export function SinClasificar() {
               <FacturasTable
                 facturas={getFilteredFacturas()}
                 onClassifyClick={handleClassify}
+                onNotaCreditoClick={handleNotaCredito}
                 refreshData={fetchFacturas}
               />
             )}
@@ -261,6 +270,16 @@ export function SinClasificar() {
           isOpen={isManualDialogOpen}
           onClose={() => setIsManualDialogOpen(false)}
           onFacturaCreated={fetchFacturas}
+        />
+
+        <NotaCreditoDialog
+          factura={selectedFacturaForNotaCredito}
+          isOpen={isNotaCreditoDialogOpen}
+          onClose={() => {
+            setIsNotaCreditoDialogOpen(false);
+            setSelectedFacturaForNotaCredito(null);
+          }}
+          onNotaCreditoCreated={fetchFacturas}
         />
       </div>
     </ModernLayout>
