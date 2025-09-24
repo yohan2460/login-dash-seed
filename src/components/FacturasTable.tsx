@@ -4,13 +4,14 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Eye, Tag, CreditCard, Calendar, Clock, AlertTriangle, CheckCircle, Trash2, FileCheck, Download, Minus, Archive } from 'lucide-react';
+import { Eye, Tag, CreditCard, Calendar, Clock, AlertTriangle, CheckCircle, Trash2, FileCheck, Download, Minus, Archive, Edit, Percent } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 import * as XLSX from 'xlsx';
 import { useState } from 'react';
 import { calcularValorRealAPagar, calcularMontoRetencionReal, calcularTotalReal } from '@/utils/calcularValorReal';
+import { PDFViewer } from '@/components/PDFViewer';
 
 interface Factura {
   id: string;
@@ -63,13 +64,18 @@ interface FacturasTableProps {
   showValorRealAPagar?: boolean;
   showIngresoSistema?: boolean;
   onIngresoSistemaClick?: (factura: Factura) => void;
+  showEditButton?: boolean;
+  onEditClick?: (factura: Factura) => void;
 }
 
-export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPaymentInfo = false, onDelete, onSistematizarClick, showSistematizarButton = false, allowDelete = true, showOriginalClassification = false, onNotaCreditoClick, refreshData, showActions = true, showClassifyButton = true, showValorRealAPagar = false, showIngresoSistema = false, onIngresoSistemaClick }: FacturasTableProps) {
+export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPaymentInfo = false, onDelete, onSistematizarClick, showSistematizarButton = false, allowDelete = true, showOriginalClassification = false, onNotaCreditoClick, refreshData, showActions = true, showClassifyButton = true, showValorRealAPagar = false, showIngresoSistema = false, onIngresoSistemaClick, showEditButton = false, onEditClick }: FacturasTableProps) {
   const { toast } = useToast();
   const { user } = useAuth();
   const [selectedFacturas, setSelectedFacturas] = useState<string[]>([]);
   const [deletingFactura, setDeletingFactura] = useState<string | null>(null);
+  const [isPDFViewerOpen, setIsPDFViewerOpen] = useState(false);
+  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+  const [selectedFacturaForPDF, setSelectedFacturaForPDF] = useState<Factura | null>(null);
 
   // Validar que facturas sea un array válido con protección contra null
   const validFacturas = Array.isArray(facturas) ? facturas.filter(f => f && f.id && typeof f.id === 'string' && f.id.length > 0) : [];
@@ -79,6 +85,14 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
       style: 'currency',
       currency: 'COP'
     }).format(amount);
+  };
+
+  // Función para formatear moneda de manera compacta (sin símbolo de moneda)
+  const formatCompactCurrency = (amount: number) => {
+    return new Intl.NumberFormat('es-CO', {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0
+    }).format(Math.round(amount));
   };
 
 
@@ -143,7 +157,9 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
         .createSignedUrl(factura.pdf_file_path, 60 * 60);
 
       if (data?.signedUrl) {
-        window.open(data.signedUrl, '_blank');
+        setSelectedFacturaForPDF(factura);
+        setPdfUrl(data.signedUrl);
+        setIsPDFViewerOpen(true);
       } else {
         throw new Error('No se pudo generar la URL del PDF');
       }
@@ -155,6 +171,12 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
         variant: "destructive"
       });
     }
+  };
+
+  const closePDFViewer = () => {
+    setIsPDFViewerOpen(false);
+    setPdfUrl(null);
+    setSelectedFacturaForPDF(null);
   };
 
   const toggleSelection = (facturaId: string) => {
@@ -689,20 +711,20 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
 
                   {/* Información adicional */}
                   <div className="flex flex-wrap gap-2 text-sm">
-                    {factura.tiene_retencion && (
-                      <Badge variant="secondary" className="text-xs">
-                        <CheckCircle className="w-3 h-3 mr-1" />
-                        Retención
-                        {factura.monto_retencion && (
-                          <span className="ml-1">
-                            {formatCurrency(calcularMontoRetencionReal(factura))}
-                          </span>
-                        )}
+                    {factura.tiene_retencion && calcularMontoRetencionReal(factura) > 0 && (
+                      <Badge variant="outline" className="text-xs bg-orange-50 text-orange-700 border-orange-200 font-mono">
+                        <Percent className="w-3 h-3 mr-1" />
+                        Retención -{formatCompactCurrency(calcularMontoRetencionReal(factura))}
                       </Badge>
                     )}
-                    {factura.porcentaje_pronto_pago && (
-                      <Badge variant="secondary" className="text-xs text-green-700">
-                        Pronto pago {factura.porcentaje_pronto_pago}%
+                    {factura.porcentaje_pronto_pago && factura.porcentaje_pronto_pago > 0 && (
+                      <Badge variant="outline" className="text-xs bg-green-50 text-green-700 border-green-200 font-mono">
+                        Pronto Pago -{formatCompactCurrency(((factura.total_a_pagar - (factura.factura_iva || 0)) * factura.porcentaje_pronto_pago) / 100)}
+                      </Badge>
+                    )}
+                    {factura.factura_iva && factura.factura_iva > 0 && (
+                      <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200 font-mono">
+                        IVA +{formatCompactCurrency(factura.factura_iva)}
                       </Badge>
                     )}
                   </div>
@@ -771,7 +793,20 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
                         Nota Crédito
                       </Button>
                     )}
-                    
+
+                    {/* Botón Editar */}
+                    {showEditButton && onEditClick && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => onEditClick(factura)}
+                        className="flex-1 border-blue-200 text-blue-700 hover:bg-blue-50"
+                      >
+                        <Edit className="w-4 h-4 mr-1" />
+                        Editar
+                      </Button>
+                    )}
+
                     {factura.pdf_file_path && (
                       <Button
                         variant="outline"
@@ -854,7 +889,7 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
 
       {/* Vista de escritorio */}
       <div className="hidden lg:block">
-        <div className="rounded-lg border bg-card">
+        <div className="rounded-lg border bg-card overflow-hidden">
           <Table>
             <TableHeader>
               <TableRow className="bg-muted/50">
@@ -864,23 +899,19 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
                      onCheckedChange={toggleSelectAll}
                    />
                  </TableHead>
-                <TableHead className="font-semibold">Factura</TableHead>
-                <TableHead className="font-semibold">Emisor</TableHead>
-                <TableHead className="font-semibold">Estado</TableHead>
-                <TableHead className="font-semibold">Fechas</TableHead>
-                <TableHead className="font-semibold">Información Fiscal</TableHead>
-                {showPaymentInfo && (
-                  <TableHead className="font-semibold">Información de Pago</TableHead>
-                )}
-                <TableHead className="font-semibold">Total</TableHead>
+                <TableHead className="font-semibold w-[180px]">Factura</TableHead>
+                <TableHead className="font-semibold w-[200px]">Emisor</TableHead>
+                <TableHead className="font-semibold w-[120px]">Estado</TableHead>
+                <TableHead className="font-semibold w-[160px]">Fechas</TableHead>
+                <TableHead className="font-semibold w-[140px]">Total</TableHead>
                 {showValorRealAPagar && (
-                  <TableHead className="font-semibold">Valor Real a Pagar</TableHead>
+                  <TableHead className="font-semibold w-[140px]">Valor Real</TableHead>
                 )}
                 {showIngresoSistema && (
-                  <TableHead className="font-semibold text-center">Estado Sistema</TableHead>
+                  <TableHead className="font-semibold text-center w-[120px]">Sistema</TableHead>
                 )}
                 {showActions && (
-                <TableHead className="font-semibold text-center">Acciones</TableHead>
+                <TableHead className="font-semibold text-center w-[140px]">Acciones</TableHead>
                 )}
               </TableRow>
             </TableHeader>
@@ -895,26 +926,26 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
                   </TableCell>
                   {/* Información de factura */}
                   <TableCell className="font-medium">
-                    <div className="space-y-1">
-                      <div className="font-semibold">#{factura.numero_factura}</div>
+                    <div className="space-y-1 max-w-[170px]">
+                      <div className="font-semibold text-sm">#{factura.numero_factura}</div>
                       {factura.numero_serie && (
-                        <div className="text-xs text-muted-foreground">
-                          Serie: {factura.numero_serie}
+                        <div className="text-xs text-blue-600 bg-blue-50 px-1 py-0.5 rounded text-center font-mono">
+                          {factura.numero_serie}
                         </div>
                       )}
                       {factura.descripcion && (
-                        <div className="text-xs text-muted-foreground max-w-32 truncate" title={factura.descripcion}>
+                        <div className="text-xs text-muted-foreground truncate" title={factura.descripcion}>
                           {factura.descripcion}
                         </div>
                       )}
                       {/* Información de asociaciones para notas de crédito */}
                       {factura.clasificacion === 'nota_credito' && getFacturaOriginalInfo(factura) && (
-                        <div className="text-xs text-red-600 max-w-32 truncate" title={`Aplica a: ${getFacturaOriginalInfo(factura)?.numero_factura_original}`}>
+                        <div className="text-xs text-red-600 truncate" title={`Aplica a: ${getFacturaOriginalInfo(factura)?.numero_factura_original}`}>
                           → #{getFacturaOriginalInfo(factura)?.numero_factura_original}
                         </div>
                       )}
                       {getNotasCreditoInfo(factura) && (
-                        <div className="text-xs text-green-600 max-w-32 truncate">
+                        <div className="text-xs text-green-600 truncate">
                           {getNotasCreditoInfo(factura)?.length} NC aplicadas
                         </div>
                       )}
@@ -923,26 +954,23 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
 
                   {/* Emisor */}
                   <TableCell>
-                    <div className="space-y-1">
-                      <div className="font-medium">{factura.emisor_nombre}</div>
-                      <div className="text-xs text-muted-foreground">
-                        NIT: {factura.emisor_nit}
+                    <div className="space-y-1 max-w-[190px]">
+                      <div className="font-medium text-sm truncate" title={factura.emisor_nombre}>
+                        {factura.emisor_nombre}
+                      </div>
+                      <div className="text-xs text-muted-foreground font-mono">
+                        {factura.emisor_nit}
                       </div>
                     </div>
                   </TableCell>
 
                   {/* Estado y clasificación */}
                   <TableCell>
-                    <div className="space-y-2">
+                    <div className="space-y-1">
                       {getClassificationBadge(factura.clasificacion, factura.es_nota_credito) || (
                         <Badge variant="outline" className="text-xs">
                           <AlertTriangle className="w-3 h-3 mr-1" />
                           Sin clasificar
-                        </Badge>
-                      )}
-                      {showOriginalClassification && factura.clasificacion_original && (
-                        <Badge variant="outline" className="text-xs bg-purple-50 border-purple-200 text-purple-700">
-                          Origen: {factura.clasificacion_original === 'mercancia' ? 'Mercancía' : 'Gasto'}
                         </Badge>
                       )}
                       {factura.estado_mercancia === 'pagada' && (
@@ -956,11 +984,10 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
 
                   {/* Fechas */}
                   <TableCell>
-                    <div className="space-y-2 text-sm">
-                      <div className="flex items-center space-x-2">
-                        <Calendar className="w-3 h-3 text-muted-foreground" />
-                        <span className="text-xs text-muted-foreground">Emisión:</span>
-                        <span>
+                    <div className="space-y-1 text-xs">
+                      <div className="flex items-center gap-1">
+                        <Calendar className="w-3 h-3 text-blue-500" />
+                        <span className="font-medium">
                           {factura.fecha_emision ? (
                             new Date(factura.fecha_emision).toLocaleDateString('es-CO')
                           ) : (
@@ -968,10 +995,9 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
                           )}
                         </span>
                       </div>
-                       <div className="flex items-center space-x-2">
-                         <Clock className="w-3 h-3 text-muted-foreground" />
-                         <span className="text-xs text-muted-foreground">Vence:</span>
-                         <span>
+                       <div className="flex items-center gap-1">
+                         <Clock className="w-3 h-3 text-orange-500" />
+                         <span className="font-medium">
                            {factura.fecha_vencimiento ? (
                              new Date(factura.fecha_vencimiento).toLocaleDateString('es-CO')
                            ) : '-'}
@@ -979,10 +1005,9 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
                          {getDaysIndicator(getDaysUntilDue(factura.fecha_vencimiento, factura.estado_mercancia))}
                        </div>
                        {factura.fecha_pago && (
-                         <div className="flex items-center space-x-2">
+                         <div className="flex items-center gap-1">
                            <CheckCircle className="w-3 h-3 text-green-600" />
-                           <span className="text-xs text-green-600">Pagada:</span>
-                           <span className="text-green-600 font-medium">
+                           <span className="font-medium text-green-600">
                              {new Date(factura.fecha_pago).toLocaleDateString('es-CO')}
                            </span>
                          </div>
@@ -990,112 +1015,41 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
                     </div>
                   </TableCell>
 
-                  {/* Información fiscal */}
-                  <TableCell>
-                    <div className="space-y-2 text-sm">
-                      {factura.factura_iva && (
-                        <div>
-                          <span className="text-xs text-muted-foreground">IVA: </span>
-                          <span className="font-medium">
-                            {formatCurrency(factura.factura_iva)}
-                            {factura.factura_iva_porcentaje && (
-                              <span className="text-xs text-muted-foreground ml-1">
-                                ({factura.factura_iva_porcentaje}%)
-                              </span>
-                            )}
-                          </span>
-                        </div>
-                      )}
-                      {factura.tiene_retencion && (
-                        <div>
-                          <span className="text-xs text-muted-foreground">Retención: </span>
-                          <span className="font-medium text-green-600">
-                            {factura.monto_retencion ? formatCurrency(calcularMontoRetencionReal(factura)) : 'Sí'}
-                          </span>
-                        </div>
-                      )}
-                      {factura.porcentaje_pronto_pago && (
-                        <div>
-                          <span className="text-xs text-muted-foreground">Pronto pago: </span>
-                          <span className="font-medium text-green-600">
-                            {factura.porcentaje_pronto_pago}%
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                  </TableCell>
-
-                  {/* Información de pago */}
-                  {showPaymentInfo && (
-                    <TableCell>
-                      {factura.estado_mercancia === 'pagada' ? (
-                        <div className="space-y-2 text-sm">
-                          {factura.metodo_pago && (
-                            <Badge variant={factura.metodo_pago === 'Pago Banco' ? 'default' : 'secondary'}>
-                              {factura.metodo_pago}
-                            </Badge>
-                          )}
-                          {(factura.valor_real_a_pagar || factura.monto_pagado) && (
-                            <div>
-                              <div className="text-green-600 font-bold">
-                                {formatCurrency(factura.valor_real_a_pagar || factura.monto_pagado)}
-                              </div>
-                              {factura.uso_pronto_pago && factura.porcentaje_pronto_pago && (
-                                <div className="text-xs text-green-600">
-                                  Ahorro: {formatCurrency(factura.total_a_pagar - (factura.valor_real_a_pagar || factura.monto_pagado || 0))}
-                                </div>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      ) : '-'}
-                    </TableCell>
-                  )}
 
                    {/* Total */}
                    <TableCell>
-                     <div className={`font-bold text-lg ${calcularTotalReal(factura) < factura.total_a_pagar && factura.clasificacion !== 'nota_credito' ? 'text-green-600' : ''}`}>
-                       {factura.valor_real_a_pagar ? formatCurrency(factura.valor_real_a_pagar) : (factura.monto_pagado ? formatCurrency(factura.monto_pagado) : formatCurrency(calcularTotalReal(factura)))}
-                     </div>
-                     {/* Mostrar valor original para notas de crédito relacionadas */}
-                     {getValorOriginalNotaCredito(factura) && (
-                       <div className="text-xs text-muted-foreground">
-                         ({formatCurrency(getValorOriginalNotaCredito(factura)!)})
+                     <div className="space-y-1">
+                       <div className={`font-bold text-base ${calcularTotalReal(factura) < factura.total_a_pagar && factura.clasificacion !== 'nota_credito' ? 'text-green-600' : ''}`}>
+                         {factura.valor_real_a_pagar ? formatCurrency(factura.valor_real_a_pagar) : (factura.monto_pagado ? formatCurrency(factura.monto_pagado) : formatCurrency(calcularTotalReal(factura)))}
                        </div>
-                     )}
-                     {calcularTotalReal(factura) !== factura.total_a_pagar && factura.clasificacion !== 'nota_credito' && (
-                       <div className="text-xs text-muted-foreground line-through">
-                         Original: {formatCurrency(factura.total_a_pagar)}
+
+                       {/* Información fiscal compacta */}
+                       <div className="flex flex-wrap gap-1">
+                         {factura.tiene_retencion && calcularMontoRetencionReal(factura) > 0 && (
+                           <Badge variant="outline" className="text-xs bg-orange-50 text-orange-700 border-orange-200 font-mono">
+                             <Percent className="w-2 h-2 mr-1" />
+                             -{formatCompactCurrency(calcularMontoRetencionReal(factura))}
+                           </Badge>
+                         )}
+                         {factura.porcentaje_pronto_pago && factura.porcentaje_pronto_pago > 0 && (
+                           <Badge variant="outline" className="text-xs bg-green-50 text-green-700 border-green-200 font-mono">
+                             PP -{formatCompactCurrency(((factura.total_a_pagar - (factura.factura_iva || 0)) * factura.porcentaje_pronto_pago) / 100)}
+                           </Badge>
+                         )}
+                         {factura.factura_iva && factura.factura_iva > 0 && (
+                           <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200 font-mono">
+                             IVA +{formatCompactCurrency(factura.factura_iva)}
+                           </Badge>
+                         )}
                        </div>
-                     )}
-                     
-                     {/* Información de nota de crédito si aplica */}
-                     {factura.clasificacion === 'nota_credito' && getFacturaOriginalInfo(factura) && (
-                       <div className="text-xs text-red-600 mt-1">
-                         Aplica a: #{getFacturaOriginalInfo(factura)?.numero_factura_original}
-                       </div>
-                     )}
-                     
-                     {/* Mostrar notas de crédito aplicadas */}
-                     {getNotasCreditoInfo(factura) && (
-                       <div className="text-xs text-green-600 mt-1">
-                         {getNotasCreditoInfo(factura)?.length} nota(s) de crédito
-                       </div>
-                     )}
-                     
-                     {factura.metodo_pago && (
-                       <div className="mt-1">
-                         <Badge 
-                           variant="secondary" 
-                           className="text-xs"
-                         >
-                           {factura.metodo_pago}
-                         </Badge>
-                         <div className="text-xs text-muted-foreground mt-1">
-                           Factura: {formatCurrency(factura.total_a_pagar)}
+
+                       {/* Mostrar valor original solo si es diferente */}
+                       {calcularTotalReal(factura) !== factura.total_a_pagar && factura.clasificacion !== 'nota_credito' && (
+                         <div className="text-xs text-muted-foreground line-through">
+                           Orig: {formatCurrency(factura.total_a_pagar)}
                          </div>
-                       </div>
-                     )}
+                       )}
+                     </div>
                    </TableCell>
 
                   {/* Valor Real a Pagar */}
@@ -1130,49 +1084,53 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
                   {/* Acciones */}
                   {showActions && (
                   <TableCell>
-                    <div className="flex items-center justify-center space-x-2">
+                    <div className="flex items-center justify-center gap-1">
                       {showClassifyButton && (
                       <Button
                         variant="ghost"
                         size="sm"
                         onClick={() => onClassifyClick(factura)}
-                        className="transition-all duration-200 hover:scale-105"
+                        className="h-8 w-8 p-0 hover:bg-blue-50"
+                        title="Clasificar"
                       >
-                        <Tag className="w-4 h-4" />
+                        <Tag className="w-3.5 h-3.5" />
                       </Button>
                       )}
-                      
+
                       {((factura.clasificacion === 'mercancia' && factura.estado_mercancia !== 'pagada') || (factura.clasificacion === 'gasto' && (!factura.estado_mercancia || factura.estado_mercancia !== 'pagada'))) && onPayClick && (
                         <Button
                           variant="ghost"
                           size="sm"
                           onClick={() => onPayClick(factura)}
-                          className="transition-all duration-200 hover:scale-105 text-green-700 hover:bg-green-50"
+                          className="h-8 w-8 p-0 hover:bg-green-50"
+                          title="Pagar"
                         >
-                          <CreditCard className="w-4 h-4" />
+                          <CreditCard className="w-3.5 h-3.5 text-green-600" />
                         </Button>
                       )}
 
-                      {/* Botón Nota de Crédito - Solo para facturas normales */}
-                      {(!factura.es_nota_credito && factura.clasificacion !== 'nota_credito') && onNotaCreditoClick && (
+                      {/* Botón Editar */}
+                      {showEditButton && onEditClick && (
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => onNotaCreditoClick(factura)}
-                          className="transition-all duration-200 hover:scale-105 text-red-700 hover:bg-red-50"
+                          onClick={() => onEditClick(factura)}
+                          className="h-8 w-8 p-0 hover:bg-blue-50"
+                          title="Editar"
                         >
-                          <Minus className="w-4 h-4" />
+                          <Edit className="w-3.5 h-3.5 text-blue-600" />
                         </Button>
                       )}
-                      
+
                       {factura.pdf_file_path && (
                         <Button
                           variant="ghost"
                           size="sm"
                           onClick={() => viewPDF(factura)}
-                          className="transition-all duration-200 hover:scale-105"
+                          className="h-8 w-8 p-0 hover:bg-gray-50"
+                          title="Ver PDF"
                         >
-                          <Eye className="w-4 h-4" />
+                          <Eye className="w-3.5 h-3.5" />
                         </Button>
                       )}
 
@@ -1182,9 +1140,10 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
                             <Button
                               variant="ghost"
                               size="sm"
-                              className="transition-all duration-200 hover:scale-105 text-purple-700 hover:bg-purple-50"
+                              className="h-8 w-8 p-0 hover:bg-purple-50"
+                              title="Sistematizar"
                             >
-                              <FileCheck className="w-4 h-4" />
+                              <FileCheck className="w-3.5 h-3.5 text-purple-600" />
                             </Button>
                           </AlertDialogTrigger>
                           <AlertDialogContent>
@@ -1210,9 +1169,10 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
                             <Button
                               variant="ghost"
                               size="sm"
-                              className="transition-all duration-200 hover:scale-105 text-red-700 hover:bg-red-50"
+                              className="h-8 w-8 p-0 hover:bg-red-50"
+                              title="Eliminar"
                             >
-                              <Trash2 className="w-4 h-4" />
+                              <Trash2 className="w-3.5 h-3.5 text-red-600" />
                             </Button>
                           </AlertDialogTrigger>
                           <AlertDialogContent>
@@ -1243,6 +1203,14 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
           </Table>
         </div>
       </div>
+
+      {/* PDF Viewer Modal */}
+      <PDFViewer
+        isOpen={isPDFViewerOpen}
+        onClose={closePDFViewer}
+        pdfUrl={pdfUrl}
+        title={selectedFacturaForPDF ? `Factura #${selectedFacturaForPDF.numero_factura} - ${selectedFacturaForPDF.emisor_nombre}` : "Visualizador de PDF"}
+      />
     </div>
   );
 }

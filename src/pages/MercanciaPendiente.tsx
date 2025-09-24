@@ -10,6 +10,7 @@ import { Package, DollarSign, Calculator, TrendingUp, Archive, AlertTriangle, Se
 import { ModernStatsCard } from '@/components/ModernStatsCard';
 import { FacturasTable } from '@/components/FacturasTable';
 import { PaymentMethodDialog } from '@/components/PaymentMethodDialog';
+import { EditFacturaDialog } from '@/components/EditFacturaDialog';
 import { ModernLayout } from '@/components/ModernLayout';
 
 interface Factura {
@@ -42,6 +43,8 @@ export function MercanciaPendiente() {
   const [isLoading, setIsLoading] = useState(true);
   const [selectedFactura, setSelectedFactura] = useState<Factura | null>(null);
   const [isPaymentDialogOpen, setIsPaymentDialogOpen] = useState(false);
+  const [selectedFacturaForEdit, setSelectedFacturaForEdit] = useState<Factura | null>(null);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [sortByDate, setSortByDate] = useState<'newest' | 'oldest'>('newest');
   const [searchKeyword, setSearchKeyword] = useState('');
 
@@ -73,6 +76,11 @@ export function MercanciaPendiente() {
   const handlePay = (factura: Factura) => {
     setSelectedFactura(factura);
     setIsPaymentDialogOpen(true);
+  };
+
+  const handleEdit = (factura: Factura) => {
+    setSelectedFacturaForEdit(factura);
+    setIsEditDialogOpen(true);
   };
 
   const handleIngresoSistema = async (factura: Factura) => {
@@ -264,25 +272,14 @@ export function MercanciaPendiente() {
         </Card>
 
         {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-6 gap-6">
+        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">
           <ModernStatsCard
             title="Total Facturas"
             value={facturas.length.toString()}
             icon={Package}
             color="blue"
           />
-          <ModernStatsCard
-            title="Pendientes de Ingreso"
-            value={calcularFacturasPendientes().toString()}
-            icon={AlertTriangle}
-            color="orange"
-          />
-          <ModernStatsCard
-            title="Ingresadas al Sistema"
-            value={calcularFacturasIngresadas().toString()}
-            icon={Archive}
-            color="blue"
-          />
+        
           <ModernStatsCard
             title="Valor Real a Pagar"
             value={formatCurrency(calcularTotalValorReal())}
@@ -336,6 +333,8 @@ export function MercanciaPendiente() {
                 showValorRealAPagar={true}
                 showIngresoSistema={true}
                 onIngresoSistemaClick={handleIngresoSistema}
+                showEditButton={true}
+                onEditClick={handleEdit}
               />
             )}
           </CardContent>
@@ -350,6 +349,17 @@ export function MercanciaPendiente() {
             setSelectedFactura(null);
           }}
           onPaymentProcessed={fetchFacturas}
+        />
+
+        {/* Edit Factura Dialog */}
+        <EditFacturaDialog
+          isOpen={isEditDialogOpen}
+          onClose={() => {
+            setIsEditDialogOpen(false);
+            setSelectedFacturaForEdit(null);
+          }}
+          factura={selectedFacturaForEdit}
+          onSave={fetchFacturas}
         />
       </div>
     </ModernLayout>

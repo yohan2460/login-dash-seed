@@ -214,7 +214,7 @@ export function GastosPagados() {
         </Card>
 
         {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+        <div className="grid grid-cols-2 md:grid-cols-2 xl:grid-cols-4 gap-4">
           <ModernStatsCard
             title="Total Facturas"
             value={filteredFacturas.length.toString()}

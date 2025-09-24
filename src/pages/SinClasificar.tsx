@@ -192,7 +192,7 @@ export function SinClasificar() {
         </Card>
 
         {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-3 gap-4">
           <ModernStatsCard
             title="Total Facturas"
             value={facturas.length.toString()}

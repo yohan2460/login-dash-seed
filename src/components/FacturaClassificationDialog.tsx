@@ -7,9 +7,11 @@ import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Separator } from '@/components/ui/separator';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
-import { Package, CreditCard, Lightbulb, Loader2 } from 'lucide-react';
+import { Package, CreditCard, Lightbulb, Loader2, Receipt, Calculator, Percent, FileText } from 'lucide-react';
 import { SerieNumberSuggestion } from '@/utils/serieNumberSuggestion';
 import { calcularValorRealAPagar } from '@/utils/calcularValorReal';
 
@@ -275,294 +277,422 @@ export function FacturaClassificationDialog({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>Clasificar Factura</DialogTitle>
+      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader className="pb-4">
+          <DialogTitle className="flex items-center gap-2 text-xl">
+            <FileText className="w-5 h-5" />
+            Clasificar Factura
+          </DialogTitle>
         </DialogHeader>
-        
+
         {factura && (
           <div className="space-y-6">
-            <div className="space-y-2">
-              <p className="text-sm text-muted-foreground">
-                Factura: {factura.numero_factura}
-              </p>
-              <p className="text-sm text-muted-foreground">
-                Emisor: {factura.emisor_nombre}
-              </p>
-            </div>
-
-            {/* Campo de Total a Pagar */}
-            <div className="space-y-2">
-              <Label htmlFor="total_a_pagar" className="text-sm font-medium">
-                Total a Pagar
-              </Label>
-              <div className="flex items-center space-x-2">
-                <Input
-                  id="total_a_pagar"
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={totalAPagar}
-                  onChange={(e) => setTotalAPagar(e.target.value)}
-                  placeholder="0.00"
-                  className="flex-1"
-                />
-                <span className="text-sm text-muted-foreground min-w-fit">
-                  {totalAPagar && !isNaN(parseFloat(totalAPagar)) ? formatCurrency(parseFloat(totalAPagar)) : 'COP $0'}
-                </span>
-              </div>
-              <div className="space-y-1">
-                <p className="text-xs text-muted-foreground">
-                  Valor original: {formatCurrency(factura.total_a_pagar)}
-                  {factura.factura_iva && factura.factura_iva > 0 && (
-                    <span className="ml-2">
-                      (IVA original: {formatCurrency(factura.factura_iva)})
-                    </span>
-                  )}
-                </p>
-                {totalAPagar && parseFloat(totalAPagar) !== factura.total_a_pagar && (
-                  <p className="text-xs text-blue-600 font-medium">
-                    IVA recalculado: {formatCurrency(calcularIVA())}
-                    {factura.factura_iva && factura.factura_iva > 0 && (
-                      <span className="ml-2 text-muted-foreground">
-                        (Diferencia: {formatCurrency(calcularIVA() - factura.factura_iva)})
-                      </span>
-                    )}
-                  </p>
-                )}
-              </div>
-            </div>
-
-            <div className="space-y-4">
-              <Label className="text-base font-medium">
-                Selecciona el tipo de factura:
-              </Label>
-              
-              <RadioGroup
-                value={classification}
-                onValueChange={setClassification}
-                className="space-y-3"
-              >
-                <div className="flex items-center space-x-3 p-3 border rounded-lg hover:bg-muted/50 transition-colors">
-                  <RadioGroupItem value="mercancia" id="mercancia" />
-                  <Label htmlFor="mercancia" className="flex items-center space-x-2 cursor-pointer flex-1">
-                    <Package className="w-4 h-4 text-blue-600" />
-                    <span>Compra de Mercancía</span>
-                  </Label>
-                </div>
-                
-                <div className="flex items-center space-x-3 p-3 border rounded-lg hover:bg-muted/50 transition-colors">
-                  <RadioGroupItem value="gasto" id="gasto" />
-                  <Label htmlFor="gasto" className="flex items-center space-x-2 cursor-pointer flex-1">
-                    <CreditCard className="w-4 h-4 text-green-600" />
-                    <span>Gasto</span>
-                  </Label>
-                </div>
-              </RadioGroup>
-            </div>
-
-            <div className="space-y-4">
-              <div>
-                <Label htmlFor="descripcion" className="text-sm font-medium">
-                  Descripción (opcional)
-                </Label>
-                <Textarea
-                  id="descripcion"
-                  value={descripcion}
-                  onChange={(e) => setDescripcion(e.target.value)}
-                  placeholder="Agregar descripción adicional..."
-                  className="mt-1"
-                />
-              </div>
-
-              <div className="flex items-center space-x-2">
-                <Checkbox
-                  id="tiene_retencion"
-                  checked={tieneRetencion}
-                  onCheckedChange={(checked) => setTieneRetencion(checked === true)}
-                />
-                <Label htmlFor="tiene_retencion" className="text-sm">
-                  Tiene retención
-                </Label>
-              </div>
-
-              {tieneRetencion && (
-                <div className="space-y-3">
-                  <Label className="text-sm font-medium">
-                    Porcentaje de retención
-                  </Label>
-
-                  <Select
-                    value={isCustomRetencion ? 'custom' : montoRetencion}
-                    onValueChange={(value) => {
-                      if (value === 'custom') {
-                        setIsCustomRetencion(true);
-                        setMontoRetencion('');
-                      } else {
-                        setIsCustomRetencion(false);
-                        setMontoRetencion(value);
-                        setCustomRetencion('');
-                      }
-                    }}
-                  >
-                    <SelectTrigger className="bg-background border-input">
-                      <SelectValue placeholder="Seleccionar porcentaje de retención" />
-                    </SelectTrigger>
-                    <SelectContent className="bg-background border-input shadow-lg z-50">
-                      <SelectItem value="1" className="hover:bg-accent">1%</SelectItem>
-                      <SelectItem value="1.5" className="hover:bg-accent">1.5%</SelectItem>
-                      <SelectItem value="2" className="hover:bg-accent">2%</SelectItem>
-                      <SelectItem value="2.5" className="hover:bg-accent">2.5%</SelectItem>
-                      <SelectItem value="3" className="hover:bg-accent">3%</SelectItem>
-                      <SelectItem value="3.5" className="hover:bg-accent">3.5%</SelectItem>
-                      <SelectItem value="4" className="hover:bg-accent">4%</SelectItem>
-                      <SelectItem value="custom" className="hover:bg-accent">Porcentaje personalizado</SelectItem>
-                    </SelectContent>
-                  </Select>
-
-                  {isCustomRetencion && (
-                    <div>
-                      <Label htmlFor="custom_retencion" className="text-sm font-medium">
-                        Porcentaje personalizado
-                      </Label>
-                      <Input
-                        id="custom_retencion"
-                        type="number"
-                        step="0.1"
-                        min="0"
-                        max="100"
-                        value={customRetencion}
-                        onChange={(e) => setCustomRetencion(e.target.value)}
-                        placeholder="Ej: 2.3"
-                        className="mt-1"
-                      />
-                      <p className="text-xs text-muted-foreground mt-1">
-                        Ingrese el porcentaje (ej: 2.3 para 2.3%)
-                      </p>
-                    </div>
-                  )}
-
-                  {tieneRetencion && (isCustomRetencion ? customRetencion : montoRetencion) && totalAPagar && (
-                    <p className="text-sm text-muted-foreground">
-                      Retención estimada: {formatCurrency(((parseFloat(totalAPagar) || 0) * parseFloat(isCustomRetencion ? customRetencion : montoRetencion)) / 100)}
-                    </p>
-                  )}
-                </div>
-              )}
-
-              {classification === 'mercancia' && (
-                <div className="space-y-3">
-                  <Label htmlFor="numero_serie" className="text-sm font-medium">
-                    Número de serie
-                  </Label>
-
-                  {/* Mostrar sugerencia si está disponible */}
-                  {suggestedSerie && !suggestionLoading && (
-                    <div className="flex items-center gap-2 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
-                      <Lightbulb className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-                      <div className="flex-1">
-                        <div className="text-sm text-blue-800 dark:text-blue-300">
-                          <span className="font-medium">Sugerencia: </span>
-                          <span className="font-mono">{suggestedSerie}</span>
-                        </div>
-                        <div className="text-xs text-blue-600 dark:text-blue-400">
-                          Basado en el patrón del emisor
-                        </div>
-                      </div>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        onClick={useSuggestion}
-                        className="border-blue-300 text-blue-700 hover:bg-blue-100 dark:border-blue-600 dark:text-blue-300 dark:hover:bg-blue-800"
-                      >
-                        Usar
-                      </Button>
-                    </div>
-                  )}
-
-                  {/* Indicador de carga */}
-                  {suggestionLoading && (
-                    <div className="flex items-center gap-2 p-3 bg-muted/50 rounded-lg border">
-                      <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
-                      <span className="text-sm text-muted-foreground">
-                        Analizando patrones de numeración...
-                      </span>
-                    </div>
-                  )}
-
-                  <div className="flex gap-2">
-                    <Input
-                      id="numero_serie"
-                      value={numeroSerie}
-                      onChange={(e) => setNumeroSerie(e.target.value)}
-                      placeholder={suggestedSerie ? `Sugerencia: ${suggestedSerie}` : "Ingrese el número de serie..."}
-                      className="flex-1"
-                    />
-                    {suggestedSerie && (
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="ghost"
-                        onClick={fetchSerieSuggestion}
-                        disabled={suggestionLoading}
-                        className="px-3"
-                        title="Obtener nueva sugerencia"
-                      >
-                        {suggestionLoading ? (
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                        ) : (
-                          <Lightbulb className="w-4 h-4" />
-                        )}
-                      </Button>
-                    )}
+            {/* Información de la Factura */}
+            <Card className="border-l-4 border-l-blue-500">
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <Receipt className="w-4 h-4" />
+                  Información de la Factura
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="pt-0">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-sm font-medium text-foreground">Número de Factura</p>
+                    <p className="text-sm text-muted-foreground">{factura.numero_factura}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-foreground">Emisor</p>
+                    <p className="text-sm text-muted-foreground">{factura.emisor_nombre}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-foreground">NIT</p>
+                    <p className="text-sm text-muted-foreground">{factura.emisor_nit}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-foreground">Total Original</p>
+                    <p className="text-sm font-semibold text-blue-600">{formatCurrency(factura.total_a_pagar)}</p>
                   </div>
                 </div>
-              )}
+              </CardContent>
+            </Card>
 
+            {/* Ajuste de Valores */}
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <Calculator className="w-4 h-4" />
+                  Ajuste de Valores
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="total_a_pagar" className="text-sm font-medium">
+                      Total a Pagar
+                    </Label>
+                    <Input
+                      id="total_a_pagar"
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={totalAPagar}
+                      onChange={(e) => setTotalAPagar(e.target.value)}
+                      placeholder="0.00"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      {totalAPagar && !isNaN(parseFloat(totalAPagar)) ? formatCurrency(parseFloat(totalAPagar)) : 'Ingrese el monto'}
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium">Información de IVA</Label>
+                    <div className="p-3 bg-muted/50 rounded-lg space-y-1">
+                      <p className="text-xs text-muted-foreground">
+                        IVA original: {formatCurrency(factura.factura_iva || 0)}
+                      </p>
+                      {totalAPagar && parseFloat(totalAPagar) !== factura.total_a_pagar && (
+                        <p className="text-xs text-blue-600 font-medium">
+                          IVA recalculado: {formatCurrency(calcularIVA())}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
 
-              <div>
-                <Label htmlFor="porcentaje_pronto_pago" className="text-sm font-medium">
-                  Porcentaje de pronto pago
-                </Label>
-                <Select value={porcentajeProntoPago} onValueChange={setPorcentajeProntoPago}>
-                  <SelectTrigger className="mt-1 bg-background border-input">
-                    <SelectValue placeholder="Seleccionar porcentaje" />
-                  </SelectTrigger>
-                  <SelectContent className="bg-background border-input shadow-lg z-50">
-                    <SelectItem value="0" className="hover:bg-accent">Sin descuento</SelectItem>
-                    <SelectItem value="1" className="hover:bg-accent">1%</SelectItem>
-                    <SelectItem value="2" className="hover:bg-accent">2%</SelectItem>
-                    <SelectItem value="3" className="hover:bg-accent">3%</SelectItem>
-                    <SelectItem value="4" className="hover:bg-accent">4%</SelectItem>
-                    <SelectItem value="5" className="hover:bg-accent">5%</SelectItem>
-                  </SelectContent>
-                </Select>
-                {porcentajeProntoPago && porcentajeProntoPago !== "0" && (
-                  <p className="text-sm text-muted-foreground mt-2">
-                    Ahorro estimado: {formatCurrency(calcularAhorro())}
-                  </p>
+            {/* Tipo de Clasificación */}
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <Package className="w-4 h-4" />
+                  Tipo de Clasificación
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <RadioGroup
+                  value={classification}
+                  onValueChange={setClassification}
+                  className="grid grid-cols-1 md:grid-cols-2 gap-4"
+                >
+                  <div className="relative">
+                    <RadioGroupItem value="mercancia" id="mercancia" className="peer sr-only" />
+                    <Label
+                      htmlFor="mercancia"
+                      className="flex items-center space-x-3 p-4 border-2 rounded-lg cursor-pointer transition-all hover:bg-blue-50 dark:hover:bg-blue-900/20 peer-data-[state=checked]:border-blue-500 peer-data-[state=checked]:bg-blue-50 dark:peer-data-[state=checked]:bg-blue-900/20"
+                    >
+                      <Package className="w-5 h-5 text-blue-600" />
+                      <div>
+                        <div className="font-medium">Compra de Mercancía</div>
+                        <div className="text-sm text-muted-foreground">Productos para reventa</div>
+                      </div>
+                    </Label>
+                  </div>
+
+                  <div className="relative">
+                    <RadioGroupItem value="gasto" id="gasto" className="peer sr-only" />
+                    <Label
+                      htmlFor="gasto"
+                      className="flex items-center space-x-3 p-4 border-2 rounded-lg cursor-pointer transition-all hover:bg-green-50 dark:hover:bg-green-900/20 peer-data-[state=checked]:border-green-500 peer-data-[state=checked]:bg-green-50 dark:peer-data-[state=checked]:bg-green-900/20"
+                    >
+                      <CreditCard className="w-5 h-5 text-green-600" />
+                      <div>
+                        <div className="font-medium">Gasto</div>
+                        <div className="text-sm text-muted-foreground">Gastos operacionales</div>
+                      </div>
+                    </Label>
+                  </div>
+                </RadioGroup>
+              </CardContent>
+            </Card>
+
+            {/* Configuraciones Adicionales */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Columna Izquierda */}
+              <div className="space-y-6">
+                {/* Descripción */}
+                <Card>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="flex items-center gap-2 text-base">
+                      <FileText className="w-4 h-4" />
+                      Descripción
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <Textarea
+                      id="descripcion"
+                      value={descripcion}
+                      onChange={(e) => setDescripcion(e.target.value)}
+                      placeholder="Agregar descripción adicional..."
+                      rows={3}
+                    />
+                  </CardContent>
+                </Card>
+
+                {/* Retenciones */}
+                <Card>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="flex items-center gap-2 text-base">
+                      <Percent className="w-4 h-4" />
+                      Retenciones
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="flex items-center space-x-2">
+                      <Checkbox
+                        id="tiene_retencion"
+                        checked={tieneRetencion}
+                        onCheckedChange={(checked) => setTieneRetencion(checked === true)}
+                      />
+                      <Label htmlFor="tiene_retencion" className="text-sm font-medium">
+                        Aplicar retención
+                      </Label>
+                    </div>
+
+                    {tieneRetencion && (
+                      <div className="space-y-3 p-3 bg-muted/30 rounded-lg">
+                        <Label className="text-sm font-medium">
+                          Porcentaje de retención
+                        </Label>
+
+                        <Select
+                          value={isCustomRetencion ? 'custom' : montoRetencion}
+                          onValueChange={(value) => {
+                            if (value === 'custom') {
+                              setIsCustomRetencion(true);
+                              setMontoRetencion('');
+                            } else {
+                              setIsCustomRetencion(false);
+                              setMontoRetencion(value);
+                              setCustomRetencion('');
+                            }
+                          }}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Seleccionar porcentaje de retención" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="1">1%</SelectItem>
+                            <SelectItem value="1.5">1.5%</SelectItem>
+                            <SelectItem value="2">2%</SelectItem>
+                            <SelectItem value="2.5">2.5%</SelectItem>
+                            <SelectItem value="3">3%</SelectItem>
+                            <SelectItem value="3.5">3.5%</SelectItem>
+                            <SelectItem value="4">4%</SelectItem>
+                            <SelectItem value="custom">Porcentaje personalizado</SelectItem>
+                          </SelectContent>
+                        </Select>
+
+                        {isCustomRetencion && (
+                          <div>
+                            <Input
+                              id="custom_retencion"
+                              type="number"
+                              step="0.1"
+                              min="0"
+                              max="100"
+                              value={customRetencion}
+                              onChange={(e) => setCustomRetencion(e.target.value)}
+                              placeholder="Ej: 2.3"
+                            />
+                            <p className="text-xs text-muted-foreground mt-1">
+                              Ingrese el porcentaje (ej: 2.3 para 2.3%)
+                            </p>
+                          </div>
+                        )}
+
+                        {tieneRetencion && (isCustomRetencion ? customRetencion : montoRetencion) && totalAPagar && (
+                          <div className="p-2 bg-orange-50 dark:bg-orange-900/20 rounded border-l-2 border-orange-400">
+                            <p className="text-sm font-medium text-orange-800 dark:text-orange-300">
+                              Retención estimada: {formatCurrency(((parseFloat(totalAPagar) || 0) * parseFloat(isCustomRetencion ? customRetencion : montoRetencion)) / 100)}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Columna Derecha */}
+              <div className="space-y-6">
+                {/* Número de Serie (solo para mercancía) */}
+                {classification === 'mercancia' && (
+                  <Card>
+                    <CardHeader className="pb-3">
+                      <CardTitle className="flex items-center gap-2 text-base">
+                        <Package className="w-4 h-4" />
+                        Número de Serie
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                      {/* Mostrar sugerencia si está disponible */}
+                      {suggestedSerie && !suggestionLoading && (
+                        <div className="flex items-center gap-2 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
+                          <Lightbulb className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                          <div className="flex-1">
+                            <div className="text-sm text-blue-800 dark:text-blue-300">
+                              <span className="font-medium">Sugerencia: </span>
+                              <span className="font-mono">{suggestedSerie}</span>
+                            </div>
+                            <div className="text-xs text-blue-600 dark:text-blue-400">
+                              Basado en el patrón del emisor
+                            </div>
+                          </div>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            onClick={useSuggestion}
+                            className="border-blue-300 text-blue-700 hover:bg-blue-100 dark:border-blue-600 dark:text-blue-300 dark:hover:bg-blue-800"
+                          >
+                            Usar
+                          </Button>
+                        </div>
+                      )}
+
+                      {/* Indicador de carga */}
+                      {suggestionLoading && (
+                        <div className="flex items-center gap-2 p-3 bg-muted/50 rounded-lg border">
+                          <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+                          <span className="text-sm text-muted-foreground">
+                            Analizando patrones de numeración...
+                          </span>
+                        </div>
+                      )}
+
+                      <div className="flex gap-2">
+                        <Input
+                          id="numero_serie"
+                          value={numeroSerie}
+                          onChange={(e) => setNumeroSerie(e.target.value)}
+                          placeholder={suggestedSerie ? `Sugerencia: ${suggestedSerie}` : "Ingrese el número de serie..."}
+                          className="flex-1"
+                        />
+                        {suggestedSerie && (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            onClick={fetchSerieSuggestion}
+                            disabled={suggestionLoading}
+                            className="px-3"
+                            title="Obtener nueva sugerencia"
+                          >
+                            {suggestionLoading ? (
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : (
+                              <Lightbulb className="w-4 h-4" />
+                            )}
+                          </Button>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
                 )}
+
+                {/* Pronto Pago */}
+                <Card>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="flex items-center gap-2 text-base">
+                      <Calculator className="w-4 h-4" />
+                      Descuento por Pronto Pago
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <Select value={porcentajeProntoPago} onValueChange={setPorcentajeProntoPago}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Seleccionar porcentaje" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="0">Sin descuento</SelectItem>
+                        <SelectItem value="1">1%</SelectItem>
+                        <SelectItem value="2">2%</SelectItem>
+                        <SelectItem value="3">3%</SelectItem>
+                        <SelectItem value="4">4%</SelectItem>
+                        <SelectItem value="5">5%</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    {porcentajeProntoPago && porcentajeProntoPago !== "0" && (
+                      <div className="p-2 bg-green-50 dark:bg-green-900/20 rounded border-l-2 border-green-400">
+                        <p className="text-sm font-medium text-green-800 dark:text-green-300">
+                          Ahorro estimado: {formatCurrency(calcularAhorro())}
+                        </p>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
               </div>
             </div>
 
-            <div className="flex space-x-2 pt-4">
-              <Button
-                variant="outline"
-                onClick={onClose}
-                className="flex-1"
-                disabled={isUpdating}
-              >
-                Cancelar
-              </Button>
-              <Button
-                onClick={handleSubmit}
-                disabled={!classification || isUpdating}
-                className="flex-1"
-              >
-                {isUpdating ? 'Guardando...' : 'Guardar'}
-              </Button>
-            </div>
+            {/* Separador */}
+            <Separator />
+
+            {/* Resumen y Acciones */}
+            <Card className="bg-muted/30">
+              <CardContent className="pt-6">
+                <div className="space-y-4">
+                  {/* Resumen de valores */}
+                  {classification && totalAPagar && (
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                      <div className="text-center">
+                        <p className="text-muted-foreground">Total Original</p>
+                        <p className="font-semibold text-lg">{formatCurrency(factura.total_a_pagar)}</p>
+                      </div>
+                      {totalAPagar && parseFloat(totalAPagar) !== factura.total_a_pagar && (
+                        <div className="text-center">
+                          <p className="text-muted-foreground">Total Ajustado</p>
+                          <p className="font-semibold text-lg text-blue-600">{formatCurrency(parseFloat(totalAPagar))}</p>
+                        </div>
+                      )}
+                      {(tieneRetencion || (porcentajeProntoPago && porcentajeProntoPago !== "0")) && (
+                        <div className="text-center">
+                          <p className="text-muted-foreground">Valor Final Estimado</p>
+                          <p className="font-semibold text-lg text-green-600">
+                            {formatCurrency(
+                              parseFloat(totalAPagar) -
+                              (tieneRetencion && (isCustomRetencion ? customRetencion : montoRetencion) ?
+                                ((parseFloat(totalAPagar) || 0) * parseFloat(isCustomRetencion ? customRetencion : montoRetencion)) / 100 : 0) -
+                              (porcentajeProntoPago && porcentajeProntoPago !== "0" ? calcularAhorro() : 0)
+                            )}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Botones de acción */}
+                  <div className="flex flex-col sm:flex-row gap-3">
+                    <Button
+                      variant="outline"
+                      onClick={onClose}
+                      className="flex-1 h-11"
+                      disabled={isUpdating}
+                    >
+                      Cancelar
+                    </Button>
+                    <Button
+                      onClick={handleSubmit}
+                      disabled={!classification || isUpdating}
+                      className="flex-1 h-11"
+                      size="lg"
+                    >
+                      {isUpdating ? (
+                        <>
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          Guardando...
+                        </>
+                      ) : (
+                        <>
+                          <FileText className="w-4 h-4 mr-2" />
+                          Clasificar Factura
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
           </div>
         )}
       </DialogContent>
