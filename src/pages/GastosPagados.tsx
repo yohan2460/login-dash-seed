@@ -8,7 +8,9 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
-import { CreditCard, DollarSign, CalendarIcon, Banknote } from 'lucide-react';
+import { CreditCard, DollarSign, CalendarIcon, Banknote, Search, SortAsc } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ModernStatsCard } from '@/components/ModernStatsCard';
 import { FacturasTable } from '@/components/FacturasTable';
 import { ModernLayout } from '@/components/ModernLayout';
@@ -37,6 +39,8 @@ export function GastosPagados() {
   const [isLoading, setIsLoading] = useState(true);
   const [dateFrom, setDateFrom] = useState<Date | undefined>(undefined);
   const [dateTo, setDateTo] = useState<Date | undefined>(undefined);
+  const [sortByDate, setSortByDate] = useState<'newest' | 'oldest'>('newest');
+  const [searchKeyword, setSearchKeyword] = useState('');
 
   useEffect(() => {
     if (user) {

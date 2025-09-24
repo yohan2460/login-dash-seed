@@ -3,7 +3,10 @@ import { Navigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { CreditCard, DollarSign, Calculator, TrendingUp } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Button } from '@/components/ui/button';
+import { CreditCard, DollarSign, Calculator, TrendingUp, Search, SortAsc } from 'lucide-react';
 import { ModernStatsCard } from '@/components/ModernStatsCard';
 import { FacturasTable } from '@/components/FacturasTable';
 import { PaymentMethodDialog } from '@/components/PaymentMethodDialog';
@@ -38,6 +41,8 @@ export function GastosPendientes() {
   const [isLoading, setIsLoading] = useState(true);
   const [selectedFactura, setSelectedFactura] = useState<Factura | null>(null);
   const [isPaymentDialogOpen, setIsPaymentDialogOpen] = useState(false);
+  const [sortByDate, setSortByDate] = useState<'newest' | 'oldest'>('newest');
+  const [searchKeyword, setSearchKeyword] = useState('');
 
   useEffect(() => {
     if (user) {
@@ -126,6 +131,35 @@ export function GastosPendientes() {
     return facturas.reduce((total, factura) => total + calcularValorRealAPagar(factura), 0);
   };
 
+  const getFilteredFacturas = () => {
+    let filtered = facturas;
+
+    // Filtro por palabra clave
+    if (searchKeyword.trim()) {
+      const keyword = searchKeyword.toLowerCase().trim();
+      filtered = filtered.filter(factura =>
+        factura.numero_factura.toLowerCase().includes(keyword) ||
+        factura.emisor_nombre.toLowerCase().includes(keyword) ||
+        factura.emisor_nit.toLowerCase().includes(keyword) ||
+        (factura.descripcion && factura.descripcion.toLowerCase().includes(keyword))
+      );
+    }
+
+    // Ordenamiento por fecha de emisión
+    filtered = [...filtered].sort((a, b) => {
+      const dateA = new Date(a.fecha_emision || a.created_at);
+      const dateB = new Date(b.fecha_emision || b.created_at);
+
+      if (sortByDate === 'oldest') {
+        return dateA.getTime() - dateB.getTime();
+      } else {
+        return dateB.getTime() - dateA.getTime();
+      }
+    });
+
+    return filtered;
+  };
+
   if (loading) {
     return <div>Cargando...</div>;
   }
@@ -144,6 +178,58 @@ export function GastosPendientes() {
             Gestiona las facturas de gastos que están pendientes de pago.
           </p>
         </div>
+
+        {/* Filtros */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Filtros de Búsqueda</CardTitle>
+            <CardDescription>
+              Filtra y ordena las facturas según tus criterios
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-wrap gap-4">
+              <div className="flex flex-col space-y-2">
+                <label className="text-sm font-medium">Buscar</label>
+                <div className="relative">
+                  <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Buscar por número, emisor, NIT o descripción..."
+                    value={searchKeyword}
+                    onChange={(e) => setSearchKeyword(e.target.value)}
+                    className="pl-8 w-[300px]"
+                  />
+                </div>
+              </div>
+
+              <div className="flex flex-col space-y-2">
+                <label className="text-sm font-medium">Ordenar por fecha</label>
+                <Select value={sortByDate} onValueChange={(value: 'newest' | 'oldest') => setSortByDate(value)}>
+                  <SelectTrigger className="w-[180px]">
+                    <SortAsc className="mr-2 h-4 w-4" />
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="newest">Más recientes</SelectItem>
+                    <SelectItem value="oldest">Más antiguas</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="flex items-end">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setSearchKeyword('');
+                    setSortByDate('newest');
+                  }}
+                >
+                  Limpiar Filtros
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
 
         {/* Stats Cards */}
         <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
@@ -195,14 +281,16 @@ export function GastosPendientes() {
               <div className="text-center py-8">
                 <p>Cargando facturas...</p>
               </div>
-            ) : facturas.length === 0 ? (
+            ) : getFilteredFacturas().length === 0 ? (
               <div className="text-center py-8">
                 <CreditCard className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-                <p className="text-muted-foreground">No hay gastos pendientes de pago</p>
+                <p className="text-muted-foreground">
+                  {searchKeyword ? "No se encontraron facturas con los criterios de búsqueda" : "No hay gastos pendientes de pago"}
+                </p>
               </div>
             ) : (
               <FacturasTable
-                facturas={facturas}
+                facturas={getFilteredFacturas()}
                 onClassifyClick={() => {}}
                 onPayClick={handlePay}
                 refreshData={fetchFacturas}

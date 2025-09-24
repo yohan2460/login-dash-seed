@@ -6,9 +6,11 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
-import { Package, DollarSign, CalendarIcon, Banknote } from 'lucide-react';
+import { Package, DollarSign, CalendarIcon, Banknote, Search, SortAsc } from 'lucide-react';
 import { ModernStatsCard } from '@/components/ModernStatsCard';
 import { FacturasTable } from '@/components/FacturasTable';
 import { ModernLayout } from '@/components/ModernLayout';
@@ -42,6 +44,8 @@ export function MercanciaPagada() {
   const [isLoading, setIsLoading] = useState(true);
   const [dateFrom, setDateFrom] = useState<Date | undefined>(undefined);
   const [dateTo, setDateTo] = useState<Date | undefined>(undefined);
+  const [sortByDate, setSortByDate] = useState<'newest' | 'oldest'>('newest');
+  const [searchKeyword, setSearchKeyword] = useState('');
 
   useEffect(() => {
     if (user) {
@@ -89,8 +93,9 @@ export function MercanciaPagada() {
   const getFilteredFacturas = () => {
     let filtered = facturas;
 
+    // Filtro por rango de fechas
     if (dateFrom || dateTo) {
-      filtered = facturas.filter(factura => {
+      filtered = filtered.filter(factura => {
         if (!factura.fecha_emision) return false;
         const facturaDate = new Date(factura.fecha_emision);
 
@@ -100,6 +105,29 @@ export function MercanciaPagada() {
         return true;
       });
     }
+
+    // Filtro por palabra clave
+    if (searchKeyword.trim()) {
+      const keyword = searchKeyword.toLowerCase().trim();
+      filtered = filtered.filter(factura =>
+        factura.numero_factura.toLowerCase().includes(keyword) ||
+        factura.emisor_nombre.toLowerCase().includes(keyword) ||
+        factura.emisor_nit.toLowerCase().includes(keyword) ||
+        (factura.descripcion && factura.descripcion.toLowerCase().includes(keyword))
+      );
+    }
+
+    // Ordenamiento por fecha de emisión
+    filtered = [...filtered].sort((a, b) => {
+      const dateA = new Date(a.fecha_emision || a.created_at);
+      const dateB = new Date(b.fecha_emision || b.created_at);
+
+      if (sortByDate === 'oldest') {
+        return dateA.getTime() - dateB.getTime();
+      } else {
+        return dateB.getTime() - dateA.getTime();
+      }
+    });
 
     return filtered;
   };
@@ -137,6 +165,35 @@ export function MercanciaPagada() {
         const monto = factura.valor_real_a_pagar ?? factura.total_a_pagar ?? 0;
         return total + Math.round(Number(monto));
       }, 0);
+  };
+
+  const handleSistematizar = async (factura: Factura) => {
+    try {
+      const { error } = await supabase
+        .from('facturas')
+        .update({
+          clasificacion_original: factura.clasificacion,
+          clasificacion: 'sistematizada'
+        })
+        .eq('id', factura.id);
+
+      if (error) throw error;
+
+      toast({
+        title: "Factura sistematizada",
+        description: `La factura ${factura.numero_factura} ha sido marcada como sistematizada.`,
+      });
+
+      // Refrescar datos para actualizar la vista
+      fetchFacturas();
+    } catch (error) {
+      console.error('Error sistematizando factura:', error);
+      toast({
+        title: "Error",
+        description: "No se pudo sistematizar la factura",
+        variant: "destructive"
+      });
+    }
   };
 
 
@@ -223,12 +280,41 @@ export function MercanciaPagada() {
                 </Popover>
               </div>
 
+              <div className="flex flex-col space-y-2">
+                <label className="text-sm font-medium">Buscar</label>
+                <div className="relative">
+                  <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Buscar por número, emisor, NIT o descripción..."
+                    value={searchKeyword}
+                    onChange={(e) => setSearchKeyword(e.target.value)}
+                    className="pl-8 w-[300px]"
+                  />
+                </div>
+              </div>
+
+              <div className="flex flex-col space-y-2">
+                <label className="text-sm font-medium">Ordenar por fecha</label>
+                <Select value={sortByDate} onValueChange={(value: 'newest' | 'oldest') => setSortByDate(value)}>
+                  <SelectTrigger className="w-[180px]">
+                    <SortAsc className="mr-2 h-4 w-4" />
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="newest">Más recientes</SelectItem>
+                    <SelectItem value="oldest">Más antiguas</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
               <div className="flex items-end">
                 <Button
                   variant="outline"
                   onClick={() => {
                     setDateFrom(undefined);
                     setDateTo(undefined);
+                    setSearchKeyword('');
+                    setSortByDate('newest');
                   }}
                 >
                   Limpiar Filtros
@@ -308,9 +394,11 @@ export function MercanciaPagada() {
               <FacturasTable
                 facturas={filteredFacturas}
                 onClassifyClick={() => {}}
+                onSistematizarClick={handleSistematizar}
                 refreshData={fetchFacturas}
-                showActions={false}
+                showActions={true}
                 showClassifyButton={false}
+                showSistematizarButton={true}
                 showIngresoSistema={true}
               />
             )}
