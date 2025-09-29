@@ -178,7 +178,8 @@ export default function ModernDashboard() {
 
   const calcularMontoRetencionReal = (factura: Factura) => {
     if (!factura.monto_retencion || factura.monto_retencion === 0) return 0;
-    return factura.total_a_pagar * (factura.monto_retencion / 100);
+    const baseParaRetencion = factura.total_sin_iva || (factura.total_a_pagar - (factura.factura_iva || 0));
+    return baseParaRetencion * (factura.monto_retencion / 100);
   };
 
   const handleSistematizarClick = async (factura: Factura) => {
@@ -743,7 +744,7 @@ export default function ModernDashboard() {
                   title="Ahorro Pronto Pago"
                   value={formatCurrency(getFilteredPaidFacturas().reduce((total, factura) => {
                     if (factura.uso_pronto_pago && factura.porcentaje_pronto_pago) {
-                      return total + (factura.total_a_pagar * factura.porcentaje_pronto_pago / 100);
+                      return total + ((factura.total_sin_iva || (factura.total_a_pagar - (factura.factura_iva || 0))) * factura.porcentaje_pronto_pago / 100);
                     }
                     return total;
                   }, 0))}
@@ -804,7 +805,7 @@ export default function ModernDashboard() {
                   title="Ahorro Pronto Pago"
                   value={formatCurrency(filterFacturasByGastoState(null).reduce((total, factura) => {
                     if (factura.porcentaje_pronto_pago) {
-                      return total + (factura.total_a_pagar * factura.porcentaje_pronto_pago / 100);
+                      return total + ((factura.total_sin_iva || (factura.total_a_pagar - (factura.factura_iva || 0))) * factura.porcentaje_pronto_pago / 100);
                     }
                     return total;
                   }, 0))}
@@ -935,7 +936,7 @@ export default function ModernDashboard() {
                   title="Ahorro Pronto Pago"
                   value={formatCurrency(getFilteredPaidGastos().reduce((total, factura) => {
                     if (factura.uso_pronto_pago && factura.porcentaje_pronto_pago) {
-                      return total + (factura.total_a_pagar * factura.porcentaje_pronto_pago / 100);
+                      return total + ((factura.total_sin_iva || (factura.total_a_pagar - (factura.factura_iva || 0))) * factura.porcentaje_pronto_pago / 100);
                     }
                     return total;
                   }, 0))}

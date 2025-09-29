@@ -123,7 +123,8 @@ export function MercanciaPendiente() {
 
   const calcularMontoRetencionReal = (factura: Factura) => {
     if (!factura.tiene_retencion || !factura.monto_retencion) return 0;
-    return (factura.total_a_pagar * factura.monto_retencion) / 100;
+    const baseParaRetencion = factura.total_sin_iva || (factura.total_a_pagar - (factura.factura_iva || 0));
+    return (baseParaRetencion * factura.monto_retencion) / 100;
   };
 
   const calcularValorRealAPagar = (factura: Factura) => {

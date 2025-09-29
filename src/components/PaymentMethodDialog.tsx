@@ -192,7 +192,7 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
             {factura.porcentaje_pronto_pago && (
               <p className="text-green-600 text-xs">
                 <strong>Descuento pronto pago disponible:</strong> {factura.porcentaje_pronto_pago}%
-                (-{formatCurrency(factura.total_a_pagar * factura.porcentaje_pronto_pago / 100)})
+                (-{formatCurrency((factura.total_sin_iva || (factura.total_a_pagar - (factura.factura_iva || 0))) * factura.porcentaje_pronto_pago / 100)})
               </p>
             )}
 

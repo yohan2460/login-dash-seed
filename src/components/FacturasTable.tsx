@@ -737,7 +737,7 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
                     )}
                     {factura.porcentaje_pronto_pago && factura.porcentaje_pronto_pago > 0 && (
                       <Badge variant="outline" className="text-xs bg-green-50 text-green-700 border-green-200 font-mono">
-                        Pronto Pago -{formatCompactCurrency(((factura.total_a_pagar - (factura.factura_iva || 0)) * factura.porcentaje_pronto_pago) / 100)}
+                        Pronto Pago -{formatCompactCurrency(((factura.total_sin_iva || (factura.total_a_pagar - (factura.factura_iva || 0))) * factura.porcentaje_pronto_pago) / 100)}
                       </Badge>
                     )}
                     {factura.factura_iva && factura.factura_iva > 0 && (
@@ -1051,7 +1051,7 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
                          )}
                          {factura.porcentaje_pronto_pago && factura.porcentaje_pronto_pago > 0 && (
                            <Badge variant="outline" className="text-xs bg-green-50 text-green-700 border-green-200 font-mono">
-                             PP -{formatCompactCurrency(((factura.total_a_pagar - (factura.factura_iva || 0)) * factura.porcentaje_pronto_pago) / 100)}
+                             PP -{formatCompactCurrency(((factura.total_sin_iva || (factura.total_a_pagar - (factura.factura_iva || 0))) * factura.porcentaje_pronto_pago) / 100)}
                            </Badge>
                          )}
                          {factura.factura_iva && factura.factura_iva > 0 && (

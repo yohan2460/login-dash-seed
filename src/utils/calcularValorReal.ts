@@ -1,5 +1,6 @@
 interface FacturaData {
   total_a_pagar: number;
+  total_sin_iva?: number | null;
   tiene_retencion?: boolean | null;
   monto_retencion?: number | null;
   porcentaje_pronto_pago?: number | null;
@@ -10,7 +11,8 @@ interface FacturaData {
 
 export function calcularMontoRetencionReal(factura: FacturaData): number {
   if (!factura.monto_retencion || factura.monto_retencion === 0) return 0;
-  return factura.total_a_pagar * (factura.monto_retencion / 100);
+  const baseParaRetencion = factura.total_sin_iva || (factura.total_a_pagar - (factura.factura_iva || 0));
+  return baseParaRetencion * (factura.monto_retencion / 100);
 }
 
 export function calcularValorRealAPagar(factura: FacturaData): number {
@@ -23,9 +25,10 @@ export function calcularValorRealAPagar(factura: FacturaData): number {
   }
 
   // Restar descuento por pronto pago si está disponible
-  // El descuento se calcula sobre el total a pagar (incluyendo IVA)
+  // El descuento se calcula sobre el total sin IVA
   if (factura.porcentaje_pronto_pago && factura.porcentaje_pronto_pago > 0) {
-    const descuento = factura.total_a_pagar * (factura.porcentaje_pronto_pago / 100);
+    const baseParaDescuento = factura.total_sin_iva || (factura.total_a_pagar - (factura.factura_iva || 0));
+    const descuento = baseParaDescuento * (factura.porcentaje_pronto_pago / 100);
     valorReal -= descuento;
   }
 

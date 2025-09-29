@@ -25,6 +25,7 @@ interface FacturaData {
   porcentaje_pronto_pago?: number;
   fecha_emision?: string;
   fecha_vencimiento?: string;
+  total_sin_iva?: number;
 }
 
 // Función para generar nombre único de archivo

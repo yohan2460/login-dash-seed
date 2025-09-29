@@ -42,6 +42,7 @@ export type Database = {
           porcentaje_pronto_pago: number | null
           tiene_retencion: boolean | null
           total_a_pagar: number
+          total_sin_iva: number | null
           updated_at: string
           user_id: string
           uso_pronto_pago: boolean | null
@@ -74,6 +75,7 @@ export type Database = {
           porcentaje_pronto_pago?: number | null
           tiene_retencion?: boolean | null
           total_a_pagar: number
+          total_sin_iva?: number | null
           updated_at?: string
           user_id: string
           uso_pronto_pago?: boolean | null
@@ -106,6 +108,7 @@ export type Database = {
           porcentaje_pronto_pago?: number | null
           tiene_retencion?: boolean | null
           total_a_pagar?: number
+          total_sin_iva?: number | null
           updated_at?: string
           user_id?: string
           uso_pronto_pago?: boolean | null
