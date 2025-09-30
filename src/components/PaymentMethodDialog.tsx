@@ -29,6 +29,8 @@ interface Factura {
   estado_mercancia?: string | null;
   fecha_pago?: string | null;
   valor_real_a_pagar?: number | null;
+  descuentos_antes_iva?: string | null;
+  total_sin_iva?: number | null;
 }
 
 interface PaymentMethodDialogProps {
@@ -177,20 +179,83 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
         
         <div className="space-y-6">
           <div className="text-sm text-muted-foreground mb-4 p-3 bg-muted/50 rounded-lg">
-            <p><strong>Factura:</strong> {factura.numero_factura}</p>
-            <p><strong>Emisor:</strong> {factura.emisor_nombre}</p>
-            <p><strong>Total Original:</strong> {formatCurrency(factura.total_a_pagar)}</p>
+            <p className="mb-2"><strong>Factura:</strong> {factura.numero_factura}</p>
+            <p className="mb-3"><strong>Emisor:</strong> {factura.emisor_nombre}</p>
+
+            {/* Desglose de valores */}
+            <div className="border-t pt-3 mt-3 space-y-1">
+              <p className="text-xs font-semibold text-gray-700 dark:text-gray-300 mb-2">Desglose de la factura:</p>
+
+              {/* Valor antes de IVA */}
+              <div className="flex justify-between items-center">
+                <span className="text-xs">Valor antes de IVA:</span>
+                <span className="font-medium">
+                  {formatCurrency(factura.total_sin_iva || (factura.total_a_pagar - (factura.factura_iva || 0)))}
+                </span>
+              </div>
+
+              {/* IVA */}
+              {factura.factura_iva && factura.factura_iva > 0 && (
+                <div className="flex justify-between items-center text-blue-600">
+                  <span className="text-xs">
+                    IVA ({factura.factura_iva_porcentaje || 19}%):
+                  </span>
+                  <span className="font-medium">
+                    +{formatCurrency(factura.factura_iva)}
+                  </span>
+                </div>
+              )}
+
+              {/* Total con IVA */}
+              <div className="flex justify-between items-center pt-2 border-t">
+                <span className="text-xs font-semibold">Total con IVA:</span>
+                <span className="font-bold text-base">
+                  {formatCurrency(factura.total_a_pagar)}
+                </span>
+              </div>
+            </div>
+
+            {/* Mostrar descuentos antes de IVA si existen */}
+            {factura.descuentos_antes_iva && (() => {
+              try {
+                const descuentos = JSON.parse(factura.descuentos_antes_iva);
+                const totalDescuentos = descuentos.reduce((sum: number, desc: any) => {
+                  if (desc.tipo === 'porcentaje') {
+                    const base = factura.total_sin_iva || (factura.total_a_pagar - (factura.factura_iva || 0));
+                    return sum + (base * desc.valor / 100);
+                  }
+                  return sum + desc.valor;
+                }, 0);
+
+                return (
+                  <div className="text-purple-600 text-xs space-y-1 mt-2 p-2 bg-purple-50 rounded">
+                    <p className="font-semibold">Descuentos aplicados:</p>
+                    {descuentos.map((desc: any, index: number) => (
+                      <p key={index} className="ml-2">
+                        • {desc.concepto}: {desc.tipo === 'porcentaje' ? `${desc.valor}%` : formatCurrency(desc.valor)}
+                        {desc.tipo === 'porcentaje' && ` = ${formatCurrency((factura.total_sin_iva || (factura.total_a_pagar - (factura.factura_iva || 0))) * desc.valor / 100)}`}
+                      </p>
+                    ))}
+                    <p className="font-semibold mt-1">
+                      Total descuentos: -{formatCurrency(totalDescuentos)}
+                    </p>
+                  </div>
+                );
+              } catch {
+                return null;
+              }
+            })()}
 
             {/* Mostrar retención si aplica */}
             {factura.tiene_retencion && factura.monto_retencion && (
-              <p className="text-orange-600 text-xs">
+              <p className="text-orange-600 text-xs mt-2">
                 <strong>Retención:</strong> -{formatCurrency(calcularMontoRetencionReal(factura))} ({factura.monto_retencion}%)
               </p>
             )}
 
             {/* Mostrar descuento por pronto pago si está disponible */}
             {factura.porcentaje_pronto_pago && (
-              <p className="text-green-600 text-xs">
+              <p className="text-green-600 text-xs mt-2">
                 <strong>Descuento pronto pago disponible:</strong> {factura.porcentaje_pronto_pago}%
                 (-{formatCurrency((factura.total_sin_iva || (factura.total_a_pagar - (factura.factura_iva || 0))) * factura.porcentaje_pronto_pago / 100)})
               </p>

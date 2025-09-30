@@ -212,102 +212,58 @@ export class SerieNumberSuggestion {
   }
 
   /**
-   * Sugiere el siguiente número de serie para un emisor específico
+   * Sugiere el siguiente número de serie (siempre el mayor + 1 de TODA la base de datos)
    */
   static async suggestNextSerie(emisorNit: string): Promise<string | null> {
     try {
-      // Primero intentar con las series del emisor específico
-      const lastSeries = await this.getLastSeriesForEmisor(emisorNit);
+      // Obtener TODAS las series de la base de datos (sin límite de emisor)
+      console.log('🔍 Consultando TODAS las series en la base de datos...');
 
-      if (lastSeries.length > 0) {
-        const commonPattern = this.detectCommonPattern(lastSeries);
+      const { data, error } = await supabase
+        .from('facturas')
+        .select('numero_serie')
+        .not('numero_serie', 'is', null)
+        .order('created_at', { ascending: false });
 
-        if (commonPattern) {
-          // Generar sugerencia basada en el patrón común del emisor
-          let suggestion = this.generateNextSerie(commonPattern);
-          let increment = 1;
-
-          // Verificar que la sugerencia no exista ya (máximo 10 intentos)
-          while (await this.serieExists(suggestion) && increment <= 10) {
-            increment++;
-            suggestion = this.generateNextSerie(commonPattern, increment);
-          }
-
-          if (!await this.serieExists(suggestion)) {
-            return suggestion;
-          }
-        }
+      if (error) {
+        console.error('❌ Error obteniendo series:', error);
+        return '1';
       }
 
-      // Si no hay series del emisor o no se puede detectar patrón,
-      // consultar TODAS las series para encontrar el patrón general
-      console.log('🔍 Consultando todas las series para encontrar el patrón general...');
-      const allSeries = await this.getAllSeries();
+      // Filtrar valores válidos y convertir todo a string
+      const allSeries = data?.map(item => item.numero_serie)
+        .filter(serie => serie !== null && serie !== undefined && serie !== '')
+        .map(serie => String(serie)) || [];
 
       if (allSeries.length === 0) {
-        // Si no hay ninguna serie en la base de datos, empezar con 001
-        console.log('📝 No hay series en la BD, sugiriendo: 001');
-        return '001';
+        console.log('📝 No hay series en la BD, sugiriendo: 1');
+        return '1';
       }
 
       console.log(`📋 Total de series encontradas: ${allSeries.length}`);
 
-      // PRIMERO: Buscar el número más alto (más importante que el patrón común)
-      console.log('🔢 Buscando el número más alto en todas las series...');
-      const highest = this.findHighestNumber(allSeries);
+      // Buscar el número más alto en TODAS las series
+      let maxNumber = 0;
 
-      if (highest) {
-        console.log('📈 Número más alto encontrado:', highest.value, 'Patrón:', highest.pattern);
-
-        // Para series numéricas puras (sin prefijo ni sufijo), mantener el formato
-        if (highest.pattern.prefix === '' && highest.pattern.suffix === '') {
-          // Es una serie numérica pura como "59", sugerir "60"
-          const nextNumber = highest.value + 1;
-          const paddedNumber = nextNumber.toString().padStart(
-            highest.pattern.numericPart.toString().length, '0'
-          );
-          console.log(`🎯 Serie numérica detectada, sugiriendo: ${paddedNumber}`);
-          return paddedNumber;
-        } else {
-          // Tiene prefijo o sufijo, usar generación normal
-          let suggestion = this.generateNextSerie(highest.pattern);
-          let increment = 1;
-
-          // Verificar que la sugerencia no exista ya
-          while (await this.serieExists(suggestion) && increment <= 20) {
-            increment++;
-            suggestion = this.generateNextSerie(highest.pattern, increment);
+      for (const serie of allSeries) {
+        // Extraer todos los números de cada serie
+        const matches = serie.match(/\d+/g);
+        if (matches) {
+          for (const match of matches) {
+            const num = parseInt(match, 10);
+            if (num > maxNumber) {
+              maxNumber = num;
+              console.log(`📈 Nuevo máximo encontrado: ${maxNumber} en serie "${serie}"`);
+            }
           }
-
-          console.log(`🎯 Serie con patrón detectada, sugiriendo: ${suggestion}`);
-          return suggestion;
         }
       }
 
-      // SEGUNDO: Si no se puede encontrar el número más alto, intentar patrón común
-      console.log('📊 Intentando detectar patrón común...');
-      const globalCommonPattern = this.detectCommonPattern(allSeries);
+      // Sugerir el siguiente número
+      const nextNumber = maxNumber + 1;
+      console.log(`🎯 Número más alto: ${maxNumber}, sugiriendo: ${nextNumber}`);
 
-      if (globalCommonPattern) {
-        console.log('📊 Patrón global detectado:', globalCommonPattern);
-        let suggestion = this.generateNextSerie(globalCommonPattern);
-        let increment = 1;
-
-        // Verificar que la sugerencia no exista ya
-        while (await this.serieExists(suggestion) && increment <= 20) {
-          increment++;
-          suggestion = this.generateNextSerie(globalCommonPattern, increment);
-        }
-
-        if (!await this.serieExists(suggestion)) {
-          console.log(`🎯 Patrón común detectado, sugiriendo: ${suggestion}`);
-          return suggestion;
-        }
-      }
-
-      // Si todo falla, usar un patrón numérico simple
-      console.log('⚠️ No se pudo detectar patrón, usando fallback: 001');
-      return '001';
+      return nextNumber.toString();
 
     } catch (error) {
       console.error('Error in suggestNextSerie:', error);

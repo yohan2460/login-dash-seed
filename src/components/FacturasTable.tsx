@@ -45,6 +45,7 @@ interface Factura {
   notas?: string | null;
   valor_real_a_pagar?: number | null;
   ingresado_sistema?: boolean | null;
+  descuentos_antes_iva?: string | null;
 }
 
 interface FacturasTableProps {
@@ -211,29 +212,53 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
     const selectedData = validFacturas.filter(f => selectedFacturas.includes(f.id));
     
     // Preparar datos para Excel
-    const excelData = selectedData.map(factura => ({
-      'Número de Factura': factura.numero_factura,
-      'Emisor': factura.emisor_nombre,
-      'NIT Emisor': factura.emisor_nit,
-      'Número de Serie': factura.numero_serie || '',
-      'Descripción': factura.descripcion || '',
-      'Clasificación': factura.clasificacion || 'Sin clasificar',
-      'Clasificación Original': factura.clasificacion_original || '',
-      'Total a Pagar': factura.total_a_pagar,
-      'IVA': factura.factura_iva || 0,
-      'Porcentaje IVA': factura.factura_iva_porcentaje || 0,
-      'Tiene Retención': factura.tiene_retencion ? 'Sí' : 'No',
-      'Monto Retención': calcularMontoRetencionReal(factura),
-      'Porcentaje Pronto Pago': factura.porcentaje_pronto_pago || 0,
-      'Uso Pronto Pago': factura.uso_pronto_pago ? 'Sí' : 'No',
-      'Estado Mercancía': factura.estado_mercancia || '',
-      'Método de Pago': factura.metodo_pago || '',
-      'Monto Pagado': factura.monto_pagado || 0,
-      'Fecha de Emisión': factura.fecha_emision ? new Date(factura.fecha_emision).toLocaleDateString('es-CO') : '',
-      'Fecha de Vencimiento': factura.fecha_vencimiento ? new Date(factura.fecha_vencimiento).toLocaleDateString('es-CO') : '',
-      'Fecha de Pago': factura.fecha_pago ? new Date(factura.fecha_pago).toLocaleDateString('es-CO') : '',
-      'Fecha de Creación': new Date(factura.created_at).toLocaleDateString('es-CO')
-    }));
+    const excelData = selectedData.map(factura => {
+      let descuentosTexto = '';
+      let totalDescuentos = 0;
+      if (factura.descuentos_antes_iva) {
+        try {
+          const descuentos = JSON.parse(factura.descuentos_antes_iva);
+          descuentosTexto = descuentos.map((d: any) =>
+            `${d.concepto}: ${d.tipo === 'porcentaje' ? d.valor + '%' : '$' + d.valor.toLocaleString('es-CO')}`
+          ).join('; ');
+          totalDescuentos = descuentos.reduce((sum: number, desc: any) => {
+            if (desc.tipo === 'porcentaje') {
+              const base = factura.total_sin_iva || (factura.total_a_pagar - (factura.factura_iva || 0));
+              return sum + (base * desc.valor / 100);
+            }
+            return sum + desc.valor;
+          }, 0);
+        } catch {
+          descuentosTexto = '';
+        }
+      }
+
+      return {
+        'Número de Factura': factura.numero_factura,
+        'Emisor': factura.emisor_nombre,
+        'NIT Emisor': factura.emisor_nit,
+        'Número de Serie': factura.numero_serie || '',
+        'Descripción': factura.descripcion || '',
+        'Clasificación': factura.clasificacion || 'Sin clasificar',
+        'Clasificación Original': factura.clasificacion_original || '',
+        'Total a Pagar': factura.total_a_pagar,
+        'IVA': factura.factura_iva || 0,
+        'Porcentaje IVA': factura.factura_iva_porcentaje || 0,
+        'Descuentos': descuentosTexto,
+        'Total Descuentos': totalDescuentos,
+        'Tiene Retención': factura.tiene_retencion ? 'Sí' : 'No',
+        'Monto Retención': calcularMontoRetencionReal(factura),
+        'Porcentaje Pronto Pago': factura.porcentaje_pronto_pago || 0,
+        'Uso Pronto Pago': factura.uso_pronto_pago ? 'Sí' : 'No',
+        'Estado Mercancía': factura.estado_mercancia || '',
+        'Método de Pago': factura.metodo_pago || '',
+        'Monto Pagado': factura.monto_pagado || 0,
+        'Fecha de Emisión': factura.fecha_emision ? new Date(factura.fecha_emision).toLocaleDateString('es-CO') : '',
+        'Fecha de Vencimiento': factura.fecha_vencimiento ? new Date(factura.fecha_vencimiento).toLocaleDateString('es-CO') : '',
+        'Fecha de Pago': factura.fecha_pago ? new Date(factura.fecha_pago).toLocaleDateString('es-CO') : '',
+        'Fecha de Creación': new Date(factura.created_at).toLocaleDateString('es-CO')
+      };
+    });
 
     // Crear libro de Excel
     const wb = XLSX.utils.book_new();
@@ -251,6 +276,8 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
       { wch: 15 }, // Total a Pagar
       { wch: 12 }, // IVA
       { wch: 15 }, // Porcentaje IVA
+      { wch: 40 }, // Descuentos
+      { wch: 15 }, // Total Descuentos
       { wch: 15 }, // Tiene Retención
       { wch: 15 }, // Monto Retención
       { wch: 20 }, // Porcentaje Pronto Pago
@@ -1060,6 +1087,29 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
                              PP -{formatCompactCurrency(((factura.total_sin_iva || (factura.total_a_pagar - (factura.factura_iva || 0))) * factura.porcentaje_pronto_pago) / 100)}
                            </Badge>
                          )}
+                         {factura.descuentos_antes_iva && (() => {
+                           try {
+                             const descuentos = JSON.parse(factura.descuentos_antes_iva);
+                             const totalDescuentos = descuentos.reduce((sum: number, desc: any) => {
+                               if (desc.tipo === 'porcentaje') {
+                                 const base = factura.total_sin_iva || (factura.total_a_pagar - (factura.factura_iva || 0));
+                                 return sum + (base * desc.valor / 100);
+                               }
+                               return sum + desc.valor;
+                             }, 0);
+                             return totalDescuentos > 0 ? (
+                               <Badge
+                                 variant="outline"
+                                 className="text-xs bg-purple-50 text-purple-700 border-purple-200 font-mono cursor-help"
+                                 title={descuentos.map((d: any) => `${d.concepto}: ${d.tipo === 'porcentaje' ? d.valor + '%' : formatCompactCurrency(d.valor)}`).join(', ')}
+                               >
+                                 Desc -{formatCompactCurrency(totalDescuentos)}
+                               </Badge>
+                             ) : null;
+                           } catch {
+                             return null;
+                           }
+                         })()}
                          {factura.factura_iva && factura.factura_iva > 0 && (
                            <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200 font-mono">
                              IVA +{formatCompactCurrency(factura.factura_iva)}

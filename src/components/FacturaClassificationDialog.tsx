@@ -93,15 +93,12 @@ export function FacturaClassificationDialog({
 
     setSuggestionLoading(true);
     try {
-      // EJECUTAR DEBUG PARA VER QUÉ PASA
-      console.log('🔧 Ejecutando debug antes de sugerir...');
-      await SerieNumberSuggestion.debugSeries();
-
+      console.log('🔍 Obteniendo sugerencia de número de serie...');
       const suggestion = await SerieNumberSuggestion.suggestNextSerie(factura.emisor_nit);
-      console.log(`🎯 Sugerencia final para emisor ${factura.emisor_nit}:`, suggestion);
+      console.log(`🎯 Sugerencia obtenida:`, suggestion);
       setSuggestedSerie(suggestion);
     } catch (error) {
-      console.error('Error getting serie suggestion:', error);
+      console.error('❌ Error getting serie suggestion:', error);
       setSuggestedSerie(null);
     } finally {
       setSuggestionLoading(false);
@@ -110,9 +107,12 @@ export function FacturaClassificationDialog({
 
   // Efecto para obtener sugerencia cuando se selecciona mercancía
   useEffect(() => {
+    console.log('🎬 useEffect ejecutado - classification:', classification, 'emisor_nit:', factura?.emisor_nit);
     if (classification === 'mercancia' && factura?.emisor_nit) {
+      console.log('✅ Condiciones cumplidas, llamando fetchSerieSuggestion...');
       fetchSerieSuggestion();
     } else {
+      console.log('❌ Condiciones NO cumplidas, limpiando sugerencia');
       setSuggestedSerie(null);
     }
   }, [classification, factura?.emisor_nit, fetchSerieSuggestion]);
@@ -222,13 +222,14 @@ export function FacturaClassificationDialog({
       console.log(`📊 IVA original: ${formatCurrency(factura.factura_iva || 0)}`);
       console.log(`📊 IVA nuevo: ${formatCurrency(nuevoIVA)}`);
 
-      // Construir los datos para la tabla facturas (incluyendo IVA y valor real a pagar)
+      // Construir los datos para la tabla facturas (incluyendo IVA, descuentos y valor real a pagar)
       const facturaParaCalculo = {
         total_a_pagar: nuevoTotal,
         tiene_retencion: tieneRetencion,
         monto_retencion: tieneRetencion && (isCustomRetencion ? customRetencion : montoRetencion) ? parseFloat(isCustomRetencion ? customRetencion : montoRetencion) : 0,
         porcentaje_pronto_pago: (isCustomProntoPago ? customProntoPago : porcentajeProntoPago) && (isCustomProntoPago ? customProntoPago : porcentajeProntoPago) !== "0" ? parseFloat(isCustomProntoPago ? customProntoPago : porcentajeProntoPago) : null,
-        factura_iva: nuevoIVA
+        factura_iva: nuevoIVA,
+        descuentos_antes_iva: descuentos.length > 0 ? JSON.stringify(descuentos) : null
       };
 
       const valorRealAPagar = calcularValorRealAPagar(facturaParaCalculo);
@@ -753,7 +754,7 @@ export function FacturaClassificationDialog({
                               <span className="font-mono">{suggestedSerie}</span>
                             </div>
                             <div className="text-xs text-blue-600 dark:text-blue-400">
-                              Basado en el patrón del emisor
+                              Siguiente al número más alto en la base de datos
                             </div>
                           </div>
                           <Button

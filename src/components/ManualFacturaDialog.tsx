@@ -105,13 +105,18 @@ export function ManualFacturaDialog({ isOpen, onClose, onFacturaCreated }: Manua
     if (field === 'total_a_pagar' || field === 'factura_iva_porcentaje') {
       const total = field === 'total_a_pagar' ? value : formData.total_a_pagar;
       const porcentaje = field === 'factura_iva_porcentaje' ? value : formData.factura_iva_porcentaje;
-      
+
       if (total > 0 && porcentaje > 0) {
-        const baseImponible = total / (1 + porcentaje / 100);
-        const iva = total - baseImponible;
+        // Calcular IVA sobre el valor ingresado (el total NO incluye IVA)
+        const iva = total * (porcentaje / 100);
         setFormData(prev => ({
           ...prev,
           factura_iva: Math.round(iva)
+        }));
+      } else if (total === 0 || porcentaje === 0) {
+        setFormData(prev => ({
+          ...prev,
+          factura_iva: 0
         }));
       }
     }

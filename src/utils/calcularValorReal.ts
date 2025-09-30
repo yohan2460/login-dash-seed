@@ -7,6 +7,7 @@ interface FacturaData {
   factura_iva?: number | null;
   notas?: string | null;
   clasificacion?: string | null;
+  descuentos_antes_iva?: string | null;
 }
 
 export function calcularMontoRetencionReal(factura: FacturaData): number {
@@ -17,6 +18,23 @@ export function calcularMontoRetencionReal(factura: FacturaData): number {
 
 export function calcularValorRealAPagar(factura: FacturaData): number {
   let valorReal = factura.total_a_pagar;
+
+  // Restar descuentos antes de IVA si existen
+  if (factura.descuentos_antes_iva) {
+    try {
+      const descuentos = JSON.parse(factura.descuentos_antes_iva);
+      const totalDescuentos = descuentos.reduce((sum: number, desc: any) => {
+        if (desc.tipo === 'porcentaje') {
+          const base = factura.total_sin_iva || (factura.total_a_pagar - (factura.factura_iva || 0));
+          return sum + (base * desc.valor / 100);
+        }
+        return sum + desc.valor;
+      }, 0);
+      valorReal -= totalDescuentos;
+    } catch (error) {
+      console.error('Error parsing descuentos_antes_iva:', error);
+    }
+  }
 
   // Restar retención si aplica
   if (factura.tiene_retencion && factura.monto_retencion) {
@@ -48,6 +66,25 @@ export function calcularTotalReal(factura: FacturaData): number {
     }
   }
 
+  let totalReal = factura.total_a_pagar;
+
+  // Restar descuentos antes de IVA si existen
+  if (factura.descuentos_antes_iva) {
+    try {
+      const descuentos = JSON.parse(factura.descuentos_antes_iva);
+      const totalDescuentos = descuentos.reduce((sum: number, desc: any) => {
+        if (desc.tipo === 'porcentaje') {
+          const base = factura.total_sin_iva || (factura.total_a_pagar - (factura.factura_iva || 0));
+          return sum + (base * desc.valor / 100);
+        }
+        return sum + desc.valor;
+      }, 0);
+      totalReal -= totalDescuentos;
+    } catch (error) {
+      console.error('Error parsing descuentos_antes_iva:', error);
+    }
+  }
+
   // Para facturas normales, verificar si tiene notas de crédito aplicadas
   if (factura.notas && factura.clasificacion !== 'nota_credito') {
     try {
@@ -60,9 +97,9 @@ export function calcularTotalReal(factura: FacturaData): number {
           return sum + (nc.valor_descuento || 0);
         }, 0);
 
-        // Retornar el valor original menos los descuentos
-        const nuevoTotal = factura.total_a_pagar - totalDescuentos;
-        return nuevoTotal;
+        // Restar los descuentos de notas de crédito
+        totalReal -= totalDescuentos;
+        return totalReal;
       }
 
       // Si existe total_con_descuentos (método alternativo)
@@ -74,5 +111,5 @@ export function calcularTotalReal(factura: FacturaData): number {
     }
   }
 
-  return factura.total_a_pagar;
+  return totalReal;
 }
