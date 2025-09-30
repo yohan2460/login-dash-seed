@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Navigate } from 'react-router-dom';
+import { Navigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -40,6 +40,7 @@ interface Factura {
 
 export function MercanciaPendiente() {
   const { user, loading } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [facturas, setFacturas] = useState<Factura[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedFactura, setSelectedFactura] = useState<Factura | null>(null);
@@ -48,6 +49,7 @@ export function MercanciaPendiente() {
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [sortByDate, setSortByDate] = useState<'newest' | 'oldest'>('newest');
   const [searchKeyword, setSearchKeyword] = useState('');
+  const [highlightedId, setHighlightedId] = useState<string | null>(null);
   const [selectedFacturasForPayment, setSelectedFacturasForPayment] = useState<Factura[]>([]);
   const [isMultiplePaymentDialogOpen, setIsMultiplePaymentDialogOpen] = useState(false);
 
@@ -56,6 +58,19 @@ export function MercanciaPendiente() {
       fetchFacturas();
     }
   }, [user]);
+
+  useEffect(() => {
+    const highlightId = searchParams.get('highlight');
+    if (highlightId) {
+      setHighlightedId(highlightId);
+      const timeout = setTimeout(() => {
+        setHighlightedId(null);
+        searchParams.delete('highlight');
+        setSearchParams(searchParams);
+      }, 3000);
+      return () => clearTimeout(timeout);
+    }
+  }, [searchParams, setSearchParams]);
 
   const fetchFacturas = async () => {
     setIsLoading(true);
@@ -357,6 +372,7 @@ export function MercanciaPendiente() {
                 onEditClick={handleEdit}
                 showMultiplePayment={true}
                 onMultiplePayClick={handleMultiplePayment}
+                highlightedId={highlightedId}
               />
             )}
           </CardContent>

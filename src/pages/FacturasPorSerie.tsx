@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Navigate } from 'react-router-dom';
+import { Navigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -68,11 +68,13 @@ const STORAGE_KEY = 'facturas-por-serie-filtros';
 
 export default function FacturasPorSerie() {
   const { user, loading: authLoading } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [facturas, setFacturas] = useState<Factura[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedEstados, setSelectedEstados] = useState<string[]>(['pagada', 'pendiente', 'sistematizada', 'sin_estado']);
   const [selectedMes, setSelectedMes] = useState<string>('');
+  const [highlightedId, setHighlightedId] = useState<string | null>(null);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -84,6 +86,21 @@ export default function FacturasPorSerie() {
       fetchFacturas();
     }
   }, [user]);
+
+  useEffect(() => {
+    const highlightId = searchParams.get('highlight');
+    if (highlightId) {
+      setHighlightedId(highlightId);
+      // Limpiar el highlight después de 3 segundos
+      const timeout = setTimeout(() => {
+        setHighlightedId(null);
+        // Remover el parámetro de la URL
+        searchParams.delete('highlight');
+        setSearchParams(searchParams);
+      }, 3000);
+      return () => clearTimeout(timeout);
+    }
+  }, [searchParams, setSearchParams]);
 
   useEffect(() => {
     saveFiltersToStorage();
@@ -485,6 +502,7 @@ export default function FacturasPorSerie() {
               facturas={facturasFiltradas}
               onClassifyClick={() => {}}
               refreshData={fetchFacturas}
+              highlightedId={highlightedId}
             />
           </CardContent>
         </Card>

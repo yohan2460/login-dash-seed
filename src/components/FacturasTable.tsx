@@ -68,9 +68,10 @@ interface FacturasTableProps {
   onEditClick?: (factura: Factura) => void;
   showMultiplePayment?: boolean;
   onMultiplePayClick?: (facturas: Factura[]) => void;
+  highlightedId?: string | null;
 }
 
-export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPaymentInfo = false, onDelete, onSistematizarClick, showSistematizarButton = false, allowDelete = true, showOriginalClassification = false, onNotaCreditoClick, refreshData, showActions = true, showClassifyButton = true, showValorRealAPagar = false, showIngresoSistema = false, onIngresoSistemaClick, showEditButton = false, onEditClick, showMultiplePayment = false, onMultiplePayClick }: FacturasTableProps) {
+export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPaymentInfo = false, onDelete, onSistematizarClick, showSistematizarButton = false, allowDelete = true, showOriginalClassification = false, onNotaCreditoClick, refreshData, showActions = true, showClassifyButton = true, showValorRealAPagar = false, showIngresoSistema = false, onIngresoSistemaClick, showEditButton = false, onEditClick, showMultiplePayment = false, onMultiplePayClick, highlightedId = null }: FacturasTableProps) {
   const { toast } = useToast();
   const { user } = useAuth();
   const [selectedFacturas, setSelectedFacturas] = useState<string[]>([]);
@@ -935,7 +936,12 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
             </TableHeader>
             <TableBody>
               {validFacturas.map(factura => (
-                <TableRow key={factura.id} className="hover:bg-muted/30 transition-colors">
+                <TableRow
+                  key={factura.id}
+                  className={`hover:bg-muted/30 transition-colors ${
+                    highlightedId === factura.id ? 'bg-yellow-100 dark:bg-yellow-900/30 animate-pulse' : ''
+                  }`}
+                >
                   <TableCell>
                     <Checkbox
                       checked={selectedFacturas.includes(factura.id)}

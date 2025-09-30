@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Navigate } from 'react-router-dom';
+import { Navigate, Link } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -13,12 +13,12 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { ModernLayout } from '@/components/ModernLayout';
 import { useToast } from '@/hooks/use-toast';
 import * as XLSX from 'xlsx';
-import { 
+import {
   Filter,
   Download,
-  Building2, 
-  DollarSign, 
-  TrendingUp, 
+  Building2,
+  DollarSign,
+  TrendingUp,
   AlertTriangle,
   CheckCircle,
   Clock,
@@ -26,12 +26,14 @@ import {
   CreditCard,
   Calendar,
   Search,
-  RefreshCw
+  RefreshCw,
+  ArrowUpDown
 } from 'lucide-react';
 
 interface Factura {
   id: string;
   numero_factura: string;
+  numero_serie: string | null;
   emisor_nombre: string;
   emisor_nit: string;
   total_a_pagar: number;
@@ -69,6 +71,7 @@ export default function Informes() {
   const [selectedFacturas, setSelectedFacturas] = useState<string[]>([]);
   const [loadingData, setLoadingData] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [filters, setFilters] = useState<FilterState>({
     fechaInicio: '',
     fechaFin: '',
@@ -124,7 +127,7 @@ export default function Informes() {
 
   useEffect(() => {
     applyFilters();
-  }, [facturas, filters, searchTerm]);
+  }, [facturas, filters, searchTerm, sortOrder]);
 
   if (!user && !loading) {
     return <Navigate to="/auth" replace />;
@@ -230,6 +233,15 @@ export default function Informes() {
       filtered = filtered.filter(f => f.total_a_pagar <= parseFloat(filters.montoMaximo));
     }
 
+    // Ordenar por fecha de emisión
+    filtered.sort((a, b) => {
+      const fechaA = a.fecha_emision || a.created_at;
+      const fechaB = b.fecha_emision || b.created_at;
+      const dateA = new Date(fechaA).getTime();
+      const dateB = new Date(fechaB).getTime();
+      return sortOrder === 'asc' ? dateA - dateB : dateB - dateA;
+    });
+
     setFilteredFacturas(filtered);
   };
 
@@ -279,6 +291,7 @@ export default function Informes() {
       'Proveedor': factura.emisor_nombre,
       'NIT': factura.emisor_nit,
       'Serie de Factura': factura.numero_factura,
+      'Número de Serie': factura.numero_serie || 'No especificado',
       'Clasificación': factura.clasificacion_original || factura.clasificacion || 'Sin clasificar',
       'Fecha de Emisión': factura.fecha_emision ? new Date(factura.fecha_emision).toLocaleDateString('es-CO') : 'No especificada',
       'Fecha de Vencimiento': factura.fecha_vencimiento ? new Date(factura.fecha_vencimiento).toLocaleDateString('es-CO') : 'No especificada',
@@ -288,8 +301,8 @@ export default function Informes() {
       'Método de Pago': factura.metodo_pago || 'No especificado',
       'Fecha de Pago': factura.fecha_pago ? new Date(factura.fecha_pago).toLocaleDateString('es-CO') : 'No pagada',
       'IVA': factura.factura_iva || 0,
-      'Días para Vencer': factura.fecha_vencimiento ? 
-        Math.ceil((new Date(factura.fecha_vencimiento).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)) : 
+      'Días para Vencer': factura.fecha_vencimiento ?
+        Math.ceil((new Date(factura.fecha_vencimiento).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)) :
         'No especificado'
     }));
 
@@ -316,6 +329,25 @@ export default function Informes() {
   const formatDate = (dateString: string | null) => {
     if (!dateString) return 'No especificada';
     return new Date(dateString).toLocaleDateString('es-CO');
+  };
+
+  const getFacturaRoute = (factura: Factura) => {
+    // Determinar la ruta según el estado de la factura
+    if (factura.clasificacion === 'sistematizada') {
+      return `/sistematizadas?highlight=${factura.id}`;
+    } else if (!factura.clasificacion || factura.clasificacion === 'sin clasificar') {
+      return `/sin-clasificar?highlight=${factura.id}`;
+    } else if (factura.clasificacion_original === 'Mercancía' && factura.estado_mercancia === 'pendiente') {
+      return `/mercancia-pendiente?highlight=${factura.id}`;
+    } else if (factura.clasificacion_original === 'Mercancía' && factura.estado_mercancia === 'pagada') {
+      return `/mercancia-pagada?highlight=${factura.id}`;
+    } else if (factura.clasificacion_original === 'Gastos' && factura.estado_mercancia === 'pendiente') {
+      return `/gastos-pendientes?highlight=${factura.id}`;
+    } else if (factura.clasificacion_original === 'Gastos' && factura.estado_mercancia === 'pagada') {
+      return `/gastos-pagados?highlight=${factura.id}`;
+    }
+    // Por defecto, llevar a sin clasificar
+    return `/sin-clasificar?highlight=${factura.id}`;
   };
 
   const getDaysToExpire = (fechaVencimiento: string | null, estadoPago: string | null) => {
@@ -704,9 +736,20 @@ export default function Informes() {
                       />
                     </TableHead>
                     <TableHead>Proveedor</TableHead>
-                    <TableHead>Serie Factura</TableHead>
+                    <TableHead>Número Factura</TableHead>
+                    <TableHead>Número de Serie</TableHead>
                     <TableHead>Clasificación</TableHead>
-                    <TableHead>Fecha Emisión</TableHead>
+                    <TableHead>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc')}
+                        className="h-8 font-medium"
+                      >
+                        Fecha Emisión
+                        <ArrowUpDown className="ml-2 h-4 w-4" />
+                      </Button>
+                    </TableHead>
                     <TableHead>Fecha Vencimiento</TableHead>
                     <TableHead>Fecha Pago</TableHead>
                     <TableHead>Total Factura</TableHead>
@@ -735,7 +778,15 @@ export default function Informes() {
                             <div className="text-xs text-muted-foreground">{factura.emisor_nit}</div>
                           </div>
                         </TableCell>
-                        <TableCell>{factura.numero_factura}</TableCell>
+                        <TableCell>
+                          <Link
+                            to={getFacturaRoute(factura)}
+                            className="text-blue-600 hover:text-blue-800 hover:underline font-medium"
+                          >
+                            {factura.numero_factura}
+                          </Link>
+                        </TableCell>
+                        <TableCell className="text-xs">{factura.numero_serie || 'No especificado'}</TableCell>
                         <TableCell>
                           <Badge variant="outline">
                             {factura.clasificacion_original || factura.clasificacion || 'Sin clasificar'}
