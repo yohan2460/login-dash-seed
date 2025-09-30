@@ -1,1 +1,4 @@
 project_id = "tzftaefstlhiwpfxojpk"
+
+[functions.webhook-facturas]
+verify_jwt = false

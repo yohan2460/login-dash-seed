@@ -1,15 +1,16 @@
 import { useState, useEffect } from "react";
 import { NavLink, useLocation } from "react-router-dom";
-import { 
-  LayoutDashboard, 
-  FileText, 
-  Building2, 
+import {
+  LayoutDashboard,
+  FileText,
+  Building2,
   LogOut,
   Package,
   CreditCard,
   TrendingUp,
   CheckCircle,
-  Users
+  Users,
+  Hash
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -40,6 +41,11 @@ const navigationItems = [
     title: "Por Proveedor",
     url: "/facturas-por-proveedor",
     icon: Building2,
+  },
+  {
+    title: "Por Serie",
+    url: "/facturas-por-serie",
+    icon: Hash,
   },
   {
     title: "Informes",

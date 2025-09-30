@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { cn } from '@/lib/utils';
+import { cn, formatCurrency } from '@/lib/utils';
 import { format } from 'date-fns';
 import { 
   FileText, Package, CreditCard, TrendingUp, Receipt, 
@@ -169,12 +169,6 @@ export default function ModernDashboard() {
     return gastoFacturas.filter(f => f.estado_mercancia === estado);
   };
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('es-CO', {
-      style: 'currency',
-      currency: 'COP'
-    }).format(amount);
-  };
 
   const calcularMontoRetencionReal = (factura: Factura) => {
     if (!factura.monto_retencion || factura.monto_retencion === 0) return 0;

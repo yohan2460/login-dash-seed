@@ -47,6 +47,7 @@ export type Database = {
           user_id: string
           uso_pronto_pago: boolean | null
           valor_real_a_pagar: number | null
+          descuentos_antes_iva: string | null
         }
         Insert: {
           clasificacion?: string | null
@@ -80,6 +81,7 @@ export type Database = {
           user_id: string
           uso_pronto_pago?: boolean | null
           valor_real_a_pagar?: number | null
+          descuentos_antes_iva?: string | null
         }
         Update: {
           clasificacion?: string | null
@@ -113,6 +115,7 @@ export type Database = {
           user_id?: string
           uso_pronto_pago?: boolean | null
           valor_real_a_pagar?: number | null
+          descuentos_antes_iva?: string | null
         }
         Relationships: []
       }

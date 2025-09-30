@@ -12,6 +12,7 @@ import { MercanciaPagada } from "./pages/MercanciaPagada";
 import { GastosPendientes } from "./pages/GastosPendientes";
 import { GastosPagados } from "./pages/GastosPagados";
 import { Sistematizadas } from "./pages/Sistematizadas";
+import FacturasPorSerie from "./pages/FacturasPorSerie";
 import { DashboardProvider } from "./contexts/DashboardContext";
 
 function App() {
@@ -32,6 +33,7 @@ function App() {
         <Route path="/gastos-pendientes" element={<GastosPendientes />} />
         <Route path="/gastos-pagados" element={<GastosPagados />} />
         <Route path="/sistematizadas" element={<Sistematizadas />} />
+        <Route path="/facturas-por-serie" element={<FacturasPorSerie />} />
 
         <Route path="*" element={<NotFound />} />
       </Routes>
