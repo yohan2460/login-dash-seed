@@ -46,6 +46,8 @@ interface Factura {
   valor_real_a_pagar: number | null;
   uso_pronto_pago: boolean | null;
   porcentaje_pronto_pago: number | null;
+  tiene_retencion: boolean | null;
+  monto_retencion: number | null;
   fecha_emision: string | null;
   fecha_vencimiento: string | null;
   fecha_pago: string | null;
@@ -390,6 +392,11 @@ export default function Informes() {
       pagosCaja: filteredFacturas.filter(f => f.metodo_pago === 'Pago Caja' && f.estado_mercancia === 'pagada').reduce((sum, f) => sum + (f.valor_real_a_pagar || f.monto_pagado || 0), 0),
       totalImpuestosPagados: filteredFacturas.filter(f => f.estado_mercancia === 'pagada').reduce((sum, f) => sum + (f.factura_iva || 0), 0),
       totalImpuestos: filteredFacturas.reduce((sum, f) => sum + (f.factura_iva || 0), 0),
+      totalRetenciones: filteredFacturas.filter(f => f.tiene_retencion).reduce((sum, f) => sum + (f.monto_retencion || 0), 0),
+      totalProntoPago: filteredFacturas.filter(f => f.uso_pronto_pago && f.estado_mercancia === 'pagada').reduce((sum, f) => {
+        const valorBase = f.total_a_pagar - (f.factura_iva || 0);
+        return sum + (valorBase * ((f.porcentaje_pronto_pago || 0) / 100));
+      }, 0),
     };
   })();
 
@@ -548,6 +555,30 @@ export default function Informes() {
                 <div className="ml-3">
                   <p className="text-xs font-medium text-muted-foreground">Total Impuestos Pagados</p>
                   <p className="text-lg font-bold">{formatCurrency(stats.totalImpuestosPagados)}</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center">
+                <AlertTriangle className="h-6 w-6 text-orange-600" />
+                <div className="ml-3">
+                  <p className="text-xs font-medium text-muted-foreground">Total Retenciones</p>
+                  <p className="text-lg font-bold">{formatCurrency(stats.totalRetenciones)}</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center">
+                <TrendingUp className="h-6 w-6 text-teal-600" />
+                <div className="ml-3">
+                  <p className="text-xs font-medium text-muted-foreground">Total Pronto Pago</p>
+                  <p className="text-lg font-bold">{formatCurrency(stats.totalProntoPago)}</p>
                 </div>
               </div>
             </CardContent>
