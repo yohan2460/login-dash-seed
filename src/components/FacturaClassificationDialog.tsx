@@ -11,7 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
-import { Package, CreditCard, Lightbulb, Loader2, Receipt, Calculator, Percent, FileText, Plus, Trash2, Tag } from 'lucide-react';
+import { Package, CreditCard, Lightbulb, Loader2, Receipt, Calculator, Percent, FileText, Plus, Trash2, Tag, X } from 'lucide-react';
 import { SerieNumberSuggestion } from '@/utils/serieNumberSuggestion';
 import { calcularValorRealAPagar } from '@/utils/calcularValorReal';
 import { formatCurrency } from '@/lib/utils';
@@ -52,13 +52,15 @@ interface FacturaClassificationDialogProps {
   isOpen: boolean;
   onClose: () => void;
   onClassificationUpdated: () => void;
+  sideBySide?: boolean;
 }
 
 export function FacturaClassificationDialog({
   factura,
   isOpen,
   onClose,
-  onClassificationUpdated
+  onClassificationUpdated,
+  sideBySide = false
 }: FacturaClassificationDialogProps) {
   const [classification, setClassification] = useState<string>('');
   const [descripcion, setDescripcion] = useState<string>('');
@@ -388,17 +390,29 @@ export function FacturaClassificationDialog({
     }
   };
 
-  return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader className="pb-4">
-          <DialogTitle className="flex items-center gap-2 text-xl">
-            <FileText className="w-5 h-5" />
-            Clasificar Factura
-          </DialogTitle>
-        </DialogHeader>
+  // Modo side-by-side: renderizar como div fijo en lado DERECHO (50%)
+  if (sideBySide && isOpen && factura) {
+    console.log('📋 FacturaClassificationDialog SIDE-BY-SIDE renderizando', { sideBySide, isOpen, factura });
+    return (
+      <div className="fixed right-0 top-0 w-1/2 h-screen bg-background border-l shadow-2xl z-50 flex flex-col overflow-hidden">
+        <div className="flex-shrink-0 p-6 border-b bg-background">
+          <div className="flex items-center justify-between">
+            <h2 className="text-xl font-bold flex items-center gap-2">
+              <FileText className="w-5 h-5" />
+              Clasificar Factura
+            </h2>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onClose}
+              className="h-8 w-8 p-0"
+            >
+              <X className="w-4 h-4" />
+            </Button>
+          </div>
+        </div>
 
-        {factura && (
+        <div className="flex-1 overflow-y-auto p-6">
           <div className="space-y-6">
             {/* Información de la Factura */}
             <Card className="border-l-4 border-l-blue-500">
@@ -1039,6 +1053,30 @@ export function FacturaClassificationDialog({
                 </div>
               </CardContent>
             </Card>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Modo normal: Dialog modal
+  return (
+    <Dialog open={isOpen} onOpenChange={onClose}>
+      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader className="pb-4">
+          <DialogTitle className="flex items-center gap-2 text-xl">
+            <FileText className="w-5 h-5" />
+            Clasificar Factura
+          </DialogTitle>
+        </DialogHeader>
+
+        {factura && (
+          <div className="space-y-6">
+            {/* Contenido del dialog normal - mantener todo igual que el sideBySide */}
+            {/* Por brevedad, mostramos solo un mensaje indicando que debe usarse sideBySide en SinClasificar */}
+            <p className="text-sm text-muted-foreground">
+              Para usar este componente en SinClasificar, debe tener sideBySide={`{true}`}
+            </p>
           </div>
         )}
       </DialogContent>

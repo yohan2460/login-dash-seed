@@ -9,9 +9,10 @@ interface PDFViewerProps {
   onClose: () => void;
   pdfUrl: string | null;
   title?: string;
+  sideBySide?: boolean;
 }
 
-export function PDFViewer({ isOpen, onClose, pdfUrl, title = "Visualizador de PDF" }: PDFViewerProps) {
+export function PDFViewer({ isOpen, onClose, pdfUrl, title = "Visualizador de PDF", sideBySide = false }: PDFViewerProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [zoom, setZoom] = useState(100);
@@ -58,6 +59,99 @@ export function PDFViewer({ isOpen, onClose, pdfUrl, title = "Visualizador de PD
     onClose();
   };
 
+  // Modo side-by-side: renderizar como div fijo en lado IZQUIERDO (50%)
+  if (sideBySide && isOpen) {
+    console.log('📺 PDFViewer SIDE-BY-SIDE renderizando', { sideBySide, isOpen, pdfUrl });
+    return (
+      <div className="fixed left-0 top-0 w-1/2 h-screen bg-background border-r shadow-2xl z-50 flex flex-col">
+        <div className="flex-shrink-0 p-4 border-b bg-background">
+          <div className="flex items-center justify-between">
+            <h3 className="text-lg font-semibold">{title}</h3>
+            <div className="flex items-center space-x-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleZoomOut}
+                disabled={zoom <= 50}
+              >
+                <ZoomOut className="w-4 h-4" />
+              </Button>
+              <span className="text-sm font-medium min-w-[60px] text-center">
+                {zoom}%
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleZoomIn}
+                disabled={zoom >= 200}
+              >
+                <ZoomIn className="w-4 h-4" />
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleDownload}
+                disabled={!pdfUrl}
+              >
+                <Download className="w-4 h-4" />
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleClose}
+              >
+                <X className="w-4 h-4" />
+              </Button>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex-1 relative overflow-hidden">
+          {isLoading && (
+            <div className="absolute inset-0 flex items-center justify-center bg-background/80 backdrop-blur-sm z-10">
+              <div className="flex flex-col items-center space-y-2">
+                <Loader2 className="w-8 h-8 animate-spin" />
+                <p className="text-sm text-muted-foreground">Cargando documento...</p>
+              </div>
+            </div>
+          )}
+
+          {error && (
+            <div className="absolute inset-0 flex items-center justify-center bg-background">
+              <div className="text-center space-y-2">
+                <div className="w-16 h-16 mx-auto bg-destructive/10 rounded-full flex items-center justify-center">
+                  <X className="w-8 h-8 text-destructive" />
+                </div>
+                <p className="text-sm font-medium">Error al cargar el documento</p>
+                <p className="text-xs text-muted-foreground">{error}</p>
+                <Button variant="outline" size="sm" onClick={handleClose}>
+                  Cerrar
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {pdfUrl && (
+            <iframe
+              src={`${pdfUrl}#toolbar=0&navpanes=0&scrollbar=0`}
+              className="w-full h-full"
+              style={{
+                transform: `scale(${zoom / 100})`,
+                transformOrigin: 'top left',
+                width: `${100 * (100 / zoom)}%`,
+                height: `${100 * (100 / zoom)}%`
+              }}
+              onLoad={handleLoad}
+              onError={handleError}
+              title="PDF Viewer"
+            />
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // Modo normal: Dialog modal
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>
       <DialogContent className="max-w-6xl w-full h-[90vh] flex flex-col">

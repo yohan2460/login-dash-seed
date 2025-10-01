@@ -12,6 +12,7 @@ import { FacturasTable } from '@/components/FacturasTable';
 import { FacturaClassificationDialog } from '@/components/FacturaClassificationDialog';
 import { ManualFacturaDialog } from '@/components/ManualFacturaDialog';
 import { NotaCreditoDialog } from '@/components/NotaCreditoDialog';
+import { PDFViewer } from '@/components/PDFViewer';
 import { ModernLayout } from '@/components/ModernLayout';
 
 interface Factura {
@@ -42,6 +43,8 @@ export function SinClasificar() {
   const [sortByDate, setSortByDate] = useState<'newest' | 'oldest'>('newest');
   const [searchKeyword, setSearchKeyword] = useState('');
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
+  const [isPdfViewerOpen, setIsPdfViewerOpen] = useState(false);
+  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
 
   useEffect(() => {
     if (user) {
@@ -80,9 +83,37 @@ export function SinClasificar() {
     }
   };
 
-  const handleClassify = (factura: Factura) => {
+  const handleClassify = async (factura: Factura) => {
+    console.log('🔵 handleClassify llamado', { factura });
     setSelectedFactura(factura);
+
+    // Abrir el clasificador inmediatamente
     setIsClassificationDialogOpen(true);
+    console.log('✅ Clasificador abierto');
+
+    // Si tiene PDF, obtener URL firmada y abrir visualizador
+    if (factura.pdf_file_path) {
+      console.log('📄 Factura tiene PDF, obteniendo URL...', factura.pdf_file_path);
+      try {
+        const { data } = await supabase.storage
+          .from('facturas-pdf')
+          .createSignedUrl(factura.pdf_file_path, 60 * 60); // 1 hora
+
+        console.log('📡 Respuesta de Supabase:', data);
+
+        if (data?.signedUrl) {
+          setPdfUrl(data.signedUrl);
+          setIsPdfViewerOpen(true);
+          console.log('✅ PDF Viewer abierto con URL:', data.signedUrl);
+        } else {
+          console.warn('⚠️ No se obtuvo signedUrl');
+        }
+      } catch (error) {
+        console.error('❌ Error obteniendo URL del PDF:', error);
+      }
+    } else {
+      console.warn('⚠️ Factura NO tiene pdf_file_path');
+    }
   };
 
   const handleNotaCredito = (factura: Factura) => {
@@ -278,8 +309,23 @@ export function SinClasificar() {
           onClose={() => {
             setIsClassificationDialogOpen(false);
             setSelectedFactura(null);
+            // Cerrar también el PDF viewer
+            setIsPdfViewerOpen(false);
+            setPdfUrl(null);
           }}
           onClassificationUpdated={fetchFacturas}
+          sideBySide={true}
+        />
+
+        <PDFViewer
+          isOpen={isPdfViewerOpen}
+          onClose={() => {
+            setIsPdfViewerOpen(false);
+            setPdfUrl(null);
+          }}
+          pdfUrl={pdfUrl}
+          title={selectedFactura ? `Factura: ${selectedFactura.numero_factura}` : 'Visualizador de PDF'}
+          sideBySide={true}
         />
 
         <ManualFacturaDialog
