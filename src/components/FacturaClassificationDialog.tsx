@@ -82,24 +82,32 @@ export function FacturaClassificationDialog({
   const [isUpdating, setIsUpdating] = useState(false);
   const [suggestionLoading, setSuggestionLoading] = useState(false);
   const [suggestedSerie, setSuggestedSerie] = useState<string | null>(null);
+  const [availableSeries, setAvailableSeries] = useState<number[]>([]);
   const { toast } = useToast();
 
-  // Función para obtener sugerencia de número de serie
+  // Función para obtener sugerencia de número de serie y números disponibles
   const fetchSerieSuggestion = useCallback(async () => {
     if (!factura?.emisor_nit || classification !== 'mercancia') {
       setSuggestedSerie(null);
+      setAvailableSeries([]);
       return;
     }
 
     setSuggestionLoading(true);
     try {
       console.log('🔍 Obteniendo sugerencia de número de serie...');
-      const suggestion = await SerieNumberSuggestion.suggestNextSerie(factura.emisor_nit);
+      const [suggestion, available] = await Promise.all([
+        SerieNumberSuggestion.suggestNextSerie(factura.emisor_nit),
+        SerieNumberSuggestion.getAvailableSeries()
+      ]);
       console.log(`🎯 Sugerencia obtenida:`, suggestion);
+      console.log(`📋 Series disponibles (faltantes):`, available);
       setSuggestedSerie(suggestion);
+      setAvailableSeries(available);
     } catch (error) {
       console.error('❌ Error getting serie suggestion:', error);
       setSuggestedSerie(null);
+      setAvailableSeries([]);
     } finally {
       setSuggestionLoading(false);
     }
@@ -138,6 +146,7 @@ export function FacturaClassificationDialog({
       setNuevoDescuento({ concepto: '', valor: '', tipo: 'valor_fijo' });
       setSuggestedSerie(null);
       setSuggestionLoading(false);
+      setAvailableSeries([]);
     }
   }, [isOpen]);
 
@@ -251,6 +260,19 @@ export function FacturaClassificationDialog({
       console.log(`📊 Valor real a pagar calculado: ${formatCurrency(valorRealAPagar)}`);
 
       console.log('📝 Datos a enviar a tabla facturas:', updateData);
+      console.log('📝 Tipos de datos:', {
+        clasificacion: typeof updateData.clasificacion,
+        descripcion: typeof updateData.descripcion,
+        tiene_retencion: typeof updateData.tiene_retencion,
+        monto_retencion: typeof updateData.monto_retencion,
+        porcentaje_pronto_pago: typeof updateData.porcentaje_pronto_pago,
+        numero_serie: typeof updateData.numero_serie,
+        estado_mercancia: typeof updateData.estado_mercancia,
+        total_a_pagar: typeof updateData.total_a_pagar,
+        factura_iva: typeof updateData.factura_iva,
+        valor_real_a_pagar: typeof updateData.valor_real_a_pagar,
+        descuentos_antes_iva: typeof updateData.descuentos_antes_iva
+      });
 
       // Actualizar la tabla facturas
       const { error } = await supabase
@@ -260,7 +282,12 @@ export function FacturaClassificationDialog({
 
       if (error) {
         console.error('❌ Error actualizando tabla facturas:', error);
-        throw error;
+        console.error('❌ Detalles del error:', JSON.stringify(error, null, 2));
+        console.error('❌ Mensaje:', error.message);
+        console.error('❌ Código:', error.code);
+        console.error('❌ Detalles:', error.details);
+        console.error('❌ Hint:', error.hint);
+        throw new Error(`Error al actualizar factura: ${error.message} (${error.code})`);
       }
 
       console.log('✅ Tabla facturas actualizada exitosamente con IVA');
@@ -290,6 +317,7 @@ export function FacturaClassificationDialog({
       setNuevoDescuento({ concepto: '', valor: '', tipo: 'valor_fijo' });
       setSuggestedSerie(null);
       setSuggestionLoading(false);
+      setAvailableSeries([]);
     } catch (error) {
       console.error('Error updating classification:', error);
       const errorMessage = error instanceof Error ? error.message : 'Error desconocido';
@@ -779,6 +807,37 @@ export function FacturaClassificationDialog({
                         </div>
                       )}
 
+                      {/* Números disponibles (no usados) */}
+                      {availableSeries.length > 0 && !suggestionLoading && (
+                        <div className="p-3 bg-amber-50 dark:bg-amber-900/20 rounded-lg border border-amber-200 dark:border-amber-800">
+                          <div className="flex items-center gap-2 mb-2">
+                            <Package className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                            <span className="text-sm font-medium text-amber-800 dark:text-amber-300">
+                              Números disponibles (no usados)
+                            </span>
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            {availableSeries.slice(0, 15).map((num) => (
+                              <Button
+                                key={num}
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                onClick={() => setNumeroSerie(num.toString())}
+                                className="h-7 px-2 text-xs border-amber-300 text-amber-700 hover:bg-amber-100 dark:border-amber-600 dark:text-amber-300 dark:hover:bg-amber-800"
+                              >
+                                {num}
+                              </Button>
+                            ))}
+                            {availableSeries.length > 15 && (
+                              <span className="text-xs text-amber-600 dark:text-amber-400 self-center">
+                                +{availableSeries.length - 15} más
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
                       <div className="flex gap-2">
                         <Input
                           id="numero_serie"
@@ -835,7 +894,7 @@ export function FacturaClassificationDialog({
                         <SelectValue placeholder="Seleccionar porcentaje" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="0">Sin descuento</SelectItem>
+                        <SelectItem value="0">Sin descuento (0%)</SelectItem>
                         <SelectItem value="1">1%</SelectItem>
                         <SelectItem value="2">2%</SelectItem>
                         <SelectItem value="3">3%</SelectItem>
@@ -855,10 +914,10 @@ export function FacturaClassificationDialog({
                           max="100"
                           value={customProntoPago}
                           onChange={(e) => setCustomProntoPago(e.target.value)}
-                          placeholder="Ej: 2.5"
+                          placeholder="Ej: 7.5"
                         />
                         <p className="text-xs text-muted-foreground mt-1">
-                          Ingrese el porcentaje (ej: 2.5 para 2.5%)
+                          Ingrese el porcentaje (ej: 7.5 para 7.5%)
                         </p>
                       </div>
                     )}
@@ -905,7 +964,7 @@ export function FacturaClassificationDialog({
                           <p className="text-xs text-purple-500">-{formatCurrency(calcularTotalDescuentos())} en descuentos</p>
                         </div>
                       )}
-                      {(tieneRetencion || (porcentajeProntoPago && porcentajeProntoPago !== "0")) && (
+                      {(tieneRetencion || (isCustomProntoPago && customProntoPago) || (porcentajeProntoPago && porcentajeProntoPago !== "0")) && (
                         <div className="text-center">
                           <p className="text-muted-foreground">Valor Final Estimado</p>
                           <p className="font-semibold text-lg text-green-600">

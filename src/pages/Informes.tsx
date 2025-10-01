@@ -13,6 +13,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { ModernLayout } from '@/components/ModernLayout';
 import { useToast } from '@/hooks/use-toast';
 import * as XLSX from 'xlsx';
+import { calcularMontoRetencionReal, calcularValorRealAPagar } from '@/utils/calcularValorReal';
 import {
   Filter,
   Download,
@@ -48,6 +49,7 @@ interface Factura {
   porcentaje_pronto_pago: number | null;
   tiene_retencion: boolean | null;
   monto_retencion: number | null;
+  total_sin_iva: number | null;
   fecha_emision: string | null;
   fecha_vencimiento: string | null;
   fecha_pago: string | null;
@@ -116,16 +118,16 @@ export default function Informes() {
     }
   }, [user]);
 
-  // Refrescar datos cada 30 segundos para asegurar sincronización
-  useEffect(() => {
-    if (user) {
-      const interval = setInterval(() => {
-        fetchFacturas();
-      }, 30000);
-
-      return () => clearInterval(interval);
-    }
-  }, [user]);
+  // Refrescar datos cada 5 minutos para asegurar sincronización (solo si es necesario)
+  // useEffect(() => {
+  //   if (user) {
+  //     const interval = setInterval(() => {
+  //       fetchFacturas();
+  //     }, 300000); // 5 minutos en lugar de 30 segundos
+  //
+  //     return () => clearInterval(interval);
+  //   }
+  // }, [user]);
 
   useEffect(() => {
     applyFilters();
@@ -156,12 +158,9 @@ export default function Informes() {
         console.error('Error fetching facturas:', error);
         throw error;
       }
-      
-      // Forzar actualización del estado
-      setFacturas([]);
-      setTimeout(() => {
-        setFacturas(data || []);
-      }, 100);
+
+      // Actualizar el estado directamente
+      setFacturas(data || []);
       
     } catch (error) {
       console.error('Error en fetchFacturas:', error);
@@ -380,22 +379,67 @@ export default function Informes() {
       ultimaActualizacion: new Date().toISOString()
     });
 
+    const facturasPagadas = filteredFacturas.filter(f => f.estado_mercancia === 'pagada');
+
+    // Verificar qué valor estamos usando para cada factura
+    facturasPagadas.forEach(f => {
+      const valorUsado = f.valor_real_a_pagar || f.monto_pagado || 0;
+      console.log(`Factura ${f.numero_factura}:`, {
+        total_a_pagar: f.total_a_pagar,
+        factura_iva: f.factura_iva,
+        valor_real_a_pagar: f.valor_real_a_pagar,
+        monto_pagado: f.monto_pagado,
+        valorUsado,
+        metodo_pago: f.metodo_pago,
+        usando: f.valor_real_a_pagar ? 'valor_real_a_pagar' : (f.monto_pagado ? 'monto_pagado' : 'cero')
+      });
+    });
+
+    const pagosTobias = facturasPagadas.filter(f => f.metodo_pago === 'Pago Tobías').reduce((sum, f) => sum + (f.valor_real_a_pagar || f.monto_pagado || 0), 0);
+    const pagosBancos = facturasPagadas.filter(f => f.metodo_pago === 'Pago Banco').reduce((sum, f) => sum + (f.valor_real_a_pagar || f.monto_pagado || 0), 0);
+    const pagosCaja = facturasPagadas.filter(f => f.metodo_pago === 'Caja').reduce((sum, f) => sum + (f.valor_real_a_pagar || f.monto_pagado || 0), 0);
+    const totalPagado = facturasPagadas.reduce((sum, f) => sum + (f.valor_real_a_pagar || f.monto_pagado || 0), 0);
+
+    console.log('💰 Verificación de pagos:', {
+      totalPagado,
+      pagosTobias,
+      pagosBancos,
+      pagosCaja,
+      suma: pagosTobias + pagosBancos + pagosCaja,
+      diferencia: totalPagado - (pagosTobias + pagosBancos + pagosCaja),
+      facturasPagadas: facturasPagadas.length,
+      metodosUnicos: [...new Set(facturasPagadas.map(f => f.metodo_pago))],
+      facturasConValorReal: facturasPagadas.filter(f => f.valor_real_a_pagar).length,
+      facturasSinValorReal: facturasPagadas.filter(f => !f.valor_real_a_pagar).length
+    });
+
     return {
       totalFacturas: filteredFacturas.length,
       totalMonto: filteredFacturas.reduce((sum, f) => sum + f.total_a_pagar, 0),
-      totalPagado: filteredFacturas.reduce((sum, f) => sum + (f.valor_real_a_pagar || f.monto_pagado || 0), 0),
+      totalPagado,
       totalPendiente: filteredFacturas.filter(f => f.estado_mercancia !== 'pagada').reduce((sum, f) => sum + f.total_a_pagar, 0),
       pagosMercancia: filteredFacturas.filter(f => f.clasificacion_original === 'Mercancía' && f.estado_mercancia === 'pagada').reduce((sum, f) => sum + (f.valor_real_a_pagar || f.monto_pagado || 0), 0),
       pagosGastos: filteredFacturas.filter(f => f.clasificacion_original === 'Gastos' && f.estado_mercancia === 'pagada').reduce((sum, f) => sum + (f.valor_real_a_pagar || f.monto_pagado || 0), 0),
-      pagosTobias: filteredFacturas.filter(f => f.metodo_pago === 'Pago Tobías' && f.estado_mercancia === 'pagada').reduce((sum, f) => sum + (f.valor_real_a_pagar || f.monto_pagado || 0), 0),
-      pagosBancos: filteredFacturas.filter(f => f.metodo_pago === 'Pago Banco' && f.estado_mercancia === 'pagada').reduce((sum, f) => sum + (f.valor_real_a_pagar || f.monto_pagado || 0), 0),
-      pagosCaja: filteredFacturas.filter(f => f.metodo_pago === 'Pago Caja' && f.estado_mercancia === 'pagada').reduce((sum, f) => sum + (f.valor_real_a_pagar || f.monto_pagado || 0), 0),
+      pagosTobias,
+      pagosBancos,
+      pagosCaja,
       totalImpuestosPagados: filteredFacturas.filter(f => f.estado_mercancia === 'pagada').reduce((sum, f) => sum + (f.factura_iva || 0), 0),
       totalImpuestos: filteredFacturas.reduce((sum, f) => sum + (f.factura_iva || 0), 0),
-      totalRetenciones: filteredFacturas.filter(f => f.tiene_retencion).reduce((sum, f) => sum + (f.monto_retencion || 0), 0),
-      totalProntoPago: filteredFacturas.filter(f => f.uso_pronto_pago && f.estado_mercancia === 'pagada').reduce((sum, f) => {
-        const valorBase = f.total_a_pagar - (f.factura_iva || 0);
-        return sum + (valorBase * ((f.porcentaje_pronto_pago || 0) / 100));
+      totalRetenciones: filteredFacturas.filter(f => f.tiene_retencion).reduce((sum, f) => sum + calcularMontoRetencionReal(f), 0),
+      totalProntoPago: filteredFacturas.filter(f => f.porcentaje_pronto_pago && f.porcentaje_pronto_pago > 0).reduce((sum, f) => {
+        // Usar total_sin_iva si está disponible, si no, calcular restando IVA
+        const baseParaDescuento = f.total_sin_iva || (f.total_a_pagar - (f.factura_iva || 0));
+        const descuento = baseParaDescuento * ((f.porcentaje_pronto_pago || 0) / 100);
+        console.log(`Pronto pago factura ${f.numero_factura} (${f.estado_mercancia || 'sin estado'}):`, {
+          total_a_pagar: f.total_a_pagar,
+          factura_iva: f.factura_iva,
+          total_sin_iva: f.total_sin_iva,
+          baseParaDescuento,
+          porcentaje: f.porcentaje_pronto_pago,
+          descuento,
+          estado: f.estado_mercancia
+        });
+        return sum + descuento;
       }, 0),
     };
   })();

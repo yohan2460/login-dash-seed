@@ -345,4 +345,49 @@ export class SerieNumberSuggestion {
       suggestion
     };
   }
+
+  /**
+   * Obtiene los números de serie disponibles (no usados) entre 1 y el máximo
+   * Busca en TODAS las facturas de mercancía, no solo de un emisor específico
+   */
+  static async getAvailableSeries(): Promise<number[]> {
+    try {
+      // Obtener todas las series de mercancía (igual que en FacturasPorSerie)
+      const { data, error } = await supabase
+        .from('facturas')
+        .select('numero_serie')
+        .in('clasificacion', ['mercancia', 'sistematizada'])
+        .not('numero_serie', 'is', null);
+
+      if (error) {
+        console.error('Error fetching series:', error);
+        return [];
+      }
+
+      // Extraer solo números válidos (igual que en FacturasPorSerie)
+      const seriesNumericas = data
+        ?.map(item => item.numero_serie)
+        .filter(serie => serie && serie !== 'Sin serie' && !isNaN(parseInt(String(serie))))
+        .map(serie => parseInt(String(serie)))
+        .sort((a, b) => a - b) || [];
+
+      if (seriesNumericas.length === 0) return [];
+
+      // Encontrar el máximo
+      const maxSerie = Math.max(...seriesNumericas);
+
+      // Encontrar las series faltantes del 1 al máximo
+      const seriesFaltantes: number[] = [];
+      for (let i = 1; i <= maxSerie; i++) {
+        if (!seriesNumericas.includes(i)) {
+          seriesFaltantes.push(i);
+        }
+      }
+
+      return seriesFaltantes;
+    } catch (error) {
+      console.error('Error in getAvailableSeries:', error);
+      return [];
+    }
+  }
 }
