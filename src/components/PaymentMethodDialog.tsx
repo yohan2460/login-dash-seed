@@ -55,14 +55,10 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
   };
 
 
-  // Obtener valor real disponible (prioritariamente de BD, sino calculado)
+  // Obtener valor real disponible - SIEMPRE recalcular para incluir descuentos
   const obtenerValorRealDisponible = (factura: Factura) => {
-    // Si ya tenemos el valor_real_a_pagar en la BD, usarlo
-    if (factura.valor_real_a_pagar !== null && factura.valor_real_a_pagar !== undefined) {
-      return factura.valor_real_a_pagar;
-    }
-
-    // Si no, calcularlo dinámicamente
+    // IMPORTANTE: Siempre recalcular para asegurar que los descuentos estén incluidos
+    // La función calcularValorRealAPagar maneja: descuentos + retención + pronto pago
     return calcularValorRealAPagar(factura);
   };
 

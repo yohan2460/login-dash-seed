@@ -230,10 +230,19 @@ export function FacturaClassificationDialog({
       console.log(`📊 Total nuevo: ${formatCurrency(nuevoTotal)}`);
       console.log(`📊 IVA original: ${formatCurrency(factura.factura_iva || 0)}`);
       console.log(`📊 IVA nuevo: ${formatCurrency(nuevoIVA)}`);
+      console.log(`📊 Total descuentos antes IVA: ${formatCurrency(calcularTotalDescuentos())}`);
+
+      // CRÍTICO: total_sin_iva es el valor ORIGINAL antes de IVA y ANTES de descuentos
+      // nuevoTotal es el valor ingresado por el usuario (con IVA, sin descuentos aplicados)
+      // Los descuentos se aplican DESPUÉS sobre este valor original
+      const valorOriginalSinIVA = nuevoTotal - nuevoIVA;
+
+      console.log(`📊 total_sin_iva (valor ORIGINAL antes de IVA y descuentos): ${formatCurrency(valorOriginalSinIVA)}`);
 
       // Construir los datos para la tabla facturas (incluyendo IVA, descuentos y valor real a pagar)
       const facturaParaCalculo = {
         total_a_pagar: nuevoTotal,
+        total_sin_iva: valorOriginalSinIVA, // IMPORTANTE: Valor ORIGINAL sin descuentos para calcular retención/pronto pago
         tiene_retencion: tieneRetencion,
         monto_retencion: tieneRetencion && (isCustomRetencion ? customRetencion : montoRetencion) ? parseFloat(isCustomRetencion ? customRetencion : montoRetencion) : 0,
         porcentaje_pronto_pago: (isCustomProntoPago ? customProntoPago : porcentajeProntoPago) && (isCustomProntoPago ? customProntoPago : porcentajeProntoPago) !== "0" ? parseFloat(isCustomProntoPago ? customProntoPago : porcentajeProntoPago) : null,
@@ -331,13 +340,16 @@ export function FacturaClassificationDialog({
     }
   };
 
-  // Calcular ahorro por pronto pago
+  // Calcular ahorro por pronto pago sobre el valor ORIGINAL sin descuentos (total_sin_iva)
   const calcularAhorro = () => {
     const porcentaje = isCustomProntoPago ? customProntoPago : porcentajeProntoPago;
     if (!totalAPagar || !porcentaje || porcentaje === "0") return 0;
-    const valorConDescuentos = calcularValorConDescuentos();
-    const totalSinIva = valorConDescuentos - calcularIVA();
-    return (totalSinIva * parseFloat(porcentaje)) / 100;
+
+    // CRÍTICO: total_sin_iva es el valor ORIGINAL antes de IVA y antes de descuentos
+    // totalAPagar es el valor ingresado (original con IVA, sin descuentos aplicados aún)
+    const valorSinIVA = parseFloat(totalAPagar) - calcularIVA();
+
+    return (valorSinIVA * parseFloat(porcentaje)) / 100;
   };
 
 
@@ -747,10 +759,14 @@ export function FacturaClassificationDialog({
                         {tieneRetencion && (isCustomRetencion ? customRetencion : montoRetencion) && totalAPagar && (
                           <div className="p-2 bg-orange-50 dark:bg-orange-900/20 rounded border-l-2 border-orange-400">
                             <p className="text-sm font-medium text-orange-800 dark:text-orange-300">
-                              Retención estimada: {formatCurrency(((calcularValorConDescuentos() - calcularIVA()) * parseFloat(isCustomRetencion ? customRetencion : montoRetencion)) / 100)}
+                              Retención estimada: {formatCurrency((() => {
+                                // CRÍTICO: total_sin_iva = totalAPagar - IVA (valor ORIGINAL sin descuentos)
+                                const valorSinIVA = parseFloat(totalAPagar) - calcularIVA();
+                                return (valorSinIVA * parseFloat(isCustomRetencion ? customRetencion : montoRetencion)) / 100;
+                              })())}
                             </p>
                             <p className="text-xs text-orange-600 dark:text-orange-400 mt-1">
-                              Calculado sobre valor sin IVA
+                              Calculado sobre total_sin_iva (valor antes de IVA, sin descuentos)
                             </p>
                           </div>
                         )}
@@ -968,12 +984,23 @@ export function FacturaClassificationDialog({
                         <div className="text-center">
                           <p className="text-muted-foreground">Valor Final Estimado</p>
                           <p className="font-semibold text-lg text-green-600">
-                            {formatCurrency(
-                              calcularValorConDescuentos() -
-                              (tieneRetencion && (isCustomRetencion ? customRetencion : montoRetencion) ?
-                                ((calcularValorConDescuentos() - calcularIVA()) * parseFloat(isCustomRetencion ? customRetencion : montoRetencion)) / 100 : 0) -
-                              (((isCustomProntoPago && customProntoPago) || (porcentajeProntoPago && porcentajeProntoPago !== "0")) ? calcularAhorro() : 0)
-                            )}
+                            {formatCurrency((() => {
+                              // Calcular valor final: total con descuentos - retención - pronto pago
+                              // IMPORTANTE: retención y pronto pago se calculan sobre total_sin_iva (valor ORIGINAL)
+                              const totalDescuentos = calcularTotalDescuentos();
+                              const valorConDescuentos = parseFloat(totalAPagar) - totalDescuentos;
+                              const valorSinIVA = parseFloat(totalAPagar) - calcularIVA();
+
+                              const retencion = (tieneRetencion && (isCustomRetencion ? customRetencion : montoRetencion))
+                                ? (valorSinIVA * parseFloat(isCustomRetencion ? customRetencion : montoRetencion)) / 100
+                                : 0;
+
+                              const prontoPago = ((isCustomProntoPago && customProntoPago) || (porcentajeProntoPago && porcentajeProntoPago !== "0"))
+                                ? calcularAhorro()
+                                : 0;
+
+                              return valorConDescuentos - retencion - prontoPago;
+                            })())}
                           </p>
                         </div>
                       )}
