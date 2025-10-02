@@ -339,13 +339,13 @@ export default function Informes() {
       'Serie de Factura': factura.numero_factura,
       'Número de Serie': factura.numero_serie || 'No especificado',
       'Clasificación': factura.clasificacion_original || factura.clasificacion || 'Sin clasificar',
-      'Fecha de Emisión': factura.fecha_emision ? new Date(factura.fecha_emision).toLocaleDateString('es-CO') : 'No especificada',
-      'Fecha de Vencimiento': factura.fecha_vencimiento ? new Date(factura.fecha_vencimiento).toLocaleDateString('es-CO') : 'No especificada',
+      'Fecha de Emisión': formatFechaSafe(factura.fecha_emision),
+      'Fecha de Vencimiento': formatFechaSafe(factura.fecha_vencimiento),
       'Total de la Factura': factura.total_a_pagar,
       'Total Pagado': factura.valor_real_a_pagar || factura.monto_pagado || 0,
       'Estado': factura.estado_mercancia || 'Pendiente',
       'Método de Pago': factura.metodo_pago || 'No especificado',
-      'Fecha de Pago': factura.fecha_pago ? new Date(factura.fecha_pago).toLocaleDateString('es-CO') : 'No pagada',
+      'Fecha de Pago': factura.fecha_pago ? formatFechaSafe(factura.fecha_pago) : 'No pagada',
       'IVA': factura.factura_iva || 0,
       'Días para Vencer': factura.fecha_vencimiento ?
         Math.ceil((new Date(factura.fecha_vencimiento).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)) :
@@ -372,9 +372,13 @@ export default function Informes() {
     }).format(amount);
   };
 
-  const formatDate = (dateString: string | null) => {
-    if (!dateString) return 'No especificada';
-    return new Date(dateString).toLocaleDateString('es-CO');
+  // Función segura para formatear fechas (evita problemas de zona horaria)
+  const formatFechaSafe = (fecha: string | null): string => {
+    if (!fecha) return 'No especificada';
+    // Parsear como fecha local en lugar de UTC para evitar cambios de día
+    const [year, month, day] = fecha.split('T')[0].split('-');
+    const date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+    return date.toLocaleDateString('es-CO');
   };
 
   const getFacturaRoute = (factura: Factura) => {
@@ -927,9 +931,9 @@ export default function Informes() {
                             {factura.clasificacion_original || factura.clasificacion || 'Sin clasificar'}
                           </Badge>
                         </TableCell>
-                        <TableCell>{formatDate(factura.fecha_emision)}</TableCell>
-                        <TableCell>{formatDate(factura.fecha_vencimiento)}</TableCell>
-                        <TableCell className="font-semibold text-blue-600">{formatDate(factura.fecha_pago)}</TableCell>
+                        <TableCell>{formatFechaSafe(factura.fecha_emision)}</TableCell>
+                        <TableCell>{formatFechaSafe(factura.fecha_vencimiento)}</TableCell>
+                        <TableCell className="font-semibold text-blue-600">{formatFechaSafe(factura.fecha_pago)}</TableCell>
                         <TableCell className="font-semibold">{formatCurrency(factura.total_a_pagar)}</TableCell>
                         <TableCell className="font-semibold text-green-600">
                           {formatCurrency(factura.valor_real_a_pagar || factura.monto_pagado || 0)}
