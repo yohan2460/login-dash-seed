@@ -54,6 +54,7 @@ interface Factura {
   fecha_vencimiento: string | null;
   fecha_pago: string | null;
   created_at: string;
+  ingresado_sistema: boolean | null;
 }
 
 interface FilterState {
@@ -65,6 +66,7 @@ interface FilterState {
   metodoPago: string;
   montoMinimo: string;
   montoMaximo: string;
+  ingresoSistema: string;
 }
 
 export default function Informes() {
@@ -84,7 +86,8 @@ export default function Informes() {
     estadoPago: '',
     metodoPago: '',
     montoMinimo: '',
-    montoMaximo: ''
+    montoMaximo: '',
+    ingresoSistema: ''
   });
 
   useEffect(() => {
@@ -145,14 +148,28 @@ export default function Informes() {
       // Limpiar cache y forzar nueva consulta
       const { data, error } = await supabase
         .from('facturas')
-        .select('*')
+        .select(`
+          *,
+          ingresado_sistema
+        `)
         .order('created_at', { ascending: false });
-      
+
       console.log('Respuesta de la base de datos:', {
         cantidadFacturas: data?.length || 0,
         error: error,
         timestamp: new Date().toISOString()
       });
+
+      // Debug: verificar si el campo ingresado_sistema viene en los datos
+      if (data && data.length > 0) {
+        console.log('Muestra de facturas con campo ingresado_sistema:',
+          data.slice(0, 5).map(f => ({
+            numero: f.numero_factura,
+            ingresado_sistema: f.ingresado_sistema,
+            tipo_ingresado: typeof f.ingresado_sistema
+          }))
+        );
+      }
       
       if (error) {
         console.error('Error fetching facturas:', error);
@@ -234,6 +251,33 @@ export default function Informes() {
       filtered = filtered.filter(f => f.total_a_pagar <= parseFloat(filters.montoMaximo));
     }
 
+    // Filtro por ingreso al sistema
+    if (filters.ingresoSistema) {
+      console.log('=== DEBUG FILTRO INGRESO SISTEMA ===');
+      console.log('Valor del filtro:', filters.ingresoSistema);
+      console.log('Total facturas antes de filtrar:', filtered.length);
+      console.log('Muestra de valores ingresado_sistema:',
+        filtered.slice(0, 10).map(f => ({
+          numero: f.numero_factura,
+          ingresado_sistema: f.ingresado_sistema,
+          tipo: typeof f.ingresado_sistema
+        }))
+      );
+
+      if (filters.ingresoSistema === 'ingresado') {
+        // Solo facturas con ingresado_sistema = true
+        const antes = filtered.length;
+        filtered = filtered.filter(f => f.ingresado_sistema === true);
+        console.log(`Filtrado 'ingresado': ${antes} -> ${filtered.length}`);
+      } else if (filters.ingresoSistema === 'pendiente') {
+        // Facturas con ingresado_sistema = false o null
+        const antes = filtered.length;
+        filtered = filtered.filter(f => f.ingresado_sistema === false || f.ingresado_sistema === null);
+        console.log(`Filtrado 'pendiente': ${antes} -> ${filtered.length}`);
+      }
+      console.log('=== FIN DEBUG ===');
+    }
+
     // Ordenar por fecha de emisión
     filtered.sort((a, b) => {
       const fechaA = a.fecha_emision || a.created_at;
@@ -255,7 +299,8 @@ export default function Informes() {
       estadoPago: '',
       metodoPago: '',
       montoMinimo: '',
-      montoMaximo: ''
+      montoMaximo: '',
+      ingresoSistema: ''
     });
     setSearchTerm('');
   };
@@ -373,11 +418,11 @@ export default function Informes() {
 
   // Calcular estadísticas
   const stats = (() => {
-    console.log('Calculando estadísticas con facturas:', {
-      totalFacturas: filteredFacturas.length,
-      facturasIds: filteredFacturas.map(f => f.id),
-      ultimaActualizacion: new Date().toISOString()
-    });
+    // console.log('Calculando estadísticas con facturas:', {
+    //   totalFacturas: filteredFacturas.length,
+    //   facturasIds: filteredFacturas.map(f => f.id),
+    //   ultimaActualizacion: new Date().toISOString()
+    // });
 
     const facturasPagadas = filteredFacturas.filter(f => f.estado_mercancia === 'pagada');
 
@@ -757,6 +802,21 @@ export default function Informes() {
                   value={filters.montoMinimo}
                   onChange={(e) => setFilters(prev => ({ ...prev, montoMinimo: e.target.value }))}
                 />
+              </div>
+
+              {/* Ingreso al Sistema */}
+              <div>
+                <Label htmlFor="ingresoSistema">Ingreso al Sistema</Label>
+                <Select value={filters.ingresoSistema || 'todos-ingreso'} onValueChange={(value) => setFilters(prev => ({ ...prev, ingresoSistema: value === 'todos-ingreso' ? '' : value }))}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Seleccionar estado" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="todos-ingreso">Todas</SelectItem>
+                    <SelectItem value="ingresado">Ingresadas al Sistema</SelectItem>
+                    <SelectItem value="pendiente">Pendientes de Ingreso</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             </div>
 
