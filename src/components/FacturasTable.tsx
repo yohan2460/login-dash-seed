@@ -82,7 +82,25 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
   const [selectedFacturaForPDF, setSelectedFacturaForPDF] = useState<Factura | null>(null);
 
   // Validar que facturas sea un array válido con protección contra null
-  const validFacturas = Array.isArray(facturas) ? facturas.filter(f => f && f.id && typeof f.id === 'string' && f.id.length > 0) : [];
+  const validFacturas = Array.isArray(facturas)
+    ? facturas
+        .filter(f => f && f.id && typeof f.id === 'string' && f.id.length > 0)
+        .sort((a, b) => {
+          // Ordenar por fecha de emisión (de más antigua a más nueva)
+          const fechaA = a.fecha_emision || a.created_at;
+          const fechaB = b.fecha_emision || b.created_at;
+          return new Date(fechaA).getTime() - new Date(fechaB).getTime();
+        })
+    : [];
+
+  // Función segura para formatear fechas (evita problemas de zona horaria)
+  const formatFechaSafe = (fecha: string | null): string => {
+    if (!fecha) return '';
+    // Parsear como fecha local en lugar de UTC para evitar cambios de día
+    const [year, month, day] = fecha.split('T')[0].split('-');
+    const date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+    return date.toLocaleDateString('es-CO');
+  };
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('es-CO', {
@@ -253,10 +271,10 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
         'Estado Mercancía': factura.estado_mercancia || '',
         'Método de Pago': factura.metodo_pago || '',
         'Monto Pagado': factura.monto_pagado || 0,
-        'Fecha de Emisión': factura.fecha_emision ? new Date(factura.fecha_emision).toLocaleDateString('es-CO') : '',
-        'Fecha de Vencimiento': factura.fecha_vencimiento ? new Date(factura.fecha_vencimiento).toLocaleDateString('es-CO') : '',
-        'Fecha de Pago': factura.fecha_pago ? new Date(factura.fecha_pago).toLocaleDateString('es-CO') : '',
-        'Fecha de Creación': new Date(factura.created_at).toLocaleDateString('es-CO')
+        'Fecha de Emisión': formatFechaSafe(factura.fecha_emision),
+        'Fecha de Vencimiento': formatFechaSafe(factura.fecha_vencimiento),
+        'Fecha de Pago': formatFechaSafe(factura.fecha_pago),
+        'Fecha de Creación': formatFechaSafe(factura.created_at)
       };
     });
 
@@ -666,11 +684,7 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
                       <div>
                         <div className="text-muted-foreground">Emisión</div>
                         <div className="font-medium">
-                          {factura.fecha_emision ? (
-                            new Date(factura.fecha_emision).toLocaleDateString('es-CO')
-                          ) : (
-                            new Date(factura.created_at).toLocaleDateString('es-CO')
-                          )}
+                          {formatFechaSafe(factura.fecha_emision || factura.created_at)}
                         </div>
                       </div>
                     </div>
@@ -679,9 +693,7 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
                       <div>
                         <div className="text-muted-foreground">Vencimiento</div>
                         <div className="font-medium">
-                          {factura.fecha_vencimiento ? (
-                            new Date(factura.fecha_vencimiento).toLocaleDateString('es-CO')
-                          ) : '-'}
+                          {formatFechaSafe(factura.fecha_vencimiento) || '-'}
                         </div>
                       </div>
                     </div>
@@ -694,7 +706,7 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
                        <div>
                          <div className="text-green-600">Pagada el</div>
                          <div className="font-medium text-green-600">
-                           {new Date(factura.fecha_pago).toLocaleDateString('es-CO')}
+                           {formatFechaSafe(factura.fecha_pago)}
                          </div>
                        </div>
                      </div>
@@ -1039,19 +1051,13 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
                       <div className="flex items-center gap-1">
                         <Calendar className="w-3 h-3 text-blue-500" />
                         <span className="font-medium">
-                          {factura.fecha_emision ? (
-                            new Date(factura.fecha_emision).toLocaleDateString('es-CO')
-                          ) : (
-                            new Date(factura.created_at).toLocaleDateString('es-CO')
-                          )}
+                          {formatFechaSafe(factura.fecha_emision || factura.created_at)}
                         </span>
                       </div>
                        <div className="flex items-center gap-1">
                          <Clock className="w-3 h-3 text-orange-500" />
                          <span className="font-medium">
-                           {factura.fecha_vencimiento ? (
-                             new Date(factura.fecha_vencimiento).toLocaleDateString('es-CO')
-                           ) : '-'}
+                           {formatFechaSafe(factura.fecha_vencimiento) || '-'}
                          </span>
                          {getDaysIndicator(getDaysUntilDue(factura.fecha_vencimiento, factura.estado_mercancia))}
                        </div>
@@ -1059,7 +1065,7 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
                          <div className="flex items-center gap-1">
                            <CheckCircle className="w-3 h-3 text-green-600" />
                            <span className="font-medium text-green-600">
-                             {new Date(factura.fecha_pago).toLocaleDateString('es-CO')}
+                             {formatFechaSafe(factura.fecha_pago)}
                            </span>
                          </div>
                        )}

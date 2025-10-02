@@ -211,6 +211,34 @@ export function MercanciaPagada() {
     }
   };
 
+  const handleIngresoSistema = async (factura: Factura) => {
+    try {
+      const nuevoEstado = !factura.ingresado_sistema;
+
+      const { error } = await supabase
+        .from('facturas')
+        .update({ ingresado_sistema: nuevoEstado })
+        .eq('id', factura.id);
+
+      if (error) throw error;
+
+      toast({
+        title: nuevoEstado ? "Marcado como ingresado" : "Marcado como pendiente",
+        description: `La factura ${factura.numero_factura} ha sido actualizada.`,
+      });
+
+      // Refrescar datos
+      fetchFacturas();
+    } catch (error) {
+      console.error('Error actualizando estado:', error);
+      toast({
+        title: "Error",
+        description: "No se pudo actualizar el estado",
+        variant: "destructive"
+      });
+    }
+  };
+
 
   if (loading) {
     return <div>Cargando...</div>;
@@ -406,6 +434,7 @@ export function MercanciaPagada() {
                 showClassifyButton={false}
                 showSistematizarButton={true}
                 showIngresoSistema={true}
+                onIngresoSistemaClick={handleIngresoSistema}
                 highlightedId={highlightedId}
               />
             )}
