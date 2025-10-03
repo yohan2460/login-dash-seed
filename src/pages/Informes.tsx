@@ -10,6 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { ModernLayout } from '@/components/ModernLayout';
 import { useToast } from '@/hooks/use-toast';
 import * as XLSX from 'xlsx';
@@ -28,7 +29,9 @@ import {
   Calendar,
   Search,
   RefreshCw,
-  ArrowUpDown
+  ArrowUpDown,
+  Eye,
+  X
 } from 'lucide-react';
 
 interface Factura {
@@ -55,6 +58,7 @@ interface Factura {
   fecha_pago: string | null;
   created_at: string;
   ingresado_sistema: boolean | null;
+  pdf_file_path: string | null;
 }
 
 interface FilterState {
@@ -77,10 +81,27 @@ export default function Informes() {
   const [selectedFacturas, setSelectedFacturas] = useState<string[]>([]);
   const [loadingData, setLoadingData] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
+  const [pdfDialogOpen, setPdfDialogOpen] = useState(false);
+  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+  const [loadingPdf, setLoadingPdf] = useState(false);
+  // Obtener el primer y último día del mes actual
+  const getCurrentMonthRange = () => {
+    const now = new Date();
+    const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+    const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+
+    return {
+      inicio: firstDay.toISOString().split('T')[0],
+      fin: lastDay.toISOString().split('T')[0]
+    };
+  };
+
+  const monthRange = getCurrentMonthRange();
+
   const [filters, setFilters] = useState<FilterState>({
-    fechaInicio: '',
-    fechaFin: '',
+    fechaInicio: monthRange.inicio,
+    fechaFin: monthRange.fin,
     proveedor: '',
     clasificacion: '',
     estadoPago: '',
@@ -162,11 +183,12 @@ export default function Informes() {
 
       // Debug: verificar si el campo ingresado_sistema viene en los datos
       if (data && data.length > 0) {
-        console.log('Muestra de facturas con campo ingresado_sistema:',
+        console.log('Muestra de facturas con campos:',
           data.slice(0, 5).map(f => ({
             numero: f.numero_factura,
             ingresado_sistema: f.ingresado_sistema,
-            tipo_ingresado: typeof f.ingresado_sistema
+            pdf_file_path: f.pdf_file_path,
+            tiene_pdf: !!f.pdf_file_path
           }))
         );
       }
@@ -375,10 +397,31 @@ export default function Informes() {
   // Función segura para formatear fechas (evita problemas de zona horaria)
   const formatFechaSafe = (fecha: string | null): string => {
     if (!fecha) return 'No especificada';
-    // Parsear como fecha local en lugar de UTC para evitar cambios de día
-    const [year, month, day] = fecha.split('T')[0].split('-');
-    const date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
-    return date.toLocaleDateString('es-CO');
+
+    try {
+      // Extraer solo la parte de la fecha (YYYY-MM-DD) ignorando la hora y zona horaria
+      const fechaSoloFecha = fecha.split('T')[0];
+      const [year, month, day] = fechaSoloFecha.split('-').map(num => parseInt(num, 10));
+
+      // Crear fecha en zona horaria local (sin conversión UTC)
+      const date = new Date(year, month - 1, day);
+
+      // Verificar que la fecha sea válida
+      if (isNaN(date.getTime())) {
+        console.error('Fecha inválida:', fecha);
+        return 'Fecha inválida';
+      }
+
+      // Formatear manualmente para evitar problemas de zona horaria
+      const dayStr = day.toString().padStart(2, '0');
+      const monthStr = month.toString().padStart(2, '0');
+      const yearStr = year.toString();
+
+      return `${dayStr}/${monthStr}/${yearStr}`;
+    } catch (error) {
+      console.error('Error al formatear fecha:', fecha, error);
+      return 'Error en fecha';
+    }
   };
 
   const getFacturaRoute = (factura: Factura) => {
@@ -418,6 +461,32 @@ export default function Informes() {
     if (dias <= 3) return { text: 'URGENTE', color: 'bg-red-500 text-white' };
     if (dias <= 7) return { text: 'PRÓXIMO', color: 'bg-orange-500 text-white' };
     return null;
+  };
+
+  const handleOpenPdf = async (pdfFilePath: string) => {
+    setLoadingPdf(true);
+    try {
+      // Obtener URL pública firmada del archivo
+      const { data, error } = await supabase.storage
+        .from('facturas-pdf')
+        .createSignedUrl(pdfFilePath, 3600); // 1 hora de validez
+
+      if (error) throw error;
+
+      if (data?.signedUrl) {
+        setPdfUrl(data.signedUrl);
+        setPdfDialogOpen(true);
+      }
+    } catch (error) {
+      console.error('Error al obtener URL del PDF:', error);
+      toast({
+        title: "Error",
+        description: "No se pudo cargar el PDF",
+        variant: "destructive",
+      });
+    } finally {
+      setLoadingPdf(false);
+    }
   };
 
   // Calcular estadísticas
@@ -462,6 +531,33 @@ export default function Informes() {
       facturasSinValorReal: facturasPagadas.filter(f => !f.valor_real_a_pagar).length
     });
 
+    // Calcular pronto pago utilizado (facturas pagadas con uso_pronto_pago = true)
+    const facturasProntoPagoUtilizado = filteredFacturas.filter(f =>
+      f.uso_pronto_pago === true &&
+      f.porcentaje_pronto_pago &&
+      f.porcentaje_pronto_pago > 0 &&
+      f.estado_mercancia === 'pagada'
+    );
+
+    const prontoPagoUtilizado = facturasProntoPagoUtilizado.reduce((sum, f) => {
+      const baseParaDescuento = f.total_sin_iva || (f.total_a_pagar - (f.factura_iva || 0));
+      const descuento = baseParaDescuento * ((f.porcentaje_pronto_pago || 0) / 100);
+      return sum + descuento;
+    }, 0);
+
+    // Calcular pronto pago NO utilizado (facturas con porcentaje pero sin uso_pronto_pago o pendientes)
+    const facturasProntoPagoNoUtilizado = filteredFacturas.filter(f =>
+      f.porcentaje_pronto_pago &&
+      f.porcentaje_pronto_pago > 0 &&
+      (f.uso_pronto_pago !== true || f.estado_mercancia !== 'pagada')
+    );
+
+    const prontoPagoNoUtilizado = facturasProntoPagoNoUtilizado.reduce((sum, f) => {
+      const baseParaDescuento = f.total_sin_iva || (f.total_a_pagar - (f.factura_iva || 0));
+      const descuento = baseParaDescuento * ((f.porcentaje_pronto_pago || 0) / 100);
+      return sum + descuento;
+    }, 0);
+
     return {
       totalFacturas: filteredFacturas.length,
       totalMonto: filteredFacturas.reduce((sum, f) => sum + f.total_a_pagar, 0),
@@ -475,21 +571,11 @@ export default function Informes() {
       totalImpuestosPagados: filteredFacturas.filter(f => f.estado_mercancia === 'pagada').reduce((sum, f) => sum + (f.factura_iva || 0), 0),
       totalImpuestos: filteredFacturas.reduce((sum, f) => sum + (f.factura_iva || 0), 0),
       totalRetenciones: filteredFacturas.filter(f => f.tiene_retencion).reduce((sum, f) => sum + calcularMontoRetencionReal(f), 0),
-      totalProntoPago: filteredFacturas.filter(f => f.porcentaje_pronto_pago && f.porcentaje_pronto_pago > 0).reduce((sum, f) => {
-        // Usar total_sin_iva si está disponible, si no, calcular restando IVA
-        const baseParaDescuento = f.total_sin_iva || (f.total_a_pagar - (f.factura_iva || 0));
-        const descuento = baseParaDescuento * ((f.porcentaje_pronto_pago || 0) / 100);
-        console.log(`Pronto pago factura ${f.numero_factura} (${f.estado_mercancia || 'sin estado'}):`, {
-          total_a_pagar: f.total_a_pagar,
-          factura_iva: f.factura_iva,
-          total_sin_iva: f.total_sin_iva,
-          baseParaDescuento,
-          porcentaje: f.porcentaje_pronto_pago,
-          descuento,
-          estado: f.estado_mercancia
-        });
-        return sum + descuento;
-      }, 0),
+      facturasConRetencion: filteredFacturas.filter(f => f.tiene_retencion).length,
+      prontoPagoUtilizado,
+      prontoPagoNoUtilizado,
+      facturasProntoPagoUtilizado: facturasProntoPagoUtilizado.length,
+      facturasProntoPagoNoUtilizado: facturasProntoPagoNoUtilizado.length,
     };
   })();
 
@@ -516,166 +602,187 @@ export default function Informes() {
       subtitle="Análisis completo de facturas con filtros y exportación"
     >
       <div className="space-y-6">
-        {/* Estadísticas Generales */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-7 gap-4">
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center">
-                <Receipt className="h-6 w-6 text-blue-600" />
-                <div className="ml-3">
-                  <p className="text-xs font-medium text-muted-foreground">Total Facturas</p>
-                  <p className="text-lg font-bold">{stats.totalFacturas}</p>
+        {/* SECCIÓN 1: Resumen General */}
+        <div>
+          <h3 className="text-lg font-semibold mb-3 flex items-center">
+            <Receipt className="w-5 h-5 mr-2 text-blue-600" />
+            Resumen General
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+            <Card>
+              <CardContent className="p-4">
+                <div className="flex items-center">
+                  <Receipt className="h-8 w-8 text-blue-600" />
+                  <div className="ml-3">
+                    <p className="text-xs font-medium text-muted-foreground">Total Facturas</p>
+                    <p className="text-2xl font-bold">{stats.totalFacturas}</p>
+                  </div>
                 </div>
-              </div>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
 
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center">
-                <DollarSign className="h-6 w-6 text-green-600" />
-                <div className="ml-3">
-                  <p className="text-xs font-medium text-muted-foreground">Total Monto</p>
-                  <p className="text-sm font-bold">{formatCurrency(stats.totalMonto)}</p>
+            <Card>
+              <CardContent className="p-4">
+                <div className="flex items-center">
+                  <DollarSign className="h-8 w-8 text-gray-600" />
+                  <div className="ml-3">
+                    <p className="text-xs font-medium text-muted-foreground">Monto Total</p>
+                    <p className="text-xl font-bold">{formatCurrency(stats.totalMonto)}</p>
+                  </div>
                 </div>
-              </div>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
 
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center">
-                <CheckCircle className="h-6 w-6 text-green-600" />
-                <div className="ml-3">
-                  <p className="text-xs font-medium text-muted-foreground">Total Pagado</p>
-                  <p className="text-sm font-bold">{formatCurrency(stats.totalPagado)}</p>
+            <Card className="bg-green-50">
+              <CardContent className="p-4">
+                <div className="flex items-center">
+                  <CheckCircle className="h-8 w-8 text-green-600" />
+                  <div className="ml-3">
+                    <p className="text-xs font-medium text-green-700">Total Pagado</p>
+                    <p className="text-xl font-bold text-green-700">{formatCurrency(stats.totalPagado)}</p>
+                  </div>
                 </div>
-              </div>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
 
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center">
-                <AlertTriangle className="h-6 w-6 text-red-600" />
-                <div className="ml-3">
-                  <p className="text-xs font-medium text-muted-foreground">Total Pendiente</p>
-                  <p className="text-sm font-bold">{formatCurrency(stats.totalPendiente)}</p>
+            <Card className="bg-red-50">
+              <CardContent className="p-4">
+                <div className="flex items-center">
+                  <AlertTriangle className="h-8 w-8 text-red-600" />
+                  <div className="ml-3">
+                    <p className="text-xs font-medium text-red-700">Total Pendiente</p>
+                    <p className="text-xl font-bold text-red-700">{formatCurrency(stats.totalPendiente)}</p>
+                  </div>
                 </div>
-              </div>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
 
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center">
-                <Building2 className="h-6 w-6 text-purple-600" />
-                <div className="ml-3">
-                  <p className="text-xs font-medium text-muted-foreground">Pagos Mercancía</p>
-                  <p className="text-sm font-bold">{formatCurrency(stats.pagosMercancia)}</p>
+            <Card className="bg-indigo-50">
+              <CardContent className="p-4">
+                <div className="flex items-center">
+                  <Receipt className="h-8 w-8 text-indigo-600" />
+                  <div className="ml-3">
+                    <p className="text-xs font-medium text-indigo-700">Total Impuestos</p>
+                    <p className="text-xl font-bold text-indigo-700">{formatCurrency(stats.totalImpuestos)}</p>
+                  </div>
                 </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center">
-                <CreditCard className="h-6 w-6 text-orange-600" />
-                <div className="ml-3">
-                  <p className="text-xs font-medium text-muted-foreground">Pagos Gastos</p>
-                  <p className="text-sm font-bold">{formatCurrency(stats.pagosGastos)}</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center">
-                <Receipt className="h-6 w-6 text-teal-600" />
-                <div className="ml-3">
-                  <p className="text-xs font-medium text-muted-foreground">Total Impuestos</p>
-                  <p className="text-sm font-bold">{formatCurrency(stats.totalImpuestos)}</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+          </div>
         </div>
 
-        {/* Estadísticas de Métodos de Pago */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center">
-                <Building2 className="h-6 w-6 text-blue-600" />
-                <div className="ml-3">
-                  <p className="text-xs font-medium text-muted-foreground">Pagos por Tobías</p>
-                  <p className="text-lg font-bold">{formatCurrency(stats.pagosTobias)}</p>
+        {/* SECCIÓN 2: Métodos de Pago */}
+        <div>
+          <h3 className="text-lg font-semibold mb-3 flex items-center">
+            <CreditCard className="w-5 h-5 mr-2 text-blue-600" />
+            Métodos de Pago
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <Card>
+              <CardContent className="p-4">
+                <div className="flex items-center">
+                  <Building2 className="h-8 w-8 text-blue-600" />
+                  <div className="ml-3">
+                    <p className="text-xs font-medium text-muted-foreground">Pagos por Tobías</p>
+                    <p className="text-xl font-bold">{formatCurrency(stats.pagosTobias)}</p>
+                  </div>
                 </div>
-              </div>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
 
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center">
-                <CreditCard className="h-6 w-6 text-green-600" />
-                <div className="ml-3">
-                  <p className="text-xs font-medium text-muted-foreground">Pagos por Bancos</p>
-                  <p className="text-lg font-bold">{formatCurrency(stats.pagosBancos)}</p>
+            <Card>
+              <CardContent className="p-4">
+                <div className="flex items-center">
+                  <CreditCard className="h-8 w-8 text-green-600" />
+                  <div className="ml-3">
+                    <p className="text-xs font-medium text-muted-foreground">Pagos por Bancos</p>
+                    <p className="text-xl font-bold">{formatCurrency(stats.pagosBancos)}</p>
+                  </div>
                 </div>
-              </div>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
 
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center">
-                <DollarSign className="h-6 w-6 text-purple-600" />
-                <div className="ml-3">
-                  <p className="text-xs font-medium text-muted-foreground">Pagos por Caja</p>
-                  <p className="text-lg font-bold">{formatCurrency(stats.pagosCaja)}</p>
+            <Card>
+              <CardContent className="p-4">
+                <div className="flex items-center">
+                  <DollarSign className="h-8 w-8 text-purple-600" />
+                  <div className="ml-3">
+                    <p className="text-xs font-medium text-muted-foreground">Pagos por Caja</p>
+                    <p className="text-xl font-bold">{formatCurrency(stats.pagosCaja)}</p>
+                  </div>
                 </div>
-              </div>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
 
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center">
-                <Receipt className="h-6 w-6 text-red-600" />
-                <div className="ml-3">
-                  <p className="text-xs font-medium text-muted-foreground">Total Impuestos Pagados</p>
-                  <p className="text-lg font-bold">{formatCurrency(stats.totalImpuestosPagados)}</p>
+        {/* SECCIÓN 3: Descuentos y Deducciones */}
+        <div>
+          <h3 className="text-lg font-semibold mb-3 flex items-center">
+            <TrendingUp className="w-5 h-5 mr-2 text-teal-600" />
+            Descuentos y Deducciones
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <Card className="bg-teal-50">
+              <CardContent className="p-4">
+                <div className="flex items-center">
+                  <TrendingUp className="h-8 w-8 text-teal-600" />
+                  <div className="ml-3">
+                    <p className="text-xs font-medium text-teal-700">Pronto Pago Utilizado</p>
+                    <p className="text-xl font-bold text-teal-700">{formatCurrency(stats.prontoPagoUtilizado)}</p>
+                    <p className="text-xs text-teal-600 mt-1">
+                      {stats.facturasProntoPagoUtilizado} facturas
+                    </p>
+                  </div>
                 </div>
-              </div>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
 
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center">
-                <AlertTriangle className="h-6 w-6 text-orange-600" />
-                <div className="ml-3">
-                  <p className="text-xs font-medium text-muted-foreground">Total Retenciones</p>
-                  <p className="text-lg font-bold">{formatCurrency(stats.totalRetenciones)}</p>
+            <Card className="bg-gray-50">
+              <CardContent className="p-4">
+                <div className="flex items-center">
+                  <Clock className="h-8 w-8 text-gray-600" />
+                  <div className="ml-3">
+                    <p className="text-xs font-medium text-gray-700">Pronto Pago No Utilizado</p>
+                    <p className="text-xl font-bold text-gray-700">{formatCurrency(stats.prontoPagoNoUtilizado)}</p>
+                    <p className="text-xs text-gray-600 mt-1">
+                      {stats.facturasProntoPagoNoUtilizado} facturas
+                    </p>
+                  </div>
                 </div>
-              </div>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
 
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center">
-                <TrendingUp className="h-6 w-6 text-teal-600" />
-                <div className="ml-3">
-                  <p className="text-xs font-medium text-muted-foreground">Total Pronto Pago</p>
-                  <p className="text-lg font-bold">{formatCurrency(stats.totalProntoPago)}</p>
+            <Card>
+              <CardContent className="p-4">
+                <div className="flex items-center">
+                  <AlertTriangle className="h-8 w-8 text-orange-600" />
+                  <div className="ml-3">
+                    <p className="text-xs font-medium text-muted-foreground">Total Retenciones</p>
+                    <p className="text-xl font-bold">{formatCurrency(stats.totalRetenciones)}</p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {stats.facturasConRetencion} facturas
+                    </p>
+                  </div>
                 </div>
-              </div>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardContent className="p-4">
+                <div className="flex items-center">
+                  <Receipt className="h-8 w-8 text-indigo-600" />
+                  <div className="ml-3">
+                    <p className="text-xs font-medium text-muted-foreground">Impuestos Pagados</p>
+                    <p className="text-xl font-bold">{formatCurrency(stats.totalImpuestosPagados)}</p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      de {formatCurrency(stats.totalImpuestos)} total
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
         </div>
 
         {/* Filtros Avanzados */}
@@ -896,13 +1003,14 @@ export default function Informes() {
                     <TableHead>Estado</TableHead>
                     <TableHead>Método Pago</TableHead>
                     <TableHead>Días Vencimiento</TableHead>
+                    <TableHead>Acciones</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {filteredFacturas.map((factura) => {
                     const diasVencimiento = getDaysToExpire(factura.fecha_vencimiento, factura.estado_mercancia);
                     const urgencyBadge = getUrgencyBadge(diasVencimiento);
-                    
+
                     return (
                       <TableRow key={factura.id}>
                         <TableCell>
@@ -960,6 +1068,27 @@ export default function Informes() {
                             )}
                           </div>
                         </TableCell>
+                        <TableCell>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                              if (factura.pdf_file_path) {
+                                handleOpenPdf(factura.pdf_file_path);
+                              } else {
+                                toast({
+                                  title: "PDF no disponible",
+                                  description: "Esta factura no tiene un PDF asociado",
+                                  variant: "destructive",
+                                });
+                              }
+                            }}
+                            title={factura.pdf_file_path ? "Ver PDF" : "PDF no disponible"}
+                            disabled={!factura.pdf_file_path || loadingPdf}
+                          >
+                            <Eye className={`h-4 w-4 ${factura.pdf_file_path ? 'text-blue-600' : 'text-gray-400'}`} />
+                          </Button>
+                        </TableCell>
                       </TableRow>
                     );
                   })}
@@ -968,6 +1097,37 @@ export default function Informes() {
             </div>
           </CardContent>
         </Card>
+
+        {/* Modal de visualización de PDF */}
+        <Dialog open={pdfDialogOpen} onOpenChange={setPdfDialogOpen}>
+          <DialogContent className="max-w-[95vw] w-full h-[95vh] flex flex-col p-0">
+            <DialogHeader className="p-4 border-b flex-shrink-0">
+              <div className="flex items-center justify-between">
+                <DialogTitle>Visualizador de PDF</DialogTitle>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setPdfDialogOpen(false)}
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+            </DialogHeader>
+            <div className="flex-1 w-full overflow-hidden">
+              {pdfUrl ? (
+                <iframe
+                  src={pdfUrl}
+                  className="w-full h-full border-0"
+                  title="PDF Viewer"
+                />
+              ) : (
+                <div className="flex items-center justify-center h-full">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                </div>
+              )}
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
     </ModernLayout>
   );
