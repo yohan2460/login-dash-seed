@@ -26,6 +26,10 @@ interface Factura {
   factura_original_id?: string | null;
   valor_nota_credito?: number | null;
   notas?: string | null;
+  estado_nota_credito?: 'pendiente' | 'aplicada' | 'anulada' | null;
+  factura_iva?: number | null;
+  factura_iva_porcentaje?: number | null;
+  total_sin_iva?: number | null;
 }
 
 interface NotaCreditoDialogProps {
@@ -167,36 +171,84 @@ export function NotaCreditoDialog({ factura, isOpen, onClose, onNotaCreditoCreat
 
     setLoading(true);
     try {
-      // Crear registro de nota de crédito (versión temporal sin nuevos campos)
-      // Guardar información estructurada en el campo notas
+      console.log('🔄 Iniciando proceso de nota de crédito...');
+      console.log('📋 Nota de Crédito:', {
+        id: factura.id,
+        numero: factura.numero_factura,
+        total: factura.total_a_pagar,
+        iva: factura.factura_iva
+      });
+      console.log('📋 Factura Original:', {
+        id: selectedFactura.id,
+        numero: selectedFactura.numero_factura,
+        total: selectedFactura.total_a_pagar,
+        iva: selectedFactura.factura_iva,
+        total_sin_iva: selectedFactura.total_sin_iva
+      });
+
+      // PASO 1: Actualizar NOTA DE CRÉDITO
+      // - NO modificar total_a_pagar ni factura_iva (se mantienen originales)
+      // - Marcar clasificacion = 'nota_credito'
+      // - Marcar estado_nota_credito = 'aplicada'
+      // - Guardar relación con factura original en campo notas
+
       const notaCreditoInfo = JSON.stringify({
         tipo: 'nota_credito',
-        factura_original_id: selectedFactura.id,
-        numero_factura_original: selectedFactura.numero_factura,
-        emisor_original: selectedFactura.emisor_nombre,
-        valor_descuento: valorNotaCredito,
-        total_original_factura: selectedFactura.total_a_pagar,
+        factura_aplicada_id: selectedFactura.id,
+        numero_factura_aplicada: selectedFactura.numero_factura,
+        emisor_aplicada: selectedFactura.emisor_nombre,
+        valor_aplicado: valorNotaCredito,
         fecha_aplicacion: new Date().toISOString()
       });
 
-      const { error } = await supabase
+      const { error: errorNotaCredito } = await supabase
         .from('facturas')
         .update({
+          estado_nota_credito: 'aplicada',
           clasificacion: 'nota_credito',
           notas: notaCreditoInfo
         })
         .eq('id', factura.id);
 
-      if (error) throw error;
+      if (errorNotaCredito) throw errorNotaCredito;
 
-      // Ahora actualizar la factura original para agregar referencia a esta nota de crédito
+      console.log('✅ Nota de crédito marcada como aplicada (valores originales preservados)');
+
+      // PASO 2: Actualizar FACTURA ORIGINAL
+      // - Calcular descuento SIN IVA de la nota de crédito
+      // - Restar el descuento sin IVA del total de la factura
+      // - Recalcular el IVA sobre el nuevo total sin IVA
+      // - Actualizar total_a_pagar con el nuevo valor
+
       const facturaOriginalNotas = selectedFactura.notas || '{}';
       let notasOriginal;
-      
+
       try {
         notasOriginal = JSON.parse(facturaOriginalNotas);
       } catch {
         notasOriginal = {};
+      }
+
+      // Guardar valores originales si es la primera nota de crédito
+      if (!notasOriginal.total_original) {
+        const ivaOriginal = selectedFactura.factura_iva || 0;
+        const totalSinIvaOriginal = selectedFactura.total_sin_iva || (selectedFactura.total_a_pagar - ivaOriginal);
+
+        notasOriginal.total_original = selectedFactura.total_a_pagar;
+        notasOriginal.iva_original = ivaOriginal;
+        notasOriginal.total_sin_iva_original = totalSinIvaOriginal;
+
+        console.log('📝 Guardando valores originales de la factura:', {
+          total_original: notasOriginal.total_original,
+          iva_original: notasOriginal.iva_original,
+          total_sin_iva_original: notasOriginal.total_sin_iva_original
+        });
+      } else {
+        console.log('📝 Usando valores originales guardados previamente:', {
+          total_original: notasOriginal.total_original,
+          iva_original: notasOriginal.iva_original,
+          total_sin_iva_original: notasOriginal.total_sin_iva_original
+        });
       }
 
       // Agregar o actualizar la lista de notas de crédito
@@ -204,50 +256,101 @@ export function NotaCreditoDialog({ factura, isOpen, onClose, onNotaCreditoCreat
         notasOriginal.notas_credito = [];
       }
 
+      // CALCULAR VALORES DE LA NOTA DE CRÉDITO
+      // Usar los valores reales de IVA de la nota de crédito (extraídos del PDF)
+      const ncIVA = factura.factura_iva || 0;
+      const ncValorSinIVA = factura.total_sin_iva || (factura.total_a_pagar - ncIVA);
+
+      console.log('💰 Valores de la Nota de Crédito:', {
+        valorTotalNC: valorNotaCredito,
+        total_a_pagar_nc: factura.total_a_pagar,
+        ncValorSinIVA,
+        ncIVA,
+        factura_iva_porcentaje: factura.factura_iva_porcentaje
+      });
+
       notasOriginal.notas_credito.push({
         factura_id: factura.id,
         numero_factura: factura.numero_factura,
         valor_descuento: valorNotaCredito,
+        descuento_sin_iva: ncValorSinIVA,
+        iva_descuento: ncIVA,
         fecha_aplicacion: new Date().toISOString()
       });
 
-      // Calcular el nuevo total
-      const totalDescuentos = notasOriginal.notas_credito.reduce((sum: number, nc: any) => sum + nc.valor_descuento, 0);
-      const nuevoTotalOriginal = selectedFactura.total_a_pagar - totalDescuentos;
+      // CALCULAR NUEVOS TOTALES - RESTAR DIRECTAMENTE
+      // 1. Sumar todos los valores sin IVA de las NC aplicadas
+      const totalNCsSinIVA = notasOriginal.notas_credito.reduce(
+        (sum: number, nc: any) => sum + (nc.descuento_sin_iva || 0),
+        0
+      );
 
-      notasOriginal.total_con_descuentos = nuevoTotalOriginal;
-      notasOriginal.total_original = selectedFactura.total_a_pagar;
+      // 2. Sumar todos los IVAs de las NC aplicadas
+      const totalNCsIVA = notasOriginal.notas_credito.reduce(
+        (sum: number, nc: any) => sum + (nc.iva_descuento || 0),
+        0
+      );
 
-      console.log('📝 Actualizando factura original con ID:', selectedFactura.id);
-      console.log('📋 Datos a guardar:', JSON.stringify(notasOriginal, null, 2));
+      // 3. Restar del valor sin IVA original
+      const nuevoTotalSinIVA = notasOriginal.total_sin_iva_original - totalNCsSinIVA;
 
-      // Crear objeto de factura actualizado para calcular el nuevo valor real a pagar
-      const facturaActualizada = {
-        ...selectedFactura,
-        total_a_pagar: nuevoTotalOriginal, // Usar el nuevo total original
-        notas: JSON.stringify(notasOriginal)
-      };
+      // 4. Restar del IVA original
+      const nuevoIVA = notasOriginal.iva_original - totalNCsIVA;
 
-      // Calcular el valor real a pagar basado en el nuevo total original
-      const nuevoValorRealAPagar = calcularValorRealAPagar(facturaActualizada);
+      // 5. Nuevo total = nuevo valor sin IVA + nuevo IVA
+      const nuevoTotalAPagar = nuevoTotalSinIVA + nuevoIVA;
 
-      console.log('💰 Nuevo total original:', formatCurrency(nuevoTotalOriginal));
-      console.log('💰 Nuevo valor real a pagar calculado:', formatCurrency(nuevoValorRealAPagar));
+      console.log('📊 Nuevos totales calculados:', {
+        total_original: notasOriginal.total_original,
+        iva_original: notasOriginal.iva_original,
+        total_sin_iva_original: notasOriginal.total_sin_iva_original,
+        total_ncs_sin_iva: totalNCsSinIVA,
+        total_ncs_iva: totalNCsIVA,
+        nuevo_total_sin_iva: nuevoTotalSinIVA,
+        nuevo_iva: nuevoIVA,
+        nuevo_total_a_pagar: nuevoTotalAPagar
+      });
 
+      // Determinar si la factura queda anulada (total <= 0)
+      const estadoNotaCredito = nuevoTotalAPagar <= 0 ? 'anulada' : null;
+      const nuevaClasificacion = nuevoTotalAPagar <= 0 ? 'nota_credito' : selectedFactura.clasificacion;
+
+      // ACTUALIZAR FACTURA ORIGINAL en la base de datos
       const { error: updateOriginalError } = await supabase
         .from('facturas')
         .update({
-          total_a_pagar: nuevoTotalOriginal,  // Actualizar el valor original también
+          total_a_pagar: Math.round(nuevoTotalAPagar),      // ✅ ACTUALIZAR total a pagar
+          factura_iva: Math.round(nuevoIVA),                // ✅ ACTUALIZAR IVA
+          valor_real_a_pagar: Math.round(nuevoTotalAPagar), // ✅ GUARDAR valor real a pagar
           notas: JSON.stringify(notasOriginal),
-          valor_real_a_pagar: nuevoValorRealAPagar
+          estado_nota_credito: estadoNotaCredito,
+          clasificacion: nuevaClasificacion                 // ✅ Cambiar a 'nota_credito' si queda en $0
         })
         .eq('id', selectedFactura.id);
 
       if (updateOriginalError) {
-        console.error('❌ Error updating original factura:', updateOriginalError);
+        console.error('❌ Error actualizando factura original:', updateOriginalError);
         throw updateOriginalError;
-      } else {
-        console.log('✅ Factura original actualizada exitosamente');
+      }
+
+      console.log('✅ Factura original actualizada:', {
+        nuevo_total_a_pagar: Math.round(nuevoTotalAPagar),
+        nuevo_iva: Math.round(nuevoIVA),
+        estado: estadoNotaCredito || 'activa'
+      });
+
+      // Si la factura queda anulada, también marcar la NC como anulada
+      if (estadoNotaCredito === 'anulada') {
+        const { error: errorAnularNC } = await supabase
+          .from('facturas')
+          .update({ estado_nota_credito: 'anulada' })
+          .eq('id', factura.id);
+
+        if (errorAnularNC) {
+          console.error('❌ Error marcando NC como anulada:', errorAnularNC);
+        } else {
+          console.log('✅ Nota de crédito marcada como anulada (factura resultante en $0)');
+        }
       }
 
       toast({

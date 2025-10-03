@@ -10,7 +10,8 @@ import {
   TrendingUp,
   CheckCircle,
   Users,
-  Hash
+  Hash,
+  Minus
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -102,6 +103,13 @@ const facturasByStateItems = [
     color: "purple",
     description: "Facturas procesadas"
   },
+  {
+    title: "Notas de Crédito",
+    url: "/notas-credito",
+    icon: Minus,
+    color: "red",
+    description: "Notas de crédito aplicadas"
+  },
 ];
 
 interface FacturasStats {
@@ -115,6 +123,7 @@ interface FacturasStats {
   gastosPagados: number;
   proveedores: number;
   sistematizadas: number;
+  notasCredito: number;
 }
 
 export function AppSidebar() {
@@ -133,7 +142,8 @@ export function AppSidebar() {
     gastosPendientes: 0,
     gastosPagados: 0,
     proveedores: 0,
-    sistematizadas: 0
+    sistematizadas: 0,
+    notasCredito: 0
   });
 
   useEffect(() => {
@@ -152,11 +162,12 @@ export function AppSidebar() {
       const mercancia = facturas?.filter(f => f.clasificacion === 'mercancia').length || 0;
       const gastos = facturas?.filter(f => f.clasificacion === 'gasto').length || 0;
       const sistematizadas = facturas?.filter(f => f.clasificacion === 'sistematizada').length || 0;
+      const notasCredito = facturas?.filter(f => f.clasificacion === 'nota_credito').length || 0;
       const pendientes = facturas?.filter(f => f.clasificacion === 'mercancia' && f.estado_mercancia !== 'pagada').length || 0;
       const pagadas = facturas?.filter(f => f.clasificacion === 'mercancia' && f.estado_mercancia === 'pagada').length || 0;
       const gastosPendientes = facturas?.filter(f => f.clasificacion === 'gasto' && f.estado_mercancia !== 'pagada').length || 0;
       const gastosPagados = facturas?.filter(f => f.clasificacion === 'gasto' && f.estado_mercancia === 'pagada').length || 0;
-      
+
       // Calcular proveedores únicos
       const proveedoresUnicos = new Set(facturas?.map(f => f.emisor_nit)).size;
 
@@ -170,7 +181,8 @@ export function AppSidebar() {
         gastosPendientes,
         gastosPagados,
         proveedores: proveedoresUnicos,
-        sistematizadas
+        sistematizadas,
+        notasCredito
       });
     } catch (error) {
       console.error('Error fetching stats:', error);

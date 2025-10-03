@@ -8,6 +8,7 @@ interface FacturaData {
   notas?: string | null;
   clasificacion?: string | null;
   descuentos_antes_iva?: string | null;
+  estado_nota_credito?: 'pendiente' | 'aplicada' | 'anulada' | null;
 }
 
 /**
@@ -76,21 +77,55 @@ export function calcularValorRealAPagar(factura: FacturaData): number {
 }
 
 export function calcularTotalReal(factura: FacturaData): number {
-  // Para notas de crédito relacionadas, mostrar $0
+  // NUEVO: Si es nota de crédito aplicada o anulada, mostrar $0
+  if (factura.estado_nota_credito === 'aplicada' || factura.estado_nota_credito === 'anulada') {
+    return 0;
+  }
+
+  // LEGACY: Mantener compatibilidad con sistema antiguo
   if (factura.clasificacion === 'nota_credito' && factura.notas) {
     try {
       const notasData = JSON.parse(factura.notas);
-      if (notasData.tipo === 'nota_credito' && notasData.factura_original_id) {
+      if (notasData.tipo === 'nota_credito' && (notasData.factura_aplicada_id || notasData.factura_original_id)) {
         return 0; // Nota de crédito relacionada muestra $0
       }
     } catch (error) {
-      // Si no se puede parsear, usar total original
+      // Si no se puede parsear, continuar con lógica normal
     }
   }
 
+  // PRIORIDAD 1: Para facturas con notas de crédito aplicadas, usar total_con_descuentos
+  if (factura.notas && factura.clasificacion !== 'nota_credito') {
+    try {
+      const notasData = JSON.parse(factura.notas);
+
+      // Si existe total_con_descuentos, usarlo directamente (YA incluye todo calculado)
+      if (notasData.total_con_descuentos !== undefined && notasData.total_con_descuentos !== null) {
+        console.log('✅ Usando total_con_descuentos:', notasData.total_con_descuentos, 'para factura', factura);
+        return notasData.total_con_descuentos;
+      }
+
+      // FALLBACK: Si no existe total_con_descuentos pero sí array de notas_credito
+      if (notasData.notas_credito && notasData.notas_credito.length > 0) {
+        const totalDescuentos = notasData.notas_credito.reduce((sum: number, nc: any) => {
+          return sum + (nc.valor_descuento || 0);
+        }, 0);
+        const resultado = factura.total_a_pagar - totalDescuentos;
+        console.log('✅ Calculando total con NC:', {
+          total_original: factura.total_a_pagar,
+          descuentos: totalDescuentos,
+          resultado
+        });
+        return resultado;
+      }
+    } catch (error) {
+      console.error('Error parsing notas:', error);
+    }
+  }
+
+  // PRIORIDAD 2: Calcular con descuentos antes de IVA
   let totalReal = factura.total_a_pagar;
 
-  // Restar descuentos antes de IVA si existen
   if (factura.descuentos_antes_iva) {
     try {
       const descuentos = JSON.parse(factura.descuentos_antes_iva);
@@ -104,32 +139,6 @@ export function calcularTotalReal(factura: FacturaData): number {
       totalReal -= totalDescuentos;
     } catch (error) {
       console.error('Error parsing descuentos_antes_iva:', error);
-    }
-  }
-
-  // Para facturas normales, verificar si tiene notas de crédito aplicadas
-  if (factura.notas && factura.clasificacion !== 'nota_credito') {
-    try {
-      const notasData = JSON.parse(factura.notas);
-
-      // Buscar si tiene notas de crédito aplicadas
-      if (notasData.notas_credito && notasData.notas_credito.length > 0) {
-        // Calcular el total de descuentos
-        const totalDescuentos = notasData.notas_credito.reduce((sum: number, nc: any) => {
-          return sum + (nc.valor_descuento || 0);
-        }, 0);
-
-        // Restar los descuentos de notas de crédito
-        totalReal -= totalDescuentos;
-        return totalReal;
-      }
-
-      // Si existe total_con_descuentos (método alternativo)
-      if (notasData.total_con_descuentos !== undefined) {
-        return notasData.total_con_descuentos;
-      }
-    } catch (error) {
-      console.error('Error parsing notas:', error);
     }
   }
 

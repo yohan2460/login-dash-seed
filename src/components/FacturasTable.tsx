@@ -46,6 +46,8 @@ interface Factura {
   valor_real_a_pagar?: number | null;
   ingresado_sistema?: boolean | null;
   descuentos_antes_iva?: string | null;
+  estado_nota_credito?: 'pendiente' | 'aplicada' | 'anulada' | null;
+  total_sin_iva?: number | null;
 }
 
 interface FacturasTableProps {
@@ -63,6 +65,7 @@ interface FacturasTableProps {
   showActions?: boolean;
   showClassifyButton?: boolean;
   showValorRealAPagar?: boolean;
+  showOriginalValueForNC?: boolean;
   showIngresoSistema?: boolean;
   onIngresoSistemaClick?: (factura: Factura) => void;
   showEditButton?: boolean;
@@ -72,7 +75,7 @@ interface FacturasTableProps {
   highlightedId?: string | null;
 }
 
-export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPaymentInfo = false, onDelete, onSistematizarClick, showSistematizarButton = false, allowDelete = true, showOriginalClassification = false, onNotaCreditoClick, refreshData, showActions = true, showClassifyButton = true, showValorRealAPagar = false, showIngresoSistema = false, onIngresoSistemaClick, showEditButton = false, onEditClick, showMultiplePayment = false, onMultiplePayClick, highlightedId = null }: FacturasTableProps) {
+export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPaymentInfo = false, onDelete, onSistematizarClick, showSistematizarButton = false, allowDelete = true, showOriginalClassification = false, onNotaCreditoClick, refreshData, showActions = true, showClassifyButton = true, showValorRealAPagar = false, showOriginalValueForNC = false, showIngresoSistema = false, onIngresoSistemaClick, showEditButton = false, onEditClick, showMultiplePayment = false, onMultiplePayClick, highlightedId = null }: FacturasTableProps) {
   const { toast } = useToast();
   const { user } = useAuth();
   const [selectedFacturas, setSelectedFacturas] = useState<string[]>([]);
@@ -121,6 +124,19 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
 
   // Función para obtener el valor original de una nota de crédito
   const getValorOriginalNotaCredito = (factura: Factura) => {
+    // NUEVO: Usar estado_nota_credito y campo notas
+    if ((factura.estado_nota_credito === 'aplicada' || factura.estado_nota_credito === 'anulada') && factura.notas) {
+      try {
+        const notasData = JSON.parse(factura.notas);
+        if (notasData.tipo === 'nota_credito' && notasData.valor_original) {
+          return notasData.valor_original;
+        }
+      } catch (error) {
+        // Si no se puede parsear, continuar
+      }
+    }
+
+    // LEGACY: Sistema antiguo
     if (factura.clasificacion === 'nota_credito' && calcularTotalReal(factura) === 0) {
       return factura.total_a_pagar; // Valor original de la nota de crédito
     }
@@ -717,12 +733,15 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
                      <div>
                        <div className="text-muted-foreground">Total</div>
                        <div className={`font-bold text-lg ${calcularTotalReal(factura) < factura.total_a_pagar && factura.clasificacion !== 'nota_credito' ? 'text-green-600' : ''}`}>
-                         {factura.valor_real_a_pagar ? formatCurrency(factura.valor_real_a_pagar) : (factura.monto_pagado ? formatCurrency(factura.monto_pagado) : formatCurrency(calcularTotalReal(factura)))}
+                         {showOriginalValueForNC && factura.clasificacion === 'nota_credito'
+                           ? formatCurrency(factura.total_a_pagar)
+                           : (factura.valor_real_a_pagar ? formatCurrency(factura.valor_real_a_pagar) : (factura.monto_pagado ? formatCurrency(factura.monto_pagado) : formatCurrency(calcularTotalReal(factura))))
+                         }
                        </div>
                        {/* Mostrar valor original para notas de crédito relacionadas */}
                        {getValorOriginalNotaCredito(factura) && (
-                         <div className="text-xs text-muted-foreground">
-                           ({formatCurrency(getValorOriginalNotaCredito(factura)!)})
+                         <div className="text-xs text-red-600 mt-1">
+                           Valor original: {formatCurrency(getValorOriginalNotaCredito(factura)!)}
                          </div>
                        )}
                        {calcularTotalReal(factura) !== factura.total_a_pagar && factura.clasificacion !== 'nota_credito' && (
@@ -1077,7 +1096,10 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
                    <TableCell>
                      <div className="space-y-1">
                        <div className={`font-bold text-base ${calcularTotalReal(factura) < factura.total_a_pagar && factura.clasificacion !== 'nota_credito' ? 'text-green-600' : ''}`}>
-                         {factura.valor_real_a_pagar ? formatCurrency(factura.valor_real_a_pagar) : (factura.monto_pagado ? formatCurrency(factura.monto_pagado) : formatCurrency(calcularTotalReal(factura)))}
+                         {showOriginalValueForNC && factura.clasificacion === 'nota_credito'
+                           ? formatCurrency(factura.total_a_pagar)
+                           : (factura.valor_real_a_pagar ? formatCurrency(factura.valor_real_a_pagar) : (factura.monto_pagado ? formatCurrency(factura.monto_pagado) : formatCurrency(calcularTotalReal(factura))))
+                         }
                        </div>
 
                        {/* Información fiscal compacta */}
