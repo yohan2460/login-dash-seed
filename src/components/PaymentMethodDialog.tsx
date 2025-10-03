@@ -5,7 +5,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Input } from '@/components/ui/input';
-import { CreditCard, Building2, Percent, Banknote } from 'lucide-react';
+import { CreditCard, Building2, Percent, Banknote, Calendar } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { calcularValorRealAPagar, calcularMontoRetencionReal } from '@/utils/calcularValorReal';
@@ -45,6 +45,7 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<string>('');
   const [usedProntoPago, setUsedProntoPago] = useState<string>('');
   const [amountPaid, setAmountPaid] = useState<string>('');
+  const [paymentDate, setPaymentDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const { toast } = useToast();
 
   const formatCurrency = (amount: number) => {
@@ -132,7 +133,7 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
           estado_mercancia: 'pagada',
           metodo_pago: selectedPaymentMethod,
           uso_pronto_pago: usedProntoPago === 'yes',
-          fecha_pago: new Date().toISOString(),
+          fecha_pago: new Date(paymentDate).toISOString(),
           valor_real_a_pagar: valorRealAPagar
         })
         .eq('id', factura.id);
@@ -152,6 +153,7 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
       setSelectedPaymentMethod('');
       setUsedProntoPago('');
       setAmountPaid('');
+      setPaymentDate(new Date().toISOString().split('T')[0]);
     } catch (error) {
       console.error('Error updating payment status:', error);
       toast({
@@ -372,6 +374,20 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
                   </Card>
                 </div>
               </RadioGroup>
+            </div>
+
+            {/* Fecha de pago */}
+            <div>
+              <Label className="text-base font-medium mb-2 block">Fecha de pago:</Label>
+              <div className="relative">
+                <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+                <Input
+                  type="date"
+                  value={paymentDate}
+                  onChange={(e) => setPaymentDate(e.target.value)}
+                  className="pl-10"
+                />
+              </div>
             </div>
 
             {/* Monto pagado */}
