@@ -495,9 +495,9 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
 
       const comprobanteData = {
         user_id: userId,
-        tipo_comprobante: 'pago_individual',
-        metodo_pago: usarPagoPartido ? 'Pago Partido' : metodoPago,
-        fecha_pago: fechaPago,
+        tipo_comprobante: 'pago_individual' as const,
+        metodo_pago: usarPagoPartido ? 'Pago Partido' : selectedPaymentMethod,
+        fecha_pago: new Date(paymentDate).toISOString(),
         total_pagado: valorFinal,
         cantidad_facturas: 1,
         pdf_file_path: storagePath,
@@ -510,11 +510,7 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
           retencion: retencion,
           pronto_pago: prontoPago,
           descuentos_adicionales: totalDescuentosAdicionales,
-          pagos_partidos: usarPagoPartido ? [
-            { metodo: 'Pago Banco', monto: montoBanco || 0 },
-            { metodo: 'Pago Tobías', monto: montoTobias || 0 },
-            { metodo: 'Caja', monto: montoCaja || 0 }
-          ].filter(p => p.monto > 0) : null
+          pagos_partidos: usarPagoPartido ? metodosPago.filter(p => p.monto > 0) : null
         }
       };
 
@@ -545,6 +541,373 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
         description: error?.message || "El PDF se descargó pero hubo un error al guardarlo en el sistema",
         variant: "destructive"
       });
+    }
+  };
+
+  // Función auxiliar para generar y guardar el PDF del comprobante
+  const generarYGuardarComprobantePDF = async () => {
+    if (!factura) return null;
+
+    const doc = new jsPDF();
+    const pageWidth = doc.internal.pageSize.width;
+    let currentY = 15;
+
+    // Calcular valores
+    const valorFinal = obtenerValorFinal(factura);
+    const retencion = factura.tiene_retencion && factura.monto_retencion
+      ? calcularMontoRetencionReal(factura)
+      : 0;
+    const prontoPago = usedProntoPago === 'yes' && factura.porcentaje_pronto_pago
+      ? (factura.total_sin_iva || (factura.total_a_pagar - (factura.factura_iva || 0))) * (factura.porcentaje_pronto_pago / 100)
+      : 0;
+
+    // Calcular descuentos adicionales antes de IVA
+    let descuentosAdicionales: any[] = [];
+    let totalDescuentosAdicionales = 0;
+    if (factura.descuentos_antes_iva) {
+      try {
+        descuentosAdicionales = JSON.parse(factura.descuentos_antes_iva);
+        totalDescuentosAdicionales = descuentosAdicionales.reduce((sum, desc) => {
+          if (desc.tipo === 'porcentaje') {
+            const base = factura.total_sin_iva || (factura.total_a_pagar - (factura.factura_iva || 0));
+            return sum + (base * desc.valor / 100);
+          }
+          return sum + desc.valor;
+        }, 0);
+      } catch (error) {
+        console.error('Error parsing descuentos_antes_iva:', error);
+      }
+    }
+
+    // ========== ENCABEZADO ==========
+    doc.setFillColor(59, 130, 246);
+    doc.rect(0, 0, pageWidth, 45, 'F');
+
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(22);
+    doc.setFont('helvetica', 'bold');
+    const nombreProveedor = factura.emisor_nombre.length > 35
+      ? factura.emisor_nombre.substring(0, 32) + '...'
+      : factura.emisor_nombre;
+    doc.text(`PAGO - ${nombreProveedor}`, pageWidth / 2, 20, { align: 'center' });
+
+    doc.setFontSize(11);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`Factura #${factura.numero_factura}`, pageWidth / 2, 28, { align: 'center' });
+
+    doc.setDrawColor(255, 255, 255);
+    doc.setLineWidth(0.5);
+    doc.line(pageWidth / 2 - 30, 32, pageWidth / 2 + 30, 32);
+
+    currentY = 50;
+
+    // ========== RESUMEN DEL PAGO ==========
+    doc.setTextColor(0, 0, 0);
+    doc.setFillColor(245, 247, 250);
+    doc.roundedRect(14, currentY, pageWidth - 28, 10, 2, 2, 'F');
+    doc.setFontSize(11);
+    doc.setFont('helvetica', 'bold');
+    doc.text('RESUMEN DEL PAGO', 18, currentY + 7);
+    currentY += 15;
+
+    // Caja del resumen
+    doc.setDrawColor(229, 231, 235);
+    doc.setLineWidth(0.5);
+    doc.roundedRect(14, currentY, pageWidth - 28, 60, 3, 3, 'S');
+
+    // Primera fila
+    const colWidth = (pageWidth - 28) / 3;
+
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(107, 114, 128);
+    doc.text('Total Original', 14 + colWidth / 2, currentY + 8, { align: 'center' });
+    doc.setFontSize(11);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(0, 0, 0);
+    doc.text(formatCurrency(factura.total_a_pagar), 14 + colWidth / 2, currentY + 18, { align: 'center' });
+
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(107, 114, 128);
+    doc.text('Total a Pagar', 14 + colWidth * 1.5, currentY + 8, { align: 'center' });
+    doc.setFontSize(14);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(34, 197, 94);
+    doc.text(formatCurrency(valorFinal), 14 + colWidth * 1.5, currentY + 18, { align: 'center' });
+
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(107, 114, 128);
+    doc.text('Descuentos', 14 + colWidth * 2.5, currentY + 8, { align: 'center' });
+    doc.setFontSize(11);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(34, 197, 94);
+    doc.text(formatCurrency(factura.total_a_pagar - valorFinal), 14 + colWidth * 2.5, currentY + 18, { align: 'center' });
+
+    // Línea separadora
+    currentY += 28;
+    doc.setDrawColor(229, 231, 235);
+    doc.setLineWidth(0.3);
+    doc.line(18, currentY, pageWidth - 18, currentY);
+    currentY += 2;
+
+    // Segunda fila
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(107, 114, 128);
+    doc.text('IVA Total', 14 + colWidth / 2, currentY + 8, { align: 'center' });
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(0, 0, 0);
+    doc.text(formatCurrency(factura.factura_iva || 0), 14 + colWidth / 2, currentY + 16, { align: 'center' });
+
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(107, 114, 128);
+    doc.text('Retenciones', 14 + colWidth * 1.5, currentY + 8, { align: 'center' });
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(249, 115, 22);
+    doc.text(`-${formatCurrency(retencion)}`, 14 + colWidth * 1.5, currentY + 16, { align: 'center' });
+
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(107, 114, 128);
+    doc.text('Pronto Pago', 14 + colWidth * 2.5, currentY + 8, { align: 'center' });
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(34, 197, 94);
+    doc.text(`-${formatCurrency(prontoPago)}`, 14 + colWidth * 2.5, currentY + 16, { align: 'center' });
+
+    currentY += 36;
+
+    // ========== DETALLES DE LA FACTURA ==========
+    doc.setFillColor(245, 247, 250);
+    doc.roundedRect(14, currentY, pageWidth - 28, 10, 2, 2, 'F');
+    doc.setFontSize(11);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(0, 0, 0);
+    doc.text('DETALLES DE LA FACTURA', 18, currentY + 7);
+    currentY += 15;
+
+    // Tabla de detalles
+    const tableData: any[] = [];
+
+    tableData.push(['N° Factura', factura.numero_factura]);
+    tableData.push(['Proveedor', factura.emisor_nombre]);
+    tableData.push(['NIT', factura.emisor_nit]);
+    tableData.push(['Clasificacion', factura.clasificacion === 'mercancia' ? 'Mercancia' : 'Gasto']);
+
+    if (retencion > 0) {
+      tableData.push([`Retencion (${factura.monto_retencion}%)`, `-${formatCurrency(retencion)}`]);
+    }
+
+    if (prontoPago > 0) {
+      tableData.push([`Pronto Pago (${factura.porcentaje_pronto_pago}%)`, `-${formatCurrency(prontoPago)}`]);
+    }
+
+    // Agregar descuentos adicionales si existen
+    if (descuentosAdicionales.length > 0) {
+      descuentosAdicionales.forEach((desc) => {
+        const valorDescuento = desc.tipo === 'porcentaje'
+          ? (factura.total_sin_iva || (factura.total_a_pagar - (factura.factura_iva || 0))) * (desc.valor / 100)
+          : desc.valor;
+        const textoDescuento = desc.tipo === 'porcentaje'
+          ? `${desc.concepto} (${desc.valor}%)`
+          : desc.concepto;
+        tableData.push([textoDescuento, `-${formatCurrency(valorDescuento)}`]);
+      });
+    }
+
+    autoTable(doc, {
+      startY: currentY,
+      body: tableData,
+      theme: 'striped',
+      styles: {
+        fontSize: 9,
+        cellPadding: 3
+      },
+      columnStyles: {
+        0: { cellWidth: 70, fontStyle: 'bold', fillColor: [245, 247, 250] },
+        1: { cellWidth: 112 }
+      }
+    });
+
+    currentY = (doc as any).lastAutoTable.finalY + 10;
+
+    // ========== DETALLES DEL PAGO ==========
+    doc.setFillColor(245, 247, 250);
+    doc.roundedRect(14, currentY, pageWidth - 28, 10, 2, 2, 'F');
+    doc.setFontSize(11);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(0, 0, 0);
+    doc.text('DETALLES DEL PAGO', 18, currentY + 7);
+    currentY += 15;
+
+    // Ajustar altura si es pago partido
+    const detalleBoxHeight = usarPagoPartido ? 35 + (metodosPago.length * 8) : 25;
+    doc.setDrawColor(229, 231, 235);
+    doc.roundedRect(14, currentY, pageWidth - 28, detalleBoxHeight, 3, 3, 'S');
+
+    if (usarPagoPartido) {
+      // Pago Partido
+      doc.setFontSize(9);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(107, 114, 128);
+      doc.text('Metodo de pago:', 20, currentY + 8);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(59, 130, 246);
+      doc.text('Pago Partido', 60, currentY + 8);
+
+      currentY += 18;
+      doc.setFontSize(8);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(0, 0, 0);
+      doc.text('Distribución:', 20, currentY);
+
+      currentY += 5;
+      metodosPago.forEach((mp) => {
+        doc.setFontSize(8);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(107, 114, 128);
+        doc.text(`${mp.metodo}:`, 25, currentY);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(0, 0, 0);
+        doc.text(formatCurrency(mp.monto), 80, currentY, { align: 'left' });
+        currentY += 6;
+      });
+
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(107, 114, 128);
+      doc.text('Fecha de Pago:', 20, currentY + 5);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(0, 0, 0);
+      doc.text(new Date(paymentDate).toLocaleDateString('es-CO', {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+      }), 60, currentY + 5);
+    } else {
+      // Pago Normal
+      doc.setFontSize(9);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(107, 114, 128);
+      doc.text('Metodo de pago:', 20, currentY + 8);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(0, 0, 0);
+      doc.text(selectedPaymentMethod, 60, currentY + 8);
+
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(107, 114, 128);
+      doc.text('Fecha de Pago:', 20, currentY + 16);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(0, 0, 0);
+      doc.text(new Date(paymentDate).toLocaleDateString('es-CO', {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+      }), 60, currentY + 16);
+    }
+
+    // Pie de página
+    doc.setDrawColor(229, 231, 235);
+    doc.setLineWidth(0.5);
+    doc.line(14, 280, pageWidth - 14, 280);
+
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(107, 114, 128);
+    doc.text(
+      `Generado el ${new Date().toLocaleDateString('es-CO')} a las ${new Date().toLocaleTimeString('es-CO')}`,
+      14,
+      285
+    );
+
+    // Nombre del archivo
+    const nombreLimpio = factura.emisor_nombre
+      .replace(/[^a-zA-Z0-9\s]/g, '')
+      .replace(/\s+/g, '_')
+      .substring(0, 40);
+    const timestamp = new Date().getTime();
+    const fileName = `Pago_${nombreLimpio}_${factura.numero_factura}_${timestamp}.pdf`;
+
+    // Descargar el PDF
+    doc.save(fileName);
+
+    // Guardar el PDF en Supabase Storage
+    try {
+      console.log('💾 Iniciando guardado de comprobante para factura:', factura.id);
+
+      const pdfBlob = doc.output('blob');
+      const storagePath = `comprobantes-pago/${fileName}`;
+
+      console.log('📤 Subiendo PDF a storage:', storagePath);
+
+      // Subir a Supabase Storage
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('facturas-pdf')
+        .upload(storagePath, pdfBlob, {
+          contentType: 'application/pdf',
+          upsert: false
+        });
+
+      if (uploadError) {
+        console.error('❌ Error al subir PDF:', uploadError);
+        throw uploadError;
+      }
+
+      console.log('✅ PDF subido correctamente:', uploadData);
+
+      // Obtener user_id
+      const { data: userData } = await supabase.auth.getUser();
+      const userId = userData.user?.id;
+
+      console.log('👤 User ID:', userId);
+
+      const comprobanteData = {
+        user_id: userId,
+        tipo_comprobante: 'pago_individual' as const,
+        metodo_pago: usarPagoPartido ? 'Pago Partido' : selectedPaymentMethod,
+        fecha_pago: new Date(paymentDate).toISOString(),
+        total_pagado: valorFinal,
+        cantidad_facturas: 1,
+        pdf_file_path: storagePath,
+        facturas_ids: [factura.id],
+        detalles: {
+          factura_numero: factura.numero_factura,
+          proveedor: factura.emisor_nombre,
+          nit: factura.emisor_nit,
+          total_original: factura.total_a_pagar,
+          retencion: retencion,
+          pronto_pago: prontoPago,
+          descuentos_adicionales: totalDescuentosAdicionales,
+          pagos_partidos: usarPagoPartido ? metodosPago.filter(p => p.monto > 0) : null
+        }
+      };
+
+      console.log('📝 Datos del comprobante a insertar:', comprobanteData);
+
+      // Registrar el comprobante en la base de datos
+      const { data: insertData, error: dbError } = await supabase
+        .from('comprobantes_pago')
+        .insert(comprobanteData)
+        .select();
+
+      if (dbError) {
+        console.error('❌ Error al insertar en BD:', dbError);
+        throw dbError;
+      }
+
+      console.log('✅ Comprobante guardado en BD:', insertData);
+
+      return fileName;
+    } catch (error: any) {
+      console.error('❌ Error al guardar PDF:', error);
+      console.error('Error completo:', JSON.stringify(error, null, 2));
+      throw error;
     }
   };
 
@@ -596,6 +959,13 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
       };
       const valorRealAPagar = calcularValorRealAPagar(facturaParaCalculo);
 
+      // PASO 1: Generar y guardar el comprobante PDF
+      console.log('🎯 PASO 1: Generando y guardando comprobante PDF...');
+      const pdfFileName = await generarYGuardarComprobantePDF();
+      console.log('✅ PDF guardado:', pdfFileName);
+
+      // PASO 2: Actualizar el estado de la factura
+      console.log('🎯 PASO 2: Actualizando estado de factura...');
       if (usarPagoPartido) {
         // Pago partido
         const { error: updateError } = await supabase
@@ -630,8 +1000,8 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
         }
 
         toast({
-          title: "Factura pagada",
-          description: `Factura ${factura.numero_factura} marcada como pagada con pago partido`,
+          title: "✅ Factura pagada exitosamente",
+          description: `Factura ${factura.numero_factura} pagada con pago partido. Comprobante: ${pdfFileName}`,
         });
 
       } else {
@@ -664,10 +1034,12 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
         const prontoPagoText = usedProntoPago === 'yes' ? ' con descuento pronto pago' : ' sin descuento pronto pago';
 
         toast({
-          title: "Factura pagada",
-          description: `Factura ${factura.numero_factura} marcada como pagada via ${selectedPaymentMethod}${prontoPagoText}`,
+          title: "✅ Factura pagada exitosamente",
+          description: `Factura ${factura.numero_factura} pagada via ${selectedPaymentMethod}${prontoPagoText}. Comprobante: ${pdfFileName}`,
         });
       }
+
+      console.log('✅ Factura actualizada correctamente');
 
       onPaymentProcessed();
       onClose();
@@ -678,11 +1050,11 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
       setPaymentDate(new Date().toISOString().split('T')[0]);
       setUsarPagoPartido(false);
       setMetodosPago([{ metodo: '', monto: 0 }]);
-    } catch (error) {
-      console.error('Error updating payment status:', error);
+    } catch (error: any) {
+      console.error('❌ Error en el proceso de pago:', error);
       toast({
-        title: "Error",
-        description: "No se pudo procesar el pago",
+        title: "Error al procesar el pago",
+        description: error?.message || "No se pudo completar el pago. Por favor intenta nuevamente.",
         variant: "destructive"
       });
     } finally {

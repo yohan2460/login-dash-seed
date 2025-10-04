@@ -138,7 +138,7 @@ export function MercanciaPagada() {
     }).format(numericAmount);
   };
 
-  // Helper: Calcular monto por método de pago desde pagos_partidos
+  // Helper: Calcular monto por método de pago desde pagos_partidos con fallback
   const calcularMontoPorMetodo = (facturas: Factura[], metodoPago: string): number => {
     let total = 0;
 
@@ -146,12 +146,21 @@ export function MercanciaPagada() {
       // Buscar pagos de esta factura en pagos_partidos
       const pagosDeEstaFactura = pagosPartidos.filter(pp => pp.factura_id === factura.id);
 
-      // Sumar solo los pagos del método específico
-      const montoPorMetodo = pagosDeEstaFactura
-        .filter(pp => pp.metodo_pago === metodoPago)
-        .reduce((sum, pp) => sum + (pp.monto || 0), 0);
+      if (pagosDeEstaFactura.length > 0) {
+        // Si hay registros en pagos_partidos, usarlos (fuente de verdad)
+        const montoPorMetodo = pagosDeEstaFactura
+          .filter(pp => pp.metodo_pago === metodoPago)
+          .reduce((sum, pp) => sum + (pp.monto || 0), 0);
 
-      total += montoPorMetodo;
+        total += montoPorMetodo;
+      } else {
+        // FALLBACK: Para facturas antiguas sin registro en pagos_partidos
+        // Usar el campo metodo_pago de la factura
+        if (factura.metodo_pago === metodoPago) {
+          const monto = factura.valor_real_a_pagar ?? factura.monto_pagado ?? factura.total_a_pagar ?? 0;
+          total += monto;
+        }
+      }
     });
 
     return Math.round(total);

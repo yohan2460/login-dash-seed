@@ -227,27 +227,8 @@ export function MultiplePaymentDialog({
     return todosCompletos && sumaCorrecta;
   };
 
-  // Función para generar y descargar PDF
-  const generarPDF = async () => {
-    // Validar que haya método de pago
-    if (!usarPagoPartido && !metodoPago) {
-      toast({
-        title: "Error",
-        description: "Selecciona un método de pago antes de generar el PDF",
-        variant: "destructive"
-      });
-      return;
-    }
-
-    if (usarPagoPartido && !validarPagoPartido()) {
-      toast({
-        title: "Error en pago partido",
-        description: "La suma de los métodos debe igualar el total a pagar",
-        variant: "destructive"
-      });
-      return;
-    }
-
+  // Función auxiliar para generar y guardar el PDF del comprobante múltiple
+  const generarYGuardarComprobantePDF = async () => {
     const doc = new jsPDF();
     const pageWidth = doc.internal.pageSize.width;
     let currentY = 15;
@@ -582,7 +563,7 @@ export function MultiplePaymentDialog({
       doc.text('Método de pago:', 20, currentY + 8);
       doc.setFont('helvetica', 'bold');
       doc.setTextColor(0, 0, 0);
-      doc.text(metodoPago, 60, currentY + 8);
+      doc.text(metodoPago || 'Sin especificar', 60, currentY + 8);
 
       doc.setFont('helvetica', 'normal');
       doc.setTextColor(107, 114, 128);
@@ -682,9 +663,9 @@ export function MultiplePaymentDialog({
 
       const comprobanteData = {
         user_id: userId,
-        tipo_comprobante: 'pago_multiple',
-        metodo_pago: metodoPago,
-        fecha_pago: fechaPago,
+        tipo_comprobante: 'pago_multiple' as const,
+        metodo_pago: usarPagoPartido ? 'Pago Partido' : metodoPago,
+        fecha_pago: new Date(fechaPago).toISOString(),
         total_pagado: totalPagado,
         cantidad_facturas: facturas.length,
         pdf_file_path: storagePath,
@@ -692,6 +673,7 @@ export function MultiplePaymentDialog({
         detalles: {
           proveedor_unico: esProveedorUnico ? proveedoresUnicos[0] : null,
           total_original: totalOriginal,
+          pagos_partidos: usarPagoPartido ? metodosPago.filter(p => p.monto > 0) : null,
           facturas: facturas.map(f => {
             const detalles = calcularDetallesFactura(f);
             return {
@@ -721,13 +703,42 @@ export function MultiplePaymentDialog({
 
       console.log('✅ Comprobante guardado en BD:', insertData);
 
+      return fileName;
+    } catch (error: any) {
+      console.error('❌ Error al guardar PDF:', error);
+      console.error('Error completo:', JSON.stringify(error, null, 2));
+      throw error;
+    }
+  };
+
+  // Función para generar PDF manualmente (botón de descarga)
+  const generarPDF = async () => {
+    // Validar que haya método de pago
+    if (!usarPagoPartido && !metodoPago) {
+      toast({
+        title: "Error",
+        description: "Selecciona un método de pago antes de generar el PDF",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    if (usarPagoPartido && !validarPagoPartido()) {
+      toast({
+        title: "Error en pago partido",
+        description: "La suma de los métodos debe igualar el total a pagar",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    try {
+      const fileName = await generarYGuardarComprobantePDF();
       toast({
         title: "PDF generado y guardado exitosamente",
         description: `Se descargó: ${fileName}`,
       });
     } catch (error: any) {
-      console.error('❌ Error al guardar PDF:', error);
-      console.error('Error completo:', JSON.stringify(error, null, 2));
       toast({
         title: "PDF descargado",
         description: error?.message || "El PDF se descargó pero hubo un error al guardarlo en el sistema",
@@ -762,6 +773,14 @@ export function MultiplePaymentDialog({
     setIsProcessing(true);
 
     try {
+      // PASO 1: Generar y guardar el comprobante PDF
+      console.log('🎯 PASO 1: Generando y guardando comprobante PDF múltiple...');
+      const pdfFileName = await generarYGuardarComprobantePDF();
+      console.log('✅ PDF guardado:', pdfFileName);
+
+      // PASO 2: Actualizar el estado de las facturas
+      console.log('🎯 PASO 2: Actualizando estado de facturas...');
+
       // Convertir la fecha seleccionada a ISO string con hora actual
       const fechaPagoISO = new Date(fechaPago + 'T00:00:00').toISOString();
 
@@ -863,18 +882,20 @@ export function MultiplePaymentDialog({
         }
       }
 
+      console.log('✅ Facturas actualizadas correctamente');
+
       toast({
-        title: "Pago múltiple procesado",
-        description: `Se procesaron ${facturas.length} facturas por un total de ${formatCurrency(calcularTotalReal())}`,
+        title: "✅ Pago múltiple procesado exitosamente",
+        description: `Se procesaron ${facturas.length} facturas por un total de ${formatCurrency(calcularTotalReal())}. Comprobante: ${pdfFileName}`,
       });
 
       onPaymentProcessed();
       onClose();
-    } catch (error) {
-      console.error('Error processing multiple payment:', error);
+    } catch (error: any) {
+      console.error('❌ Error en el proceso de pago múltiple:', error);
       toast({
-        title: "Error en el pago múltiple",
-        description: "No se pudieron procesar todas las facturas. Inténtalo de nuevo.",
+        title: "Error al procesar el pago múltiple",
+        description: error?.message || "No se pudieron procesar todas las facturas. Inténtalo de nuevo.",
         variant: "destructive"
       });
     } finally {
