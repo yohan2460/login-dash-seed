@@ -143,6 +143,65 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
     return null;
   };
 
+  // Función para descargar comprobante de pago
+  const descargarComprobante = async (facturaId: string) => {
+    try {
+      console.log('🔍 Buscando comprobante para factura:', facturaId);
+
+      // Buscar comprobante asociado a esta factura usando el operador @>
+      const { data: comprobantes, error } = await supabase
+        .from('comprobantes_pago')
+        .select('*')
+        .filter('facturas_ids', 'cs', `{${facturaId}}`)
+        .order('created_at', { ascending: false })
+        .limit(1);
+
+      console.log('📊 Resultado búsqueda:', { comprobantes, error });
+
+      if (error) throw error;
+
+      if (!comprobantes || comprobantes.length === 0) {
+        toast({
+          title: "Comprobante no encontrado",
+          description: "No hay comprobante de pago asociado a esta factura. El comprobante se genera automáticamente al registrar el pago.",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      const comprobante = comprobantes[0];
+
+      // Obtener URL firmada del PDF
+      const { data: urlData, error: urlError } = await supabase.storage
+        .from('facturas-pdf')
+        .createSignedUrl(comprobante.pdf_file_path, 3600);
+
+      if (urlError) throw urlError;
+
+      if (urlData?.signedUrl) {
+        // Descargar el PDF
+        const link = document.createElement('a');
+        link.href = urlData.signedUrl;
+        link.download = comprobante.pdf_file_path.split('/').pop() || 'comprobante.pdf';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+
+        toast({
+          title: "Comprobante descargado",
+          description: "El comprobante de pago se descargó correctamente"
+        });
+      }
+    } catch (error) {
+      console.error('Error al descargar comprobante:', error);
+      toast({
+        title: "Error al descargar",
+        description: "Hubo un error al descargar el comprobante",
+        variant: "destructive"
+      });
+    }
+  };
+
   // Función para obtener información de notas de crédito aplicadas
   const getNotasCreditoInfo = (factura: Factura) => {
     if (!factura.notas) return null;
@@ -1243,9 +1302,22 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
                           size="sm"
                           onClick={() => viewPDF(factura)}
                           className="h-8 w-8 p-0 hover:bg-gray-50"
-                          title="Ver PDF"
+                          title="Ver PDF Factura"
                         >
                           <Eye className="w-3.5 h-3.5" />
+                        </Button>
+                      )}
+
+                      {/* Botón para descargar comprobante de pago - solo para facturas pagadas */}
+                      {factura.estado_mercancia === 'pagada' && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => descargarComprobante(factura.id)}
+                          className="h-8 w-8 p-0 hover:bg-green-50"
+                          title="Descargar Comprobante de Pago"
+                        >
+                          <Download className="w-3.5 h-3.5 text-green-600" />
                         </Button>
                       )}
 
@@ -1325,6 +1397,9 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
         onClose={closePDFViewer}
         pdfUrl={pdfUrl}
         title={selectedFacturaForPDF ? `Factura #${selectedFacturaForPDF.numero_factura} - ${selectedFacturaForPDF.emisor_nombre}` : "Visualizador de PDF"}
+        descuentosAntesIva={selectedFacturaForPDF?.descuentos_antes_iva}
+        totalAPagar={selectedFacturaForPDF?.total_a_pagar}
+        totalSinIva={selectedFacturaForPDF?.total_sin_iva}
       />
     </div>
   );

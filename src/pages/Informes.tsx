@@ -61,6 +61,7 @@ interface Factura {
   created_at: string;
   ingresado_sistema: boolean | null;
   pdf_file_path: string | null;
+  descuentos_antes_iva: string | null;
 }
 
 interface PagoPartido {
@@ -181,6 +182,7 @@ export default function Informes() {
 
       if (error) throw error;
 
+      console.log('📊 Pagos partidos cargados:', data?.length || 0, data);
       setPagosPartidos(data || []);
     } catch (error) {
       console.error('Error en fetchPagosPartidos:', error);
@@ -564,12 +566,19 @@ export default function Informes() {
       // Buscar pagos de esta factura en pagos_partidos
       const pagosDeEstaFactura = getPagosPartidosPorFactura(factura.id);
 
-      // Sumar solo los pagos del método específico
-      const montoPorMetodo = pagosDeEstaFactura
-        .filter(pp => pp.metodo_pago === metodoPago)
-        .reduce((sum, pp) => sum + (pp.monto || 0), 0);
+      if (pagosDeEstaFactura.length > 0) {
+        // Si hay pagos en pagos_partidos, sumar solo los del método específico
+        const montoPorMetodo = pagosDeEstaFactura
+          .filter(pp => pp.metodo_pago === metodoPago)
+          .reduce((sum, pp) => sum + (pp.monto || 0), 0);
 
-      total += montoPorMetodo;
+        total += montoPorMetodo;
+      } else {
+        // Fallback: Si no hay pagos en pagos_partidos, usar el método de pago de la factura
+        if (factura.metodo_pago === metodoPago) {
+          total += (factura.valor_real_a_pagar || factura.monto_pagado || 0);
+        }
+      }
     });
 
     return Math.round(total);
@@ -579,10 +588,17 @@ export default function Informes() {
   const stats = (() => {
     const facturasPagadas = filteredFacturas.filter(f => f.estado_mercancia === 'pagada');
 
+    console.log('💰 Estadísticas - Facturas pagadas:', facturasPagadas.length);
+    console.log('💰 Estadísticas - Total pagos_partidos en estado:', pagosPartidos.length);
+
     // Métodos de pago - Valor REAL PAGADO (desde pagos_partidos)
     const pagosTobiasReal = calcularMontoPorMetodo(facturasPagadas, 'Pago Tobías');
     const pagosBancosReal = calcularMontoPorMetodo(facturasPagadas, 'Pago Banco');
     const pagosCajaReal = calcularMontoPorMetodo(facturasPagadas, 'Caja');
+
+    console.log('💰 Pagos Tobías:', pagosTobiasReal);
+    console.log('💰 Pagos Bancos:', pagosBancosReal);
+    console.log('💰 Pagos Caja:', pagosCajaReal);
 
     // Métodos de pago - Valor OFICIAL (proporción del total_a_pagar)
     const calcularValorOficial = (metodoPago: string): number => {
@@ -590,16 +606,25 @@ export default function Informes() {
 
       facturasPagadas.forEach(factura => {
         const pagosDeEstaFactura = getPagosPartidosPorFactura(factura.id);
-        const totalPagado = pagosDeEstaFactura.reduce((sum, pp) => sum + pp.monto, 0);
 
-        if (totalPagado > 0) {
-          // Calcular proporción que representa este método
-          const montoPorMetodo = pagosDeEstaFactura
-            .filter(pp => pp.metodo_pago === metodoPago)
-            .reduce((sum, pp) => sum + pp.monto, 0);
+        if (pagosDeEstaFactura.length > 0) {
+          // Si hay pagos en pagos_partidos, calcular proporcionalmente
+          const totalPagado = pagosDeEstaFactura.reduce((sum, pp) => sum + pp.monto, 0);
 
-          const proporcion = montoPorMetodo / totalPagado;
-          total += (factura.total_a_pagar * proporcion);
+          if (totalPagado > 0) {
+            // Calcular proporción que representa este método
+            const montoPorMetodo = pagosDeEstaFactura
+              .filter(pp => pp.metodo_pago === metodoPago)
+              .reduce((sum, pp) => sum + pp.monto, 0);
+
+            const proporcion = montoPorMetodo / totalPagado;
+            total += (factura.total_a_pagar * proporcion);
+          }
+        } else {
+          // Fallback: Si no hay pagos en pagos_partidos, usar el método de pago de la factura
+          if (factura.metodo_pago === metodoPago) {
+            total += factura.total_a_pagar;
+          }
         }
       });
 
@@ -610,41 +635,102 @@ export default function Informes() {
     const pagosBancosOficial = calcularValorOficial('Pago Banco');
     const pagosCajaOficial = calcularValorOficial('Caja');
 
-    // Desglose de ahorro por método de pago (Pronto Pago y Retención)
+    // Desglose de ahorro por método de pago (Pronto Pago, Retención y Descuentos Adicionales)
     const calcularDesglosePorMetodo = (metodoPago: string) => {
       let totalProntoPago = 0;
       let totalRetencion = 0;
+      let totalDescuentosAdicionales = 0;
 
       facturasPagadas.forEach(factura => {
         // Buscar pagos de esta factura en pagos_partidos
         const pagosDeEstaFactura = getPagosPartidosPorFactura(factura.id);
 
-        // Verificar si esta factura usó este método de pago
-        const montoPorMetodo = pagosDeEstaFactura
-          .filter(pp => pp.metodo_pago === metodoPago)
-          .reduce((sum, pp) => sum + pp.monto, 0);
+        if (pagosDeEstaFactura.length > 0) {
+          // Si hay pagos en pagos_partidos, calcular proporcionalmente
+          const montoPorMetodo = pagosDeEstaFactura
+            .filter(pp => pp.metodo_pago === metodoPago)
+            .reduce((sum, pp) => sum + pp.monto, 0);
 
-        if (montoPorMetodo > 0) {
-          // Calcular proporción que representa este método en esta factura
-          const totalPagadoFactura = pagosDeEstaFactura.reduce((sum, pp) => sum + pp.monto, 0);
-          const proporcion = totalPagadoFactura > 0 ? montoPorMetodo / totalPagadoFactura : 0;
+          if (montoPorMetodo > 0) {
+            // Calcular proporción que representa este método en el VALOR OFICIAL (total_a_pagar)
+            const totalPagadoFactura = pagosDeEstaFactura.reduce((sum, pp) => sum + pp.monto, 0);
+            const proporcionOficial = totalPagadoFactura > 0 ? montoPorMetodo / totalPagadoFactura : 0;
+            const valorOficialMetodo = factura.total_a_pagar * proporcionOficial;
 
-          // Pronto pago (proporcional)
-          if (factura.uso_pronto_pago && factura.porcentaje_pronto_pago) {
-            const baseParaDescuento = factura.total_sin_iva || (factura.total_a_pagar - (factura.factura_iva || 0));
-            totalProntoPago += (baseParaDescuento * (factura.porcentaje_pronto_pago / 100)) * proporcion;
+            // Calcular el valor real que debería haber (con descuentos)
+            const valorRealCompleto = calcularValorRealAPagar(factura);
+            const valorRealMetodo = valorRealCompleto * proporcionOficial;
+
+            // La diferencia es el descuento aplicado a este método
+            const descuentoTotalMetodo = valorOficialMetodo - valorRealMetodo;
+
+            // Ahora desglosar ese descuento en sus componentes (proporcional)
+            // Pronto pago (proporcional)
+            if (factura.porcentaje_pronto_pago && factura.porcentaje_pronto_pago > 0) {
+              const baseParaDescuento = factura.total_sin_iva || (factura.total_a_pagar - (factura.factura_iva || 0));
+              totalProntoPago += (baseParaDescuento * (factura.porcentaje_pronto_pago / 100)) * proporcionOficial;
+            }
+
+            // Retención (proporcional)
+            if (factura.tiene_retencion) {
+              totalRetencion += calcularMontoRetencionReal(factura) * proporcionOficial;
+            }
+
+            // Descuentos adicionales (proporcional)
+            if (factura.descuentos_antes_iva) {
+              try {
+                const descuentos = JSON.parse(factura.descuentos_antes_iva);
+                const totalDescuentos = descuentos.reduce((sum: number, desc: any) => {
+                  if (desc.tipo === 'porcentaje') {
+                    const base = factura.total_sin_iva || (factura.total_a_pagar - (factura.factura_iva || 0));
+                    return sum + (base * desc.valor / 100);
+                  }
+                  return sum + desc.valor;
+                }, 0);
+                totalDescuentosAdicionales += totalDescuentos * proporcionOficial;
+              } catch (error) {
+                console.error('Error parsing descuentos_antes_iva:', error);
+              }
+            }
           }
+        } else {
+          // Fallback: Si no hay pagos en pagos_partidos, usar el método de pago de la factura
+          if (factura.metodo_pago === metodoPago) {
+            // Pronto pago (100% del descuento)
+            if (factura.porcentaje_pronto_pago && factura.porcentaje_pronto_pago > 0) {
+              const baseParaDescuento = factura.total_sin_iva || (factura.total_a_pagar - (factura.factura_iva || 0));
+              totalProntoPago += baseParaDescuento * (factura.porcentaje_pronto_pago / 100);
+            }
 
-          // Retención (proporcional)
-          if (factura.tiene_retencion) {
-            totalRetencion += calcularMontoRetencionReal(factura) * proporcion;
+            // Retención (100% de la retención)
+            if (factura.tiene_retencion) {
+              totalRetencion += calcularMontoRetencionReal(factura);
+            }
+
+            // Descuentos adicionales (100%)
+            if (factura.descuentos_antes_iva) {
+              try {
+                const descuentos = JSON.parse(factura.descuentos_antes_iva);
+                const totalDescuentos = descuentos.reduce((sum: number, desc: any) => {
+                  if (desc.tipo === 'porcentaje') {
+                    const base = factura.total_sin_iva || (factura.total_a_pagar - (factura.factura_iva || 0));
+                    return sum + (base * desc.valor / 100);
+                  }
+                  return sum + desc.valor;
+                }, 0);
+                totalDescuentosAdicionales += totalDescuentos;
+              } catch (error) {
+                console.error('Error parsing descuentos_antes_iva:', error);
+              }
+            }
           }
         }
       });
 
       return {
         totalProntoPago: Math.round(totalProntoPago),
-        totalRetencion: Math.round(totalRetencion)
+        totalRetencion: Math.round(totalRetencion),
+        totalDescuentosAdicionales: Math.round(totalDescuentosAdicionales)
       };
     };
 
@@ -835,7 +921,7 @@ export default function Informes() {
                     <p className="text-xs text-orange-600">Diferencia Total:</p>
                     <p className="text-xs font-medium text-orange-600">{formatCurrency(stats.pagosTobiasOficial - stats.pagosTobiasReal)}</p>
                   </div>
-                  {(stats.desgloseTobias.totalProntoPago > 0 || stats.desgloseTobias.totalRetencion > 0) && (
+                  {(stats.desgloseTobias.totalProntoPago > 0 || stats.desgloseTobias.totalRetencion > 0 || stats.desgloseTobias.totalDescuentosAdicionales > 0) && (
                     <div className="ml-2 space-y-0.5 text-xs">
                       <div className="text-muted-foreground">Desglose:</div>
                       {stats.desgloseTobias.totalProntoPago > 0 && (
@@ -850,9 +936,15 @@ export default function Informes() {
                           <span className="font-medium">{formatCurrency(stats.desgloseTobias.totalRetencion)}</span>
                         </div>
                       )}
+                      {stats.desgloseTobias.totalDescuentosAdicionales > 0 && (
+                        <div className="flex items-center justify-between text-purple-600">
+                          <span>• Desc. Adicionales:</span>
+                          <span className="font-medium">{formatCurrency(stats.desgloseTobias.totalDescuentosAdicionales)}</span>
+                        </div>
+                      )}
                       <div className="flex items-center justify-between text-xs border-t pt-1 mt-1">
                         <span className="text-muted-foreground">Suma:</span>
-                        <span className="font-medium">{formatCurrency(stats.desgloseTobias.totalProntoPago + stats.desgloseTobias.totalRetencion)}</span>
+                        <span className="font-medium">{formatCurrency(stats.desgloseTobias.totalProntoPago + stats.desgloseTobias.totalRetencion + stats.desgloseTobias.totalDescuentosAdicionales)}</span>
                       </div>
                     </div>
                   )}
@@ -882,7 +974,7 @@ export default function Informes() {
                     <p className="text-xs text-orange-600">Diferencia Total:</p>
                     <p className="text-xs font-medium text-orange-600">{formatCurrency(stats.pagosBancosOficial - stats.pagosBancosReal)}</p>
                   </div>
-                  {(stats.desgloseBancos.totalProntoPago > 0 || stats.desgloseBancos.totalRetencion > 0) && (
+                  {(stats.desgloseBancos.totalProntoPago > 0 || stats.desgloseBancos.totalRetencion > 0 || stats.desgloseBancos.totalDescuentosAdicionales > 0) && (
                     <div className="ml-2 space-y-0.5 text-xs">
                       <div className="text-muted-foreground">Desglose:</div>
                       {stats.desgloseBancos.totalProntoPago > 0 && (
@@ -897,9 +989,15 @@ export default function Informes() {
                           <span className="font-medium">{formatCurrency(stats.desgloseBancos.totalRetencion)}</span>
                         </div>
                       )}
+                      {stats.desgloseBancos.totalDescuentosAdicionales > 0 && (
+                        <div className="flex items-center justify-between text-purple-600">
+                          <span>• Desc. Adicionales:</span>
+                          <span className="font-medium">{formatCurrency(stats.desgloseBancos.totalDescuentosAdicionales)}</span>
+                        </div>
+                      )}
                       <div className="flex items-center justify-between text-xs border-t pt-1 mt-1">
                         <span className="text-muted-foreground">Suma:</span>
-                        <span className="font-medium">{formatCurrency(stats.desgloseBancos.totalProntoPago + stats.desgloseBancos.totalRetencion)}</span>
+                        <span className="font-medium">{formatCurrency(stats.desgloseBancos.totalProntoPago + stats.desgloseBancos.totalRetencion + stats.desgloseBancos.totalDescuentosAdicionales)}</span>
                       </div>
                     </div>
                   )}
@@ -929,7 +1027,7 @@ export default function Informes() {
                     <p className="text-xs text-orange-600">Diferencia Total:</p>
                     <p className="text-xs font-medium text-orange-600">{formatCurrency(stats.pagosCajaOficial - stats.pagosCajaReal)}</p>
                   </div>
-                  {(stats.desgloseCaja.totalProntoPago > 0 || stats.desgloseCaja.totalRetencion > 0) && (
+                  {(stats.desgloseCaja.totalProntoPago > 0 || stats.desgloseCaja.totalRetencion > 0 || stats.desgloseCaja.totalDescuentosAdicionales > 0) && (
                     <div className="ml-2 space-y-0.5 text-xs">
                       <div className="text-muted-foreground">Desglose:</div>
                       {stats.desgloseCaja.totalProntoPago > 0 && (
@@ -944,9 +1042,15 @@ export default function Informes() {
                           <span className="font-medium">{formatCurrency(stats.desgloseCaja.totalRetencion)}</span>
                         </div>
                       )}
+                      {stats.desgloseCaja.totalDescuentosAdicionales > 0 && (
+                        <div className="flex items-center justify-between text-purple-600">
+                          <span>• Desc. Adicionales:</span>
+                          <span className="font-medium">{formatCurrency(stats.desgloseCaja.totalDescuentosAdicionales)}</span>
+                        </div>
+                      )}
                       <div className="flex items-center justify-between text-xs border-t pt-1 mt-1">
                         <span className="text-muted-foreground">Suma:</span>
-                        <span className="font-medium">{formatCurrency(stats.desgloseCaja.totalProntoPago + stats.desgloseCaja.totalRetencion)}</span>
+                        <span className="font-medium">{formatCurrency(stats.desgloseCaja.totalProntoPago + stats.desgloseCaja.totalRetencion + stats.desgloseCaja.totalDescuentosAdicionales)}</span>
                       </div>
                     </div>
                   )}

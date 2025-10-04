@@ -570,13 +570,17 @@ export default function FacturasPorProveedor() {
       {/* PDF Viewer */}
       {pdfViewerOpen && currentPdfUrl && (
         <PDFViewer
+          isOpen={pdfViewerOpen}
           pdfUrl={currentPdfUrl}
-          facturaNumero={currentPdfFactura}
+          title={selectedFactura ? `Factura #${selectedFactura.numero_factura} - ${selectedFactura.emisor_nombre}` : currentPdfFactura}
           onClose={() => {
             setPdfViewerOpen(false);
             setCurrentPdfUrl(null);
             setCurrentPdfFactura('');
           }}
+          descuentosAntesIva={selectedFactura?.descuentos_antes_iva}
+          totalAPagar={selectedFactura?.total_a_pagar}
+          totalSinIva={selectedFactura?.total_sin_iva}
         />
       )}
     </ModernLayout>

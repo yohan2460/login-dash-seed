@@ -334,6 +334,9 @@ export function SinClasificar() {
           pdfUrl={pdfUrl}
           title={selectedFactura ? `Factura: ${selectedFactura.numero_factura}` : 'Visualizador de PDF'}
           sideBySide={true}
+          descuentosAntesIva={selectedFactura?.descuentos_antes_iva}
+          totalAPagar={selectedFactura?.total_a_pagar}
+          totalSinIva={selectedFactura?.total_sin_iva}
         />
 
         <ManualFacturaDialog

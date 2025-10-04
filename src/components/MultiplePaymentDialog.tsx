@@ -29,6 +29,7 @@ interface Factura {
   valor_real_a_pagar?: number | null;
   total_sin_iva?: number | null;
   uso_pronto_pago?: boolean | null;
+  descuentos_antes_iva?: string | null;
 }
 
 interface MultiplePaymentDialogProps {
@@ -121,8 +122,31 @@ export function MultiplePaymentDialog({
         })()
       : 0;
 
+    // Calcular descuentos adicionales antes de IVA
+    let descuentosAdicionales: any[] = [];
+    let totalDescuentosAdicionales = 0;
+    if (factura.descuentos_antes_iva) {
+      try {
+        descuentosAdicionales = JSON.parse(factura.descuentos_antes_iva);
+        totalDescuentosAdicionales = descuentosAdicionales.reduce((sum, desc) => {
+          if (desc.tipo === 'porcentaje') {
+            const base = factura.total_sin_iva || (factura.total_a_pagar - (factura.factura_iva || 0));
+            return sum + (base * desc.valor / 100);
+          }
+          return sum + desc.valor;
+        }, 0);
+      } catch (error) {
+        console.error('Error parsing descuentos_antes_iva:', error);
+      }
+    }
+
     // Calcular valor real considerando si se aplica pronto pago o no
     let valorReal = factura.total_a_pagar;
+
+    // Restar descuentos adicionales
+    if (totalDescuentosAdicionales > 0) {
+      valorReal -= totalDescuentosAdicionales;
+    }
 
     // Restar retención
     if (retencion > 0) {
@@ -142,7 +166,9 @@ export function MultiplePaymentDialog({
       retencion,
       prontoPago,
       totalDescuento,
-      aplicarProntoPago
+      aplicarProntoPago,
+      descuentosAdicionales,
+      totalDescuentosAdicionales
     };
   };
 
@@ -202,7 +228,7 @@ export function MultiplePaymentDialog({
   };
 
   // Función para generar y descargar PDF
-  const generarPDF = () => {
+  const generarPDF = async () => {
     // Validar que haya método de pago
     if (!usarPagoPartido && !metodoPago) {
       toast({
@@ -412,11 +438,23 @@ export function MultiplePaymentDialog({
         }
       ]);
 
-      // Fila de detalles (retención y pronto pago) - SOLO si hay algo que mostrar
-      if (detalles.retencion > 0 || detalles.prontoPago > 0 || detalles.totalDescuento > 0) {
+      // Fila de detalles (retención, pronto pago y descuentos adicionales) - SOLO si hay algo que mostrar
+      if (detalles.retencion > 0 || detalles.prontoPago > 0 || detalles.totalDescuentosAdicionales > 0 || detalles.totalDescuento > 0) {
         let detallesText = '';
 
+        // Descuentos adicionales
+        if (detalles.descuentosAdicionales && detalles.descuentosAdicionales.length > 0) {
+          const descuentosTexto = detalles.descuentosAdicionales.map((desc: any) => {
+            const valorDesc = desc.tipo === 'porcentaje'
+              ? (factura.total_sin_iva || (factura.total_a_pagar - (factura.factura_iva || 0))) * (desc.valor / 100)
+              : desc.valor;
+            return `${desc.concepto} (${desc.tipo === 'porcentaje' ? desc.valor + '%' : formatCurrency(desc.valor)}): -${formatCurrency(valorDesc)}`;
+          }).join('  |  ');
+          detallesText += descuentosTexto;
+        }
+
         if (detalles.retencion > 0) {
+          if (detallesText) detallesText += '  |  ';
           detallesText += `Retencion (${factura.monto_retencion}%): -${formatCurrency(detalles.retencion)}`;
         }
 
@@ -587,6 +625,7 @@ export function MultiplePaymentDialog({
     }
 
     // Descargar PDF con nombre basado en proveedor
+    const timestamp = new Date().getTime();
     let fileName: string;
     if (esProveedorUnico) {
       // Limpiar el nombre del proveedor para usar en archivo
@@ -594,17 +633,107 @@ export function MultiplePaymentDialog({
         .replace(/[^a-zA-Z0-9\s]/g, '') // Eliminar caracteres especiales
         .replace(/\s+/g, '_') // Reemplazar espacios con guiones bajos
         .substring(0, 40); // Limitar longitud
-      fileName = `Pago_${nombreLimpio}_${new Date().toISOString().split('T')[0]}.pdf`;
+      fileName = `Pago_${nombreLimpio}_${timestamp}.pdf`;
     } else {
-      fileName = `Pago_Multiple_${new Date().toISOString().split('T')[0]}_${facturas.length}_facturas.pdf`;
+      fileName = `Pago_Multiple_${timestamp}_${facturas.length}_facturas.pdf`;
     }
 
     doc.save(fileName);
 
-    toast({
-      title: "PDF generado exitosamente",
-      description: `Se descargó: ${fileName}`,
-    });
+    // Guardar el PDF en Supabase Storage
+    try {
+      console.log('💾 Iniciando guardado de comprobante múltiple para', facturas.length, 'facturas');
+
+      const pdfBlob = doc.output('blob');
+      const storagePath = `comprobantes-pago/${fileName}`;
+
+      console.log('📤 Subiendo PDF a storage:', storagePath);
+
+      // Subir a Supabase Storage
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('facturas-pdf')
+        .upload(storagePath, pdfBlob, {
+          contentType: 'application/pdf',
+          upsert: false
+        });
+
+      if (uploadError) {
+        console.error('❌ Error al subir PDF:', uploadError);
+        throw uploadError;
+      }
+
+      console.log('✅ PDF subido correctamente:', uploadData);
+
+      // Calcular resumen de totales
+      const totalOriginal = facturas.reduce((sum, f) => sum + f.total_a_pagar, 0);
+      const totalPagado = facturas.reduce((sum, f) => {
+        const detalles = calcularDetallesFactura(f);
+        return sum + detalles.valorReal;
+      }, 0);
+
+      // Obtener user_id
+      const { data: userData } = await supabase.auth.getUser();
+      const userId = userData.user?.id;
+
+      console.log('👤 User ID:', userId);
+
+      const facturasIds = facturas.map(f => f.id);
+      console.log('📋 IDs de facturas:', facturasIds);
+
+      const comprobanteData = {
+        user_id: userId,
+        tipo_comprobante: 'pago_multiple',
+        metodo_pago: metodoPago,
+        fecha_pago: fechaPago,
+        total_pagado: totalPagado,
+        cantidad_facturas: facturas.length,
+        pdf_file_path: storagePath,
+        facturas_ids: facturasIds,
+        detalles: {
+          proveedor_unico: esProveedorUnico ? proveedoresUnicos[0] : null,
+          total_original: totalOriginal,
+          facturas: facturas.map(f => {
+            const detalles = calcularDetallesFactura(f);
+            return {
+              id: f.id,
+              numero: f.numero_factura,
+              proveedor: f.emisor_nombre,
+              total_original: f.total_a_pagar,
+              total_pagado: detalles.valorReal,
+              descuentos: detalles.totalDescuento
+            };
+          })
+        }
+      };
+
+      console.log('📝 Datos del comprobante a insertar:', comprobanteData);
+
+      // Registrar el comprobante en la base de datos
+      const { data: insertData, error: dbError } = await supabase
+        .from('comprobantes_pago')
+        .insert(comprobanteData)
+        .select();
+
+      if (dbError) {
+        console.error('❌ Error al insertar en BD:', dbError);
+        throw dbError;
+      }
+
+      console.log('✅ Comprobante guardado en BD:', insertData);
+
+      toast({
+        title: "PDF generado y guardado exitosamente",
+        description: `Se descargó: ${fileName}`,
+      });
+    } catch (error: any) {
+      console.error('❌ Error al guardar PDF:', error);
+      console.error('Error completo:', JSON.stringify(error, null, 2));
+      toast({
+        title: "PDF descargado",
+        description: error?.message || "El PDF se descargó pero hubo un error al guardarlo en el sistema",
+        variant: "destructive"
+      });
+    }
   };
 
   const handlePayment = async () => {
@@ -854,8 +983,28 @@ export function MultiplePaymentDialog({
                       </div>
 
                       {/* Detalles de descuentos y retenciones */}
-                      {(detalles.retencion > 0 || factura.porcentaje_pronto_pago) && (
+                      {(detalles.retencion > 0 || factura.porcentaje_pronto_pago || detalles.descuentosAdicionales.length > 0) && (
                         <div className="mt-2 pt-2 border-t border-border/50 space-y-1">
+                          {/* Descuentos adicionales */}
+                          {detalles.descuentosAdicionales.length > 0 && (
+                            <div className="bg-purple-50 dark:bg-purple-950/20 p-2 rounded space-y-1">
+                              <p className="text-xs font-semibold text-purple-700 dark:text-purple-400">Descuentos adicionales:</p>
+                              {detalles.descuentosAdicionales.map((desc: any, idx: number) => {
+                                const valorDesc = desc.tipo === 'porcentaje'
+                                  ? (factura.total_sin_iva || (factura.total_a_pagar - (factura.factura_iva || 0))) * (desc.valor / 100)
+                                  : desc.valor;
+                                return (
+                                  <div key={idx} className="flex items-center justify-between text-xs ml-2">
+                                    <span className="text-purple-600 dark:text-purple-400">• {desc.concepto}:</span>
+                                    <span className="font-medium text-purple-700 dark:text-purple-300">
+                                      {desc.tipo === 'porcentaje' ? `${desc.valor}%` : ''} -{formatCurrency(valorDesc)}
+                                    </span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+
                           {detalles.retencion > 0 && (
                             <div className="flex items-center justify-between text-xs">
                               <div className="flex items-center gap-1 text-orange-600">

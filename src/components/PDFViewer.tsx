@@ -1,8 +1,16 @@
 import { useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Loader2, X, ZoomIn, ZoomOut, RotateCw, Download } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { Loader2, X, ZoomIn, ZoomOut, Download, Tag, Percent, DollarSign } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+
+interface Descuento {
+  id: string;
+  concepto: string;
+  valor: number;
+  tipo: 'porcentaje' | 'valor_fijo';
+}
 
 interface PDFViewerProps {
   isOpen: boolean;
@@ -10,13 +18,48 @@ interface PDFViewerProps {
   pdfUrl: string | null;
   title?: string;
   sideBySide?: boolean;
+  descuentosAntesIva?: string | null;
+  totalAPagar?: number;
+  totalSinIva?: number;
 }
 
-export function PDFViewer({ isOpen, onClose, pdfUrl, title = "Visualizador de PDF", sideBySide = false }: PDFViewerProps) {
+export function PDFViewer({
+  isOpen,
+  onClose,
+  pdfUrl,
+  title = "Visualizador de PDF",
+  sideBySide = false,
+  descuentosAntesIva,
+  totalAPagar,
+  totalSinIva
+}: PDFViewerProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [zoom, setZoom] = useState(100);
   const { toast } = useToast();
+
+  // Parsear descuentos si existen
+  const descuentos: Descuento[] = descuentosAntesIva ? (() => {
+    try {
+      return JSON.parse(descuentosAntesIva);
+    } catch {
+      return [];
+    }
+  })() : [];
+
+  // Calcular total de descuentos
+  const calcularTotalDescuentos = (): number => {
+    return descuentos.reduce((sum, desc) => {
+      if (desc.tipo === 'porcentaje') {
+        const base = totalSinIva || (totalAPagar ? totalAPagar - 0 : 0);
+        return sum + (base * desc.valor / 100);
+      }
+      return sum + desc.valor;
+    }, 0);
+  };
+
+  const totalDescuentos = calcularTotalDescuentos();
+  const tieneDescuentos = descuentos.length > 0;
 
   const handleLoad = () => {
     setIsLoading(false);
@@ -65,7 +108,7 @@ export function PDFViewer({ isOpen, onClose, pdfUrl, title = "Visualizador de PD
     return (
       <div className="fixed left-0 top-0 w-1/2 h-screen bg-background border-r shadow-2xl z-50 flex flex-col">
         <div className="flex-shrink-0 p-4 border-b bg-background">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between mb-2">
             <h3 className="text-lg font-semibold">{title}</h3>
             <div className="flex items-center space-x-2">
               <Button
@@ -104,6 +147,49 @@ export function PDFViewer({ isOpen, onClose, pdfUrl, title = "Visualizador de PD
               </Button>
             </div>
           </div>
+
+          {/* Mostrar descuentos si existen */}
+          {tieneDescuentos && (
+            <div className="mt-2 p-3 bg-green-50 dark:bg-green-950 border border-green-200 dark:border-green-800 rounded-md">
+              <div className="flex items-center gap-2 mb-2">
+                <Tag className="w-4 h-4 text-green-600 dark:text-green-400" />
+                <span className="text-sm font-semibold text-green-700 dark:text-green-300">
+                  Descuentos Adicionales
+                </span>
+                <Badge variant="secondary" className="ml-auto">
+                  {descuentos.length} descuento{descuentos.length > 1 ? 's' : ''}
+                </Badge>
+              </div>
+              <div className="space-y-1.5">
+                {descuentos.map((desc) => (
+                  <div key={desc.id} className="flex items-center justify-between text-xs">
+                    <span className="text-muted-foreground flex items-center gap-1">
+                      {desc.tipo === 'porcentaje' ? (
+                        <Percent className="w-3 h-3" />
+                      ) : (
+                        <DollarSign className="w-3 h-3" />
+                      )}
+                      {desc.concepto}
+                    </span>
+                    <span className="font-medium text-green-700 dark:text-green-300">
+                      {desc.tipo === 'porcentaje'
+                        ? `${desc.valor}%`
+                        : `$${desc.valor.toLocaleString('es-CO')}`
+                      }
+                    </span>
+                  </div>
+                ))}
+                <div className="pt-1.5 mt-1.5 border-t border-green-200 dark:border-green-800">
+                  <div className="flex items-center justify-between text-sm font-semibold">
+                    <span className="text-green-700 dark:text-green-300">Total Descuentos:</span>
+                    <span className="text-green-700 dark:text-green-300">
+                      ${Math.round(totalDescuentos).toLocaleString('es-CO')}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="flex-1 relative overflow-hidden">
@@ -156,7 +242,7 @@ export function PDFViewer({ isOpen, onClose, pdfUrl, title = "Visualizador de PD
     <Dialog open={isOpen} onOpenChange={handleClose}>
       <DialogContent className="max-w-6xl w-full h-[90vh] flex flex-col">
         <DialogHeader className="flex-shrink-0">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between mb-2">
             <DialogTitle>{title}</DialogTitle>
             <div className="flex items-center space-x-2">
               <Button
@@ -195,6 +281,49 @@ export function PDFViewer({ isOpen, onClose, pdfUrl, title = "Visualizador de PD
               </Button>
             </div>
           </div>
+
+          {/* Mostrar descuentos si existen */}
+          {tieneDescuentos && (
+            <div className="mt-2 p-3 bg-green-50 dark:bg-green-950 border border-green-200 dark:border-green-800 rounded-md">
+              <div className="flex items-center gap-2 mb-2">
+                <Tag className="w-4 h-4 text-green-600 dark:text-green-400" />
+                <span className="text-sm font-semibold text-green-700 dark:text-green-300">
+                  Descuentos Adicionales
+                </span>
+                <Badge variant="secondary" className="ml-auto">
+                  {descuentos.length} descuento{descuentos.length > 1 ? 's' : ''}
+                </Badge>
+              </div>
+              <div className="space-y-1.5">
+                {descuentos.map((desc) => (
+                  <div key={desc.id} className="flex items-center justify-between text-xs">
+                    <span className="text-muted-foreground flex items-center gap-1">
+                      {desc.tipo === 'porcentaje' ? (
+                        <Percent className="w-3 h-3" />
+                      ) : (
+                        <DollarSign className="w-3 h-3" />
+                      )}
+                      {desc.concepto}
+                    </span>
+                    <span className="font-medium text-green-700 dark:text-green-300">
+                      {desc.tipo === 'porcentaje'
+                        ? `${desc.valor}%`
+                        : `$${desc.valor.toLocaleString('es-CO')}`
+                      }
+                    </span>
+                  </div>
+                ))}
+                <div className="pt-1.5 mt-1.5 border-t border-green-200 dark:border-green-800">
+                  <div className="flex items-center justify-between text-sm font-semibold">
+                    <span className="text-green-700 dark:text-green-300">Total Descuentos:</span>
+                    <span className="text-green-700 dark:text-green-300">
+                      ${Math.round(totalDescuentos).toLocaleString('es-CO')}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </DialogHeader>
 
         <div className="flex-1 relative overflow-hidden rounded-md border">

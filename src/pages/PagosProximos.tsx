@@ -54,6 +54,7 @@ export default function PagosProximos() {
   const [loadingData, setLoadingData] = useState(true);
   const [pdfDialogOpen, setPdfDialogOpen] = useState(false);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+  const [selectedFacturaForPDF, setSelectedFacturaForPDF] = useState<Factura | null>(null);
   const [searchKeyword, setSearchKeyword] = useState('');
 
   useEffect(() => {
@@ -186,7 +187,7 @@ export default function PagosProximos() {
     }
   };
 
-  const handleOpenPdf = async (pdfFilePath: string) => {
+  const handleOpenPdf = async (pdfFilePath: string, factura?: Factura | FacturaConUrgencia) => {
     try {
       const { data, error } = await supabase.storage
         .from('facturas-pdf')
@@ -196,6 +197,7 @@ export default function PagosProximos() {
 
       if (data?.signedUrl) {
         setPdfUrl(data.signedUrl);
+        setSelectedFacturaForPDF(factura || null);
         setPdfDialogOpen(true);
       }
     } catch (error) {
@@ -639,7 +641,7 @@ export default function PagosProximos() {
                             className="h-8 w-8 p-0"
                             onClick={() => {
                               if (factura.pdf_file_path) {
-                                handleOpenPdf(factura.pdf_file_path);
+                                handleOpenPdf(factura.pdf_file_path, factura);
                               } else {
                                 toast({
                                   title: "PDF no disponible",
@@ -668,9 +670,15 @@ export default function PagosProximos() {
       {/* PDF Viewer */}
       <PDFViewer
         isOpen={pdfDialogOpen}
-        onClose={() => setPdfDialogOpen(false)}
+        onClose={() => {
+          setPdfDialogOpen(false);
+          setSelectedFacturaForPDF(null);
+        }}
         pdfUrl={pdfUrl}
-        title="Visualizador de Factura"
+        title={selectedFacturaForPDF ? `Factura #${selectedFacturaForPDF.numero_factura} - ${selectedFacturaForPDF.emisor_nombre}` : "Visualizador de Factura"}
+        descuentosAntesIva={selectedFacturaForPDF?.descuentos_antes_iva}
+        totalAPagar={selectedFacturaForPDF?.total_a_pagar}
+        totalSinIva={selectedFacturaForPDF?.total_sin_iva}
       />
     </ModernLayout>
   );

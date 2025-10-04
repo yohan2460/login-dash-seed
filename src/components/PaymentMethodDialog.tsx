@@ -152,7 +152,7 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
   };
 
   // Función para generar PDF
-  const generarPDF = () => {
+  const generarPDF = async () => {
     if (!factura) return;
 
     // Validar que haya método de pago
@@ -217,6 +217,24 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
     const prontoPago = usedProntoPago === 'yes' && factura.porcentaje_pronto_pago
       ? (factura.total_sin_iva || (factura.total_a_pagar - (factura.factura_iva || 0))) * (factura.porcentaje_pronto_pago / 100)
       : 0;
+
+    // Calcular descuentos adicionales antes de IVA
+    let descuentosAdicionales: any[] = [];
+    let totalDescuentosAdicionales = 0;
+    if (factura.descuentos_antes_iva) {
+      try {
+        descuentosAdicionales = JSON.parse(factura.descuentos_antes_iva);
+        totalDescuentosAdicionales = descuentosAdicionales.reduce((sum, desc) => {
+          if (desc.tipo === 'porcentaje') {
+            const base = factura.total_sin_iva || (factura.total_a_pagar - (factura.factura_iva || 0));
+            return sum + (base * desc.valor / 100);
+          }
+          return sum + desc.valor;
+        }, 0);
+      } catch (error) {
+        console.error('Error parsing descuentos_antes_iva:', error);
+      }
+    }
 
     // Caja del resumen
     doc.setDrawColor(229, 231, 235);
@@ -313,6 +331,19 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
 
     if (prontoPago > 0) {
       tableData.push([`Pronto Pago (${factura.porcentaje_pronto_pago}%)`, `-${formatCurrency(prontoPago)}`]);
+    }
+
+    // Agregar descuentos adicionales si existen
+    if (descuentosAdicionales.length > 0) {
+      descuentosAdicionales.forEach((desc) => {
+        const valorDescuento = desc.tipo === 'porcentaje'
+          ? (factura.total_sin_iva || (factura.total_a_pagar - (factura.factura_iva || 0))) * (desc.valor / 100)
+          : desc.valor;
+        const textoDescuento = desc.tipo === 'porcentaje'
+          ? `${desc.concepto} (${desc.valor}%)`
+          : desc.concepto;
+        tableData.push([textoDescuento, `-${formatCurrency(valorDescuento)}`]);
+      });
     }
 
     autoTable(doc, {
@@ -426,14 +457,95 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
       .replace(/[^a-zA-Z0-9\s]/g, '')
       .replace(/\s+/g, '_')
       .substring(0, 40);
-    const fileName = `Pago_${nombreLimpio}_${factura.numero_factura}_${new Date().toISOString().split('T')[0]}.pdf`;
+    const timestamp = new Date().getTime();
+    const fileName = `Pago_${nombreLimpio}_${factura.numero_factura}_${timestamp}.pdf`;
 
+    // Descargar el PDF
     doc.save(fileName);
 
-    toast({
-      title: "PDF generado exitosamente",
-      description: `Se descargo: ${fileName}`,
-    });
+    // Guardar el PDF en Supabase Storage
+    try {
+      console.log('💾 Iniciando guardado de comprobante para factura:', factura.id);
+
+      const pdfBlob = doc.output('blob');
+      const storagePath = `comprobantes-pago/${fileName}`;
+
+      console.log('📤 Subiendo PDF a storage:', storagePath);
+
+      // Subir a Supabase Storage
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('facturas-pdf')
+        .upload(storagePath, pdfBlob, {
+          contentType: 'application/pdf',
+          upsert: false
+        });
+
+      if (uploadError) {
+        console.error('❌ Error al subir PDF:', uploadError);
+        throw uploadError;
+      }
+
+      console.log('✅ PDF subido correctamente:', uploadData);
+
+      // Obtener user_id
+      const { data: userData } = await supabase.auth.getUser();
+      const userId = userData.user?.id;
+
+      console.log('👤 User ID:', userId);
+
+      const comprobanteData = {
+        user_id: userId,
+        tipo_comprobante: 'pago_individual',
+        metodo_pago: usarPagoPartido ? 'Pago Partido' : metodoPago,
+        fecha_pago: fechaPago,
+        total_pagado: valorFinal,
+        cantidad_facturas: 1,
+        pdf_file_path: storagePath,
+        facturas_ids: [factura.id],
+        detalles: {
+          factura_numero: factura.numero_factura,
+          proveedor: factura.emisor_nombre,
+          nit: factura.emisor_nit,
+          total_original: factura.total_a_pagar,
+          retencion: retencion,
+          pronto_pago: prontoPago,
+          descuentos_adicionales: totalDescuentosAdicionales,
+          pagos_partidos: usarPagoPartido ? [
+            { metodo: 'Pago Banco', monto: montoBanco || 0 },
+            { metodo: 'Pago Tobías', monto: montoTobias || 0 },
+            { metodo: 'Caja', monto: montoCaja || 0 }
+          ].filter(p => p.monto > 0) : null
+        }
+      };
+
+      console.log('📝 Datos del comprobante a insertar:', comprobanteData);
+
+      // Registrar el comprobante en la base de datos
+      const { data: insertData, error: dbError } = await supabase
+        .from('comprobantes_pago')
+        .insert(comprobanteData)
+        .select();
+
+      if (dbError) {
+        console.error('❌ Error al insertar en BD:', dbError);
+        throw dbError;
+      }
+
+      console.log('✅ Comprobante guardado en BD:', insertData);
+
+      toast({
+        title: "PDF generado y guardado exitosamente",
+        description: `Se descargó: ${fileName}`,
+      });
+    } catch (error: any) {
+      console.error('❌ Error al guardar PDF:', error);
+      console.error('Error completo:', JSON.stringify(error, null, 2));
+      toast({
+        title: "PDF descargado",
+        description: error?.message || "El PDF se descargó pero hubo un error al guardarlo en el sistema",
+        variant: "destructive"
+      });
+    }
   };
 
   const handlePayment = async () => {
