@@ -2,14 +2,14 @@ import { useAuth } from '@/hooks/useAuth';
 import { Navigate, Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { LogIn, UserPlus, Sparkles } from 'lucide-react';
+import { LogIn, Sparkles } from 'lucide-react';
 
 const Index = () => {
   const { user, loading } = useAuth();
 
-  // Si está autenticado, redirigir al dashboard
+  // Si está autenticado, redirigir a sin-clasificar
   if (user && !loading) {
-    return <Navigate to="/dashboard" replace />;
+    return <Navigate to="/sin-clasificar" replace />;
   }
 
   if (loading) {
@@ -29,45 +29,28 @@ const Index = () => {
             <Sparkles className="w-10 h-10 text-white" />
           </div>
           <h1 className="text-4xl md:text-5xl font-bold mb-4 bg-gradient-primary bg-clip-text text-transparent">
-            Bienvenido a tu App
+            Sistema de Gestión de Facturas
           </h1>
           <p className="text-xl text-muted-foreground mb-8 max-w-lg mx-auto">
-            Una aplicación con diseño limpio y suave. Inicia sesión para acceder a tu dashboard personal.
+            Inicia sesión para acceder al sistema de gestión de facturas.
           </p>
         </div>
 
-        {/* Action Cards */}
-        <div className="grid md:grid-cols-2 gap-4 mb-8">
+        {/* Action Card */}
+        <div className="max-w-md mx-auto mb-8">
           <Card className="shadow-medium transition-all duration-300 hover:shadow-large hover:scale-[1.02]">
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
+              <CardTitle className="flex items-center gap-2 justify-center">
                 <LogIn className="w-5 h-5 text-primary" />
                 Iniciar Sesión
               </CardTitle>
-              <CardDescription>
-                Accede a tu cuenta existente
+              <CardDescription className="text-center">
+                Accede a tu cuenta
               </CardDescription>
             </CardHeader>
             <CardContent>
               <Button asChild className="w-full transition-all duration-300 hover:scale-105">
                 <Link to="/auth">Entrar</Link>
-              </Button>
-            </CardContent>
-          </Card>
-
-          <Card className="shadow-medium transition-all duration-300 hover:shadow-large hover:scale-[1.02]">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <UserPlus className="w-5 h-5 text-primary" />
-                Crear Cuenta
-              </CardTitle>
-              <CardDescription>
-                Únete y crea tu cuenta nueva
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Button variant="outline" asChild className="w-full transition-all duration-300 hover:scale-105">
-                <Link to="/auth">Registrarse</Link>
               </Button>
             </CardContent>
           </Card>

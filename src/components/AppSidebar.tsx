@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import {
-  LayoutDashboard,
   FileText,
   Building2,
   LogOut,
@@ -34,11 +33,6 @@ import { useAuth } from "@/hooks/useAuth";
 import { useDashboard } from "@/contexts/DashboardContext";
 
 const navigationItems = [
-  {
-    title: "Dashboard",
-    url: "/dashboard",
-    icon: LayoutDashboard,
-  },
   {
     title: "Por Proveedor",
     url: "/facturas-por-proveedor",
@@ -335,7 +329,7 @@ export function AppSidebar() {
         )}
 
         {/* CATEGORÍAS - Solo cuando está expandido */}
-        {!isCollapsed && currentPath === '/dashboard' && (
+        {!isCollapsed && currentPath === '/sin-clasificar' && (
           <SidebarGroup className="mt-8">
             <SidebarGroupLabel className="text-xs font-medium text-muted-foreground mb-4">
               Categorías

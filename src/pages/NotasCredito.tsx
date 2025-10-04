@@ -4,9 +4,21 @@ import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { ModernLayout } from '@/components/ModernLayout';
 import { FacturasTable } from '@/components/FacturasTable';
-import { Minus, FileText } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
+import { Minus, FileText, Trash2 } from 'lucide-react';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 interface Factura {
   id: string;
@@ -52,11 +64,14 @@ interface NotaCreditoConFactura {
 
 export default function NotasCredito() {
   const { user, loading } = useAuth();
+  const { toast } = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
   const [facturas, setFacturas] = useState<Factura[]>([]);
   const [notasConFacturas, setNotasConFacturas] = useState<NotaCreditoConFactura[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [notaToDelete, setNotaToDelete] = useState<Factura | null>(null);
 
   useEffect(() => {
     if (user) {
@@ -84,6 +99,50 @@ export default function NotasCredito() {
       return () => clearTimeout(timeout);
     }
   }, [searchParams, setSearchParams]);
+
+  const handleDeleteClick = (nota: Factura) => {
+    setNotaToDelete(nota);
+    setDeleteDialogOpen(true);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!notaToDelete) return;
+
+    try {
+      // Eliminar el PDF del storage si existe
+      if (notaToDelete.pdf_file_path) {
+        await supabase.storage
+          .from('facturas-pdf')
+          .remove([notaToDelete.pdf_file_path]);
+      }
+
+      // Eliminar la nota de crédito de la base de datos
+      const { error } = await supabase
+        .from('facturas')
+        .delete()
+        .eq('id', notaToDelete.id);
+
+      if (error) throw error;
+
+      toast({
+        title: "Nota eliminada",
+        description: `La nota de crédito ${notaToDelete.numero_factura} ha sido eliminada correctamente`,
+      });
+
+      // Refrescar la lista
+      fetchNotasCredito();
+    } catch (error) {
+      console.error('Error al eliminar nota:', error);
+      toast({
+        title: "Error",
+        description: "No se pudo eliminar la nota de crédito",
+        variant: "destructive",
+      });
+    } finally {
+      setDeleteDialogOpen(false);
+      setNotaToDelete(null);
+    }
+  };
 
   const fetchNotasCredito = async () => {
     setIsLoading(true);
@@ -223,7 +282,17 @@ export default function NotasCredito() {
             {aplicadas.map((item) => (
               <Card key={item.notaCredito.id}>
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-sm text-red-600">Nota de Crédito</CardTitle>
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="text-sm text-red-600">Nota de Crédito</CardTitle>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleDeleteClick(item.notaCredito)}
+                      className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
                 </CardHeader>
                 <CardContent className="space-y-2">
                   <FacturasTable
@@ -266,7 +335,17 @@ export default function NotasCredito() {
             {anuladas.map((item) => (
               <Card key={item.notaCredito.id}>
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-sm text-red-600">Nota de Crédito</CardTitle>
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="text-sm text-red-600">Nota de Crédito</CardTitle>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleDeleteClick(item.notaCredito)}
+                      className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
                 </CardHeader>
                 <CardContent className="space-y-2">
                   <FacturasTable
@@ -309,7 +388,17 @@ export default function NotasCredito() {
             {pendientes.map((item) => (
               <Card key={item.notaCredito.id}>
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-sm text-red-600">Nota de Crédito</CardTitle>
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="text-sm text-red-600">Nota de Crédito</CardTitle>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleDeleteClick(item.notaCredito)}
+                      className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
                 </CardHeader>
                 <CardContent className="space-y-2">
                   <FacturasTable
@@ -366,6 +455,29 @@ export default function NotasCredito() {
           </Card>
         )}
       </div>
+
+      {/* Diálogo de confirmación para eliminar */}
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Eliminar nota de crédito?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta acción no se puede deshacer. Se eliminará permanentemente la nota de crédito{' '}
+              <span className="font-semibold">{notaToDelete?.numero_factura}</span>
+              {notaToDelete?.pdf_file_path && ' y su archivo PDF asociado'}.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteConfirm}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              Eliminar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </ModernLayout>
   );
 }

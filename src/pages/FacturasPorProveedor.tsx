@@ -396,7 +396,10 @@ export default function FacturasPorProveedor() {
 
     filteredFacturas.forEach(factura => {
       const proveedorKey = `${factura.emisor_nombre}-${factura.emisor_nit}`;
-      const fecha = new Date(factura.created_at);
+
+      // Usar fecha de emisión si está disponible, sino usar created_at
+      const fechaStr = factura.fecha_emision || factura.created_at;
+      const fecha = new Date(fechaStr);
       const año = fecha.getFullYear();
       const mes = fecha.getMonth();
 
@@ -458,7 +461,7 @@ export default function FacturasPorProveedor() {
           <Card>
             <CardContent className="p-4">
               <div className="text-2xl font-bold">{totalProveedores}</div>
-              <div className="text-xs text-muted-foreground">Rubros diferentes</div>
+              <div className="text-xs text-muted-foreground">Proveedores </div>
             </CardContent>
           </Card>
           <Card>
