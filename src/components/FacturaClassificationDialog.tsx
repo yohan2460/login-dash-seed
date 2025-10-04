@@ -97,17 +97,16 @@ export function FacturaClassificationDialog({
 
     setSuggestionLoading(true);
     try {
-      console.log('🔍 Obteniendo sugerencia de número de serie...');
+   
       const [suggestion, available] = await Promise.all([
         SerieNumberSuggestion.suggestNextSerie(factura.emisor_nit),
         SerieNumberSuggestion.getAvailableSeries()
       ]);
-      console.log(`🎯 Sugerencia obtenida:`, suggestion);
-      console.log(`📋 Series disponibles (faltantes):`, available);
+    
       setSuggestedSerie(suggestion);
       setAvailableSeries(available);
     } catch (error) {
-      console.error('❌ Error getting serie suggestion:', error);
+ 
       setSuggestedSerie(null);
       setAvailableSeries([]);
     } finally {
@@ -117,12 +116,12 @@ export function FacturaClassificationDialog({
 
   // Efecto para obtener sugerencia cuando se selecciona mercancía
   useEffect(() => {
-    console.log('🎬 useEffect ejecutado - classification:', classification, 'emisor_nit:', factura?.emisor_nit);
+
     if (classification === 'mercancia' && factura?.emisor_nit) {
-      console.log('✅ Condiciones cumplidas, llamando fetchSerieSuggestion...');
+    
       fetchSerieSuggestion();
     } else {
-      console.log('❌ Condiciones NO cumplidas, limpiando sugerencia');
+     
       setSuggestedSerie(null);
     }
   }, [classification, factura?.emisor_nit, fetchSerieSuggestion]);
@@ -227,19 +226,15 @@ export function FacturaClassificationDialog({
         throw new Error('El total debe ser un número válido mayor a 0');
       }
 
-      console.log('💰 Actualizando factura con nuevos valores:');
-      console.log(`📊 Total original: ${formatCurrency(factura.total_a_pagar)}`);
-      console.log(`📊 Total nuevo: ${formatCurrency(nuevoTotal)}`);
-      console.log(`📊 IVA original: ${formatCurrency(factura.factura_iva || 0)}`);
-      console.log(`📊 IVA nuevo: ${formatCurrency(nuevoIVA)}`);
-      console.log(`📊 Total descuentos antes IVA: ${formatCurrency(calcularTotalDescuentos())}`);
+ 
+
 
       // CRÍTICO: total_sin_iva es el valor ORIGINAL antes de IVA y ANTES de descuentos
       // nuevoTotal es el valor ingresado por el usuario (con IVA, sin descuentos aplicados)
       // Los descuentos se aplican DESPUÉS sobre este valor original
       const valorOriginalSinIVA = nuevoTotal - nuevoIVA;
 
-      console.log(`📊 total_sin_iva (valor ORIGINAL antes de IVA y descuentos): ${formatCurrency(valorOriginalSinIVA)}`);
+
 
       // Construir los datos para la tabla facturas (incluyendo IVA, descuentos y valor real a pagar)
       const facturaParaCalculo = {
@@ -268,40 +263,14 @@ export function FacturaClassificationDialog({
         descuentos_antes_iva: descuentos.length > 0 ? JSON.stringify(descuentos) : null
       };
 
-      console.log(`📊 Valor real a pagar calculado: ${formatCurrency(valorRealAPagar)}`);
-
-      console.log('📝 Datos a enviar a tabla facturas:', updateData);
-      console.log('📝 Tipos de datos:', {
-        clasificacion: typeof updateData.clasificacion,
-        descripcion: typeof updateData.descripcion,
-        tiene_retencion: typeof updateData.tiene_retencion,
-        monto_retencion: typeof updateData.monto_retencion,
-        porcentaje_pronto_pago: typeof updateData.porcentaje_pronto_pago,
-        numero_serie: typeof updateData.numero_serie,
-        estado_mercancia: typeof updateData.estado_mercancia,
-        total_a_pagar: typeof updateData.total_a_pagar,
-        factura_iva: typeof updateData.factura_iva,
-        valor_real_a_pagar: typeof updateData.valor_real_a_pagar,
-        descuentos_antes_iva: typeof updateData.descuentos_antes_iva
-      });
-
+  
       // Actualizar la tabla facturas
       const { error } = await supabase
         .from('facturas')
         .update(updateData)
         .eq('id', factura.id);
 
-      if (error) {
-        console.error('❌ Error actualizando tabla facturas:', error);
-        console.error('❌ Detalles del error:', JSON.stringify(error, null, 2));
-        console.error('❌ Mensaje:', error.message);
-        console.error('❌ Código:', error.code);
-        console.error('❌ Detalles:', error.details);
-        console.error('❌ Hint:', error.hint);
-        throw new Error(`Error al actualizar factura: ${error.message} (${error.code})`);
-      }
-
-      console.log('✅ Tabla facturas actualizada exitosamente con IVA');
+    
 
       toast({
         title: "Clasificación actualizada",
@@ -392,7 +361,7 @@ export function FacturaClassificationDialog({
 
   // Modo side-by-side: renderizar como div fijo en lado DERECHO (50%)
   if (sideBySide && isOpen && factura) {
-    console.log('📋 FacturaClassificationDialog SIDE-BY-SIDE renderizando', { sideBySide, isOpen, factura });
+    
     return (
       <div className="fixed right-0 top-0 w-1/2 h-screen bg-background border-l shadow-2xl z-50 flex flex-col overflow-hidden">
         <div className="flex-shrink-0 p-6 border-b bg-background">
