@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Navigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
@@ -169,41 +169,8 @@ export function MercanciaPendiente() {
     return valorReal;
   };
 
-  const calcularTotalFacturas = () => {
-    return facturas.reduce((total, factura) => total + factura.total_a_pagar, 0);
-  };
-
-  const calcularTotalImpuestos = () => {
-    return facturas.reduce((total, factura) => total + (factura.factura_iva || 0), 0);
-  };
-
-  const calcularTotalRetenciones = () => {
-    return facturas.reduce((total, factura) => total + calcularMontoRetencionReal(factura), 0);
-  };
-
-  const calcularTotalProntoPago = () => {
-    return facturas
-      .filter(f => f.porcentaje_pronto_pago && f.porcentaje_pronto_pago > 0)
-      .reduce((total, factura) => {
-        const montoBase = factura.total_a_pagar - (factura.factura_iva || 0);
-        const descuento = montoBase * ((factura.porcentaje_pronto_pago || 0) / 100);
-        return total + descuento;
-      }, 0);
-  };
-
-  const calcularTotalValorReal = () => {
-    return facturas.reduce((total, factura) => total + calcularValorRealAPagar(factura), 0);
-  };
-
-  const calcularFacturasPendientes = () => {
-    return facturas.filter(f => !f.ingresado_sistema).length;
-  };
-
-  const calcularFacturasIngresadas = () => {
-    return facturas.filter(f => f.ingresado_sistema === true).length;
-  };
-
-  const getFilteredFacturas = () => {
+  // Memorizar las facturas filtradas
+  const filteredFacturas = useMemo(() => {
     let filtered = facturas;
 
     // Filtro por palabra clave
@@ -230,7 +197,34 @@ export function MercanciaPendiente() {
     });
 
     return filtered;
-  };
+  }, [facturas, searchKeyword, sortByDate]);
+
+  // Memorizar las estadísticas calculadas
+  const stats = useMemo(() => {
+    const totalFacturas = filteredFacturas.reduce((total, factura) => total + factura.total_a_pagar, 0);
+
+    const totalImpuestos = filteredFacturas.reduce((total, factura) => total + (factura.factura_iva || 0), 0);
+
+    const totalRetenciones = filteredFacturas.reduce((total, factura) => total + calcularMontoRetencionReal(factura), 0);
+
+    const totalProntoPago = filteredFacturas
+      .filter(f => f.porcentaje_pronto_pago && f.porcentaje_pronto_pago > 0)
+      .reduce((total, factura) => {
+        const montoBase = factura.total_a_pagar - (factura.factura_iva || 0);
+        const descuento = montoBase * ((factura.porcentaje_pronto_pago || 0) / 100);
+        return total + descuento;
+      }, 0);
+
+    const totalValorReal = filteredFacturas.reduce((total, factura) => total + calcularValorRealAPagar(factura), 0);
+
+    return {
+      totalFacturas,
+      totalImpuestos,
+      totalRetenciones,
+      totalProntoPago,
+      totalValorReal,
+    };
+  }, [filteredFacturas]);
 
   if (loading) {
     return <div>Cargando...</div>;
@@ -307,37 +301,37 @@ export function MercanciaPendiente() {
         <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">
           <ModernStatsCard
             title="Total Facturas"
-            value={facturas.length.toString()}
+            value={filteredFacturas.length.toString()}
             icon={Package}
             color="blue"
           />
           <ModernStatsCard
             title="Monto Total Facturas"
-            value={formatCurrency(calcularTotalFacturas())}
+            value={formatCurrency(stats.totalFacturas)}
             icon={DollarSign}
             color="blue"
           />
           <ModernStatsCard
             title="Total Impuestos"
-            value={formatCurrency(calcularTotalImpuestos())}
+            value={formatCurrency(stats.totalImpuestos)}
             icon={Calculator}
             color="purple"
           />
           <ModernStatsCard
             title="Valor Real a Pagar"
-            value={formatCurrency(calcularTotalValorReal())}
+            value={formatCurrency(stats.totalValorReal)}
             icon={DollarSign}
             color="red"
           />
           <ModernStatsCard
             title="Total Retenciones"
-            value={formatCurrency(calcularTotalRetenciones())}
+            value={formatCurrency(stats.totalRetenciones)}
             icon={Calculator}
             color="purple"
           />
           <ModernStatsCard
             title="Ahorro Pronto Pago"
-            value={formatCurrency(calcularTotalProntoPago())}
+            value={formatCurrency(stats.totalProntoPago)}
             icon={TrendingUp}
             color="green"
           />
@@ -359,7 +353,7 @@ export function MercanciaPendiente() {
               <div className="text-center py-8">
                 <p>Cargando facturas...</p>
               </div>
-            ) : getFilteredFacturas().length === 0 ? (
+            ) : filteredFacturas.length === 0 ? (
               <div className="text-center py-8">
                 <Package className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
                 <p className="text-muted-foreground">
@@ -368,7 +362,7 @@ export function MercanciaPendiente() {
               </div>
             ) : (
               <FacturasTable
-                facturas={getFilteredFacturas()}
+                facturas={filteredFacturas}
                 onClassifyClick={() => {}}
                 onPayClick={handlePay}
                 refreshData={fetchFacturas}

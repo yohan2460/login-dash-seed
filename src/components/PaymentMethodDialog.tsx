@@ -5,10 +5,12 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Input } from '@/components/ui/input';
-import { CreditCard, Building2, Percent, Banknote, Calendar } from 'lucide-react';
+import { CreditCard, Building2, Percent, Banknote, Calendar, Download } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { calcularValorRealAPagar, calcularMontoRetencionReal } from '@/utils/calcularValorReal';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 interface Factura {
   id: string;
@@ -96,6 +98,235 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
       setAmountPaid(new Intl.NumberFormat('es-CO').format(valorReal));
     }
   }, [usedProntoPago, factura]);
+
+  // Función para generar PDF
+  const generarPDF = () => {
+    if (!factura || !selectedPaymentMethod) {
+      toast({
+        title: "Campos requeridos",
+        description: "Por favor selecciona un método de pago",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    const doc = new jsPDF();
+    const pageWidth = doc.internal.pageSize.width;
+    let currentY = 15;
+
+    // ========== ENCABEZADO ==========
+    doc.setFillColor(59, 130, 246);
+    doc.rect(0, 0, pageWidth, 45, 'F');
+
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(22);
+    doc.setFont('helvetica', 'bold');
+    const nombreProveedor = factura.emisor_nombre.length > 35
+      ? factura.emisor_nombre.substring(0, 32) + '...'
+      : factura.emisor_nombre;
+    doc.text(`PAGO - ${nombreProveedor}`, pageWidth / 2, 20, { align: 'center' });
+
+    doc.setFontSize(11);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`Factura #${factura.numero_factura}`, pageWidth / 2, 28, { align: 'center' });
+
+    doc.setDrawColor(255, 255, 255);
+    doc.setLineWidth(0.5);
+    doc.line(pageWidth / 2 - 30, 32, pageWidth / 2 + 30, 32);
+
+    currentY = 50;
+
+    // ========== RESUMEN DEL PAGO ==========
+    doc.setTextColor(0, 0, 0);
+    doc.setFillColor(245, 247, 250);
+    doc.roundedRect(14, currentY, pageWidth - 28, 10, 2, 2, 'F');
+    doc.setFontSize(11);
+    doc.setFont('helvetica', 'bold');
+    doc.text('RESUMEN DEL PAGO', 18, currentY + 7);
+    currentY += 15;
+
+    // Calcular valores
+    const valorFinal = obtenerValorFinal(factura);
+    const retencion = factura.tiene_retencion && factura.monto_retencion
+      ? calcularMontoRetencionReal(factura)
+      : 0;
+    const prontoPago = usedProntoPago === 'yes' && factura.porcentaje_pronto_pago
+      ? (factura.total_sin_iva || (factura.total_a_pagar - (factura.factura_iva || 0))) * (factura.porcentaje_pronto_pago / 100)
+      : 0;
+
+    // Caja del resumen
+    doc.setDrawColor(229, 231, 235);
+    doc.setLineWidth(0.5);
+    doc.roundedRect(14, currentY, pageWidth - 28, 60, 3, 3, 'S');
+
+    // Primera fila
+    const colWidth = (pageWidth - 28) / 3;
+
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(107, 114, 128);
+    doc.text('Total Original', 14 + colWidth / 2, currentY + 8, { align: 'center' });
+    doc.setFontSize(11);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(0, 0, 0);
+    doc.text(formatCurrency(factura.total_a_pagar), 14 + colWidth / 2, currentY + 18, { align: 'center' });
+
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(107, 114, 128);
+    doc.text('Total a Pagar', 14 + colWidth * 1.5, currentY + 8, { align: 'center' });
+    doc.setFontSize(14);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(34, 197, 94);
+    doc.text(formatCurrency(valorFinal), 14 + colWidth * 1.5, currentY + 18, { align: 'center' });
+
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(107, 114, 128);
+    doc.text('Descuentos', 14 + colWidth * 2.5, currentY + 8, { align: 'center' });
+    doc.setFontSize(11);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(34, 197, 94);
+    doc.text(formatCurrency(factura.total_a_pagar - valorFinal), 14 + colWidth * 2.5, currentY + 18, { align: 'center' });
+
+    // Línea separadora
+    currentY += 28;
+    doc.setDrawColor(229, 231, 235);
+    doc.setLineWidth(0.3);
+    doc.line(18, currentY, pageWidth - 18, currentY);
+    currentY += 2;
+
+    // Segunda fila
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(107, 114, 128);
+    doc.text('IVA Total', 14 + colWidth / 2, currentY + 8, { align: 'center' });
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(0, 0, 0);
+    doc.text(formatCurrency(factura.factura_iva || 0), 14 + colWidth / 2, currentY + 16, { align: 'center' });
+
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(107, 114, 128);
+    doc.text('Retenciones', 14 + colWidth * 1.5, currentY + 8, { align: 'center' });
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(249, 115, 22);
+    doc.text(`-${formatCurrency(retencion)}`, 14 + colWidth * 1.5, currentY + 16, { align: 'center' });
+
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(107, 114, 128);
+    doc.text('Pronto Pago', 14 + colWidth * 2.5, currentY + 8, { align: 'center' });
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(34, 197, 94);
+    doc.text(`-${formatCurrency(prontoPago)}`, 14 + colWidth * 2.5, currentY + 16, { align: 'center' });
+
+    currentY += 36;
+
+    // ========== DETALLES DE LA FACTURA ==========
+    doc.setFillColor(245, 247, 250);
+    doc.roundedRect(14, currentY, pageWidth - 28, 10, 2, 2, 'F');
+    doc.setFontSize(11);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(0, 0, 0);
+    doc.text('DETALLES DE LA FACTURA', 18, currentY + 7);
+    currentY += 15;
+
+    // Tabla de detalles
+    const tableData: any[] = [];
+
+    tableData.push(['N° Factura', factura.numero_factura]);
+    tableData.push(['Proveedor', factura.emisor_nombre]);
+    tableData.push(['NIT', factura.emisor_nit]);
+    tableData.push(['Clasificacion', factura.clasificacion === 'mercancia' ? 'Mercancia' : 'Gasto']);
+
+    if (retencion > 0) {
+      tableData.push([`Retencion (${factura.monto_retencion}%)`, `-${formatCurrency(retencion)}`]);
+    }
+
+    if (prontoPago > 0) {
+      tableData.push([`Pronto Pago (${factura.porcentaje_pronto_pago}%)`, `-${formatCurrency(prontoPago)}`]);
+    }
+
+    autoTable(doc, {
+      startY: currentY,
+      body: tableData,
+      theme: 'striped',
+      styles: {
+        fontSize: 9,
+        cellPadding: 3
+      },
+      columnStyles: {
+        0: { cellWidth: 70, fontStyle: 'bold', fillColor: [245, 247, 250] },
+        1: { cellWidth: 112 }
+      }
+    });
+
+    currentY = (doc as any).lastAutoTable.finalY + 10;
+
+    // ========== DETALLES DEL PAGO ==========
+    doc.setFillColor(245, 247, 250);
+    doc.roundedRect(14, currentY, pageWidth - 28, 10, 2, 2, 'F');
+    doc.setFontSize(11);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(0, 0, 0);
+    doc.text('DETALLES DEL PAGO', 18, currentY + 7);
+    currentY += 15;
+
+    doc.setDrawColor(229, 231, 235);
+    doc.roundedRect(14, currentY, pageWidth - 28, 25, 3, 3, 'S');
+
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(107, 114, 128);
+    doc.text('Metodo de pago:', 20, currentY + 8);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(0, 0, 0);
+    doc.text(selectedPaymentMethod, 60, currentY + 8);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(107, 114, 128);
+    doc.text('Fecha de Pago:', 20, currentY + 16);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(0, 0, 0);
+    doc.text(new Date(paymentDate).toLocaleDateString('es-CO', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    }), 60, currentY + 16);
+
+    // Pie de página
+    doc.setDrawColor(229, 231, 235);
+    doc.setLineWidth(0.5);
+    doc.line(14, 280, pageWidth - 14, 280);
+
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(107, 114, 128);
+    doc.text(
+      `Generado el ${new Date().toLocaleDateString('es-CO')} a las ${new Date().toLocaleTimeString('es-CO')}`,
+      14,
+      285
+    );
+
+    // Nombre del archivo
+    const nombreLimpio = factura.emisor_nombre
+      .replace(/[^a-zA-Z0-9\s]/g, '')
+      .replace(/\s+/g, '_')
+      .substring(0, 40);
+    const fileName = `Pago_${nombreLimpio}_${factura.numero_factura}_${new Date().toISOString().split('T')[0]}.pdf`;
+
+    doc.save(fileName);
+
+    toast({
+      title: "PDF generado exitosamente",
+      description: `Se descargo: ${fileName}`,
+    });
+  };
 
   const handlePayment = async () => {
     if (!factura || !selectedPaymentMethod || !usedProntoPago || !amountPaid) {
@@ -436,18 +667,32 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
         </div>
 
         {/* Botones de acción */}
-        <div className="flex justify-between pt-4 border-t mt-6">
-          <Button variant="outline" onClick={onClose} disabled={processing}>
-            Cancelar
-          </Button>
+        <div className="space-y-3 pt-4 border-t mt-6">
+          {/* Botón para descargar PDF */}
           <Button
-            onClick={handlePayment}
-            disabled={processing || !selectedPaymentMethod || !usedProntoPago || !amountPaid}
-            className="min-w-[140px]"
-            size="lg"
+            variant="outline"
+            onClick={generarPDF}
+            disabled={!selectedPaymentMethod}
+            className="w-full border-blue-300 hover:bg-blue-50 dark:hover:bg-blue-950/20"
           >
-            {processing ? "Procesando..." : "Confirmar Pago"}
+            <Download className="w-4 h-4 mr-2" />
+            Descargar Soporte PDF
           </Button>
+
+          {/* Botones principales */}
+          <div className="flex justify-between">
+            <Button variant="outline" onClick={onClose} disabled={processing}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={handlePayment}
+              disabled={processing || !selectedPaymentMethod || !usedProntoPago || !amountPaid}
+              className="min-w-[140px]"
+              size="lg"
+            >
+              {processing ? "Procesando..." : "Confirmar Pago"}
+            </Button>
+          </div>
         </div>
       </DialogContent>
     </Dialog>

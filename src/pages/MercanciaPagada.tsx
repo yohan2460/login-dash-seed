@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Navigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
@@ -113,7 +113,8 @@ export function MercanciaPagada() {
     }).format(numericAmount);
   };
 
-  const getFilteredFacturas = () => {
+  // Memorizar las facturas filtradas para optimizar rendimiento
+  const filteredFacturas = useMemo(() => {
     let filtered = facturas;
 
     // Filtro por rango de fechas
@@ -153,42 +154,44 @@ export function MercanciaPagada() {
     });
 
     return filtered;
-  };
+  }, [facturas, dateFrom, dateTo, searchKeyword, sortByDate]);
 
-  const calcularTotalPagadoBancos = () => {
-    return getFilteredFacturas()
+  // Memorizar los totales calculados
+  const stats = useMemo(() => {
+    const totalPagadoBancos = filteredFacturas
       .filter(f => f.metodo_pago === 'Pago Banco')
       .reduce((total, factura) => {
         const monto = factura.valor_real_a_pagar ?? factura.total_a_pagar ?? 0;
         return total + Math.round(Number(monto));
       }, 0);
-  };
 
-  const calcularTotalPagadoTobias = () => {
-    return getFilteredFacturas()
+    const totalPagadoTobias = filteredFacturas
       .filter(f => f.metodo_pago === 'Pago Tobías')
       .reduce((total, factura) => {
         const monto = factura.valor_real_a_pagar ?? factura.total_a_pagar ?? 0;
         return total + Math.round(Number(monto));
       }, 0);
-  };
 
-  const calcularTotalPagadoCaja = () => {
-    return getFilteredFacturas()
+    const totalPagadoCaja = filteredFacturas
       .filter(f => f.metodo_pago === 'Caja')
       .reduce((total, factura) => {
         const monto = factura.valor_real_a_pagar ?? factura.total_a_pagar ?? 0;
         return total + Math.round(Number(monto));
       }, 0);
-  };
 
-  const calcularTotalGeneral = () => {
-    return getFilteredFacturas()
+    const totalGeneral = filteredFacturas
       .reduce((total, factura) => {
         const monto = factura.valor_real_a_pagar ?? factura.total_a_pagar ?? 0;
         return total + Math.round(Number(monto));
       }, 0);
-  };
+
+    return {
+      totalPagadoBancos,
+      totalPagadoTobias,
+      totalPagadoCaja,
+      totalGeneral,
+    };
+  }, [filteredFacturas]);
 
   const handleSistematizar = async (factura: Factura) => {
     try {
@@ -255,8 +258,6 @@ export function MercanciaPagada() {
   if (!user) {
     return <Navigate to="/auth" replace />;
   }
-
-  const filteredFacturas = getFilteredFacturas();
 
   return (
     <ModernLayout>
@@ -376,7 +377,7 @@ export function MercanciaPagada() {
         </Card>
 
         {/* Stats Cards */}
-        <div className="grid grid-cols-2 md:grid-cols-2 xl:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4">
           <ModernStatsCard
             title="Total Facturas"
             value={filteredFacturas.length.toString()}
@@ -384,20 +385,26 @@ export function MercanciaPagada() {
             color="blue"
           />
           <ModernStatsCard
+            title="Total General"
+            value={formatCurrency(stats.totalGeneral)}
+            icon={DollarSign}
+            color="blue"
+          />
+          <ModernStatsCard
             title="Pagado por Bancos"
-            value={formatCurrency(calcularTotalPagadoBancos())}
+            value={formatCurrency(stats.totalPagadoBancos)}
             icon={Banknote}
             color="green"
           />
           <ModernStatsCard
             title="Pagado por Tobías"
-            value={formatCurrency(calcularTotalPagadoTobias())}
+            value={formatCurrency(stats.totalPagadoTobias)}
             icon={DollarSign}
             color="purple"
           />
           <ModernStatsCard
             title="Pagado en Caja"
-            value={formatCurrency(calcularTotalPagadoCaja())}
+            value={formatCurrency(stats.totalPagadoCaja)}
             icon={DollarSign}
             color="orange"
           />

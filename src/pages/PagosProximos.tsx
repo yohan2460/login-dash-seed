@@ -1,15 +1,16 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Navigate, Link } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { ModernLayout } from '@/components/ModernLayout';
 import { PDFViewer } from '@/components/PDFViewer';
 import { useToast } from '@/hooks/use-toast';
-import { Calendar, AlertTriangle, Clock, DollarSign, TrendingUp, Eye, CheckCircle } from 'lucide-react';
+import { Calendar, AlertTriangle, Clock, DollarSign, TrendingUp, Eye, CheckCircle, Search } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils';
 
 interface Factura {
@@ -53,6 +54,7 @@ export default function PagosProximos() {
   const [loadingData, setLoadingData] = useState(true);
   const [pdfDialogOpen, setPdfDialogOpen] = useState(false);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+  const [searchKeyword, setSearchKeyword] = useState('');
 
   useEffect(() => {
     if (user) {
@@ -229,8 +231,36 @@ export default function PagosProximos() {
     return `/sin-clasificar?highlight=${factura.id}`;
   };
 
-  // Calcular estadísticas
-  const calcularEstadisticas = () => {
+  // Memorizar las facturas filtradas
+  const filteredFacturas = useMemo(() => {
+    if (!searchKeyword.trim()) {
+      return facturas;
+    }
+
+    const keyword = searchKeyword.toLowerCase().trim();
+    return facturas.filter(factura =>
+      factura.numero_factura.toLowerCase().includes(keyword) ||
+      factura.emisor_nombre.toLowerCase().includes(keyword) ||
+      factura.emisor_nit.toLowerCase().includes(keyword) ||
+      (factura.numero_serie && factura.numero_serie.toLowerCase().includes(keyword))
+    );
+  }, [facturas, searchKeyword]);
+
+  const filteredFacturasSinFecha = useMemo(() => {
+    if (!searchKeyword.trim()) {
+      return facturasSinFecha;
+    }
+
+    const keyword = searchKeyword.toLowerCase().trim();
+    return facturasSinFecha.filter(factura =>
+      factura.numero_factura.toLowerCase().includes(keyword) ||
+      factura.emisor_nombre.toLowerCase().includes(keyword) ||
+      factura.emisor_nit.toLowerCase().includes(keyword)
+    );
+  }, [facturasSinFecha, searchKeyword]);
+
+  // Calcular estadísticas con facturas filtradas
+  const stats = useMemo(() => {
     const hoy = new Date();
     hoy.setHours(0, 0, 0, 0);
 
@@ -241,7 +271,7 @@ export default function PagosProximos() {
     ultimoDiaMes.setHours(23, 59, 59, 999);
 
     // Facturas a pagar este mes (INCLUYE vencidas + las que vencen este mes)
-    const facturasEsteMes = facturas.filter(f => {
+    const facturasEsteMes = filteredFacturas.filter(f => {
       if (!f.fecha_vencimiento) return false;
       const [year, month, day] = f.fecha_vencimiento.split('T')[0].split('-').map(Number);
       const vencimiento = new Date(year, month - 1, day);
@@ -260,7 +290,7 @@ export default function PagosProximos() {
     }, 0);
 
     // Facturas de meses próximos (SOLO después de este mes, NO incluye vencidas ni este mes)
-    const facturasMesesProximos = facturas.filter(f => {
+    const facturasMesesProximos = filteredFacturas.filter(f => {
       if (!f.fecha_vencimiento) return false;
       const [year, month, day] = f.fecha_vencimiento.split('T')[0].split('-').map(Number);
       const vencimiento = new Date(year, month - 1, day);
@@ -279,25 +309,25 @@ export default function PagosProximos() {
     }, 0);
 
     // Facturas SIN fecha de vencimiento
-    const totalSinFecha = facturasSinFecha.reduce((sum, f) => {
+    const totalSinFecha = filteredFacturasSinFecha.reduce((sum, f) => {
       return sum + (f.total_a_pagar || 0);
     }, 0);
 
-    const impuestosSinFecha = facturasSinFecha.reduce((sum, f) => {
+    const impuestosSinFecha = filteredFacturasSinFecha.reduce((sum, f) => {
       return sum + (f.factura_iva || 0);
     }, 0);
 
     // Contar por urgencia
-    const vencidas = facturas.filter(f => f.urgencia === 'vencida').length;
-    const urgentes = facturas.filter(f => f.urgencia === 'urgente').length;
-    const proximas = facturas.filter(f => f.urgencia === 'proximo').length;
-    const alDia = facturas.filter(f => f.urgencia === 'normal').length;
+    const vencidas = filteredFacturas.filter(f => f.urgencia === 'vencida').length;
+    const urgentes = filteredFacturas.filter(f => f.urgencia === 'urgente').length;
+    const proximas = filteredFacturas.filter(f => f.urgencia === 'proximo').length;
+    const alDia = filteredFacturas.filter(f => f.urgencia === 'normal').length;
 
     // Totales por urgencia
-    const totalVencidas = facturas.filter(f => f.urgencia === 'vencida').reduce((sum, f) => sum + (f.total_a_pagar || 0), 0);
-    const totalUrgentes = facturas.filter(f => f.urgencia === 'urgente').reduce((sum, f) => sum + (f.total_a_pagar || 0), 0);
-    const totalProximas = facturas.filter(f => f.urgencia === 'proximo').reduce((sum, f) => sum + (f.total_a_pagar || 0), 0);
-    const totalAlDia = facturas.filter(f => f.urgencia === 'normal').reduce((sum, f) => sum + (f.total_a_pagar || 0), 0);
+    const totalVencidas = filteredFacturas.filter(f => f.urgencia === 'vencida').reduce((sum, f) => sum + (f.total_a_pagar || 0), 0);
+    const totalUrgentes = filteredFacturas.filter(f => f.urgencia === 'urgente').reduce((sum, f) => sum + (f.total_a_pagar || 0), 0);
+    const totalProximas = filteredFacturas.filter(f => f.urgencia === 'proximo').reduce((sum, f) => sum + (f.total_a_pagar || 0), 0);
+    const totalAlDia = filteredFacturas.filter(f => f.urgencia === 'normal').reduce((sum, f) => sum + (f.total_a_pagar || 0), 0);
 
     // TOTAL GENERAL (para verificar)
     const totalGeneral = totalEsteMes + totalMesesProximos + totalSinFecha;
@@ -312,7 +342,7 @@ export default function PagosProximos() {
       impuestosSinFecha,
       facturasEsteMes: facturasEsteMes.length,
       facturasMesesProximos: facturasMesesProximos.length,
-      facturasSinFecha: facturasSinFecha.length,
+      facturasSinFecha: filteredFacturasSinFecha.length,
       vencidas,
       urgentes,
       proximas,
@@ -322,9 +352,7 @@ export default function PagosProximos() {
       totalProximas,
       totalAlDia
     };
-  };
-
-  const stats = calcularEstadisticas();
+  }, [filteredFacturas, filteredFacturasSinFecha]);
 
   if (!user && !loading) {
     return <Navigate to="/auth" replace />;
@@ -359,6 +387,41 @@ export default function PagosProximos() {
             Actualizar
           </Button>
         </div>
+
+        {/* Filtro de búsqueda */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Filtros de Búsqueda</CardTitle>
+            <CardDescription>
+              Filtra las facturas por número, proveedor, NIT o serie
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-wrap gap-4">
+              <div className="flex flex-col space-y-2">
+                <label className="text-sm font-medium">Buscar</label>
+                <div className="relative">
+                  <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Buscar por número, proveedor, NIT o serie..."
+                    value={searchKeyword}
+                    onChange={(e) => setSearchKeyword(e.target.value)}
+                    className="pl-8 w-[350px]"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-end">
+                <Button
+                  variant="outline"
+                  onClick={() => setSearchKeyword('')}
+                >
+                  Limpiar Filtro
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
 
         {/* Cards de estadísticas - Urgencia */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -491,31 +554,39 @@ export default function PagosProximos() {
         {/* Tabla de facturas */}
         <Card>
           <CardHeader>
-            <CardTitle>Facturas Pendientes ({facturas.length})</CardTitle>
+            <CardTitle>Facturas Pendientes ({filteredFacturas.length})</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow className="bg-muted/50">
-                    <TableHead className="w-[130px]">Urgencia</TableHead>
-                    <TableHead className="min-w-[180px]">Proveedor</TableHead>
-                    <TableHead className="w-[120px]">
-                      <div className="flex flex-col gap-1">
-                        <span className="text-xs">N° Factura</span>
-                        <span className="text-xs text-muted-foreground">Clasificación</span>
-                      </div>
-                    </TableHead>
-                    <TableHead className="w-[70px] text-xs">Serie</TableHead>
-                    <TableHead className="w-[100px] text-xs">Vencimiento</TableHead>
-                    <TableHead className="w-[110px] text-right">Total a Pagar</TableHead>
-                    <TableHead className="w-[50px] text-center">
-                      <Eye className="h-4 w-4 mx-auto" />
-                    </TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {facturas.map((factura) => {
+            {filteredFacturas.length === 0 ? (
+              <div className="text-center py-8">
+                <Search className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+                <p className="text-muted-foreground">
+                  {searchKeyword ? "No se encontraron facturas con los criterios de búsqueda" : "No hay facturas pendientes"}
+                </p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-muted/50">
+                      <TableHead className="w-[130px]">Urgencia</TableHead>
+                      <TableHead className="min-w-[180px]">Proveedor</TableHead>
+                      <TableHead className="w-[120px]">
+                        <div className="flex flex-col gap-1">
+                          <span className="text-xs">N° Factura</span>
+                          <span className="text-xs text-muted-foreground">Clasificación</span>
+                        </div>
+                      </TableHead>
+                      <TableHead className="w-[70px] text-xs">Serie</TableHead>
+                      <TableHead className="w-[100px] text-xs">Vencimiento</TableHead>
+                      <TableHead className="w-[110px] text-right">Total a Pagar</TableHead>
+                      <TableHead className="w-[50px] text-center">
+                        <Eye className="h-4 w-4 mx-auto" />
+                      </TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredFacturas.map((factura) => {
                     const badge = getUrgencyBadge(factura.urgencia, factura.diasParaVencer);
                     const Icon = badge.icon;
 
@@ -585,27 +656,13 @@ export default function PagosProximos() {
                         </TableCell>
                       </TableRow>
                     );
-                  })}
-                </TableBody>
-              </Table>
-            </div>
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
           </CardContent>
         </Card>
-
-        {/* Empty State */}
-        {facturas.length === 0 && (
-          <Card>
-            <CardContent className="py-12">
-              <div className="text-center">
-                <CheckCircle className="w-16 h-16 mx-auto text-green-600 mb-4" />
-                <h3 className="text-lg font-semibold mb-2">¡No hay facturas pendientes!</h3>
-                <p className="text-muted-foreground">
-                  Todas las facturas están al día
-                </p>
-              </div>
-            </CardContent>
-          </Card>
-        )}
       </div>
 
       {/* PDF Viewer */}
