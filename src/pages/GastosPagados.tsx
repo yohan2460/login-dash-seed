@@ -33,10 +33,19 @@ interface Factura {
   descripcion?: string | null;
 }
 
+interface PagoPartido {
+  id: string;
+  factura_id: string;
+  metodo_pago: string;
+  monto: number;
+  fecha_pago: string;
+}
+
 export function GastosPagados() {
   const { user, loading } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const [facturas, setFacturas] = useState<Factura[]>([]);
+  const [pagosPartidos, setPagosPartidos] = useState<PagoPartido[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [dateFrom, setDateFrom] = useState<Date | undefined>(undefined);
   const [dateTo, setDateTo] = useState<Date | undefined>(undefined);
@@ -71,6 +80,19 @@ export function GastosPagados() {
     }
   }, [searchParams, setSearchParams]);
 
+  const fetchPagosPartidos = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('pagos_partidos')
+        .select('*');
+
+      if (error) throw error;
+      setPagosPartidos(data || []);
+    } catch (error) {
+      console.error('Error fetching pagos partidos:', error);
+    }
+  };
+
   const fetchFacturas = async () => {
     setIsLoading(true);
     try {
@@ -83,6 +105,9 @@ export function GastosPagados() {
 
       if (error) throw error;
       setFacturas(data || []);
+
+      // Cargar pagos partidos
+      await fetchPagosPartidos();
     } catch (error) {
       console.error('Error fetching facturas:', error);
     } finally {
@@ -95,6 +120,25 @@ export function GastosPagados() {
       style: 'currency',
       currency: 'COP'
     }).format(amount);
+  };
+
+  // Helper: Calcular monto por método de pago desde pagos_partidos
+  const calcularMontoPorMetodo = (facturas: Factura[], metodoPago: string): number => {
+    let total = 0;
+
+    facturas.forEach(factura => {
+      // Buscar pagos de esta factura en pagos_partidos
+      const pagosDeEstaFactura = pagosPartidos.filter(pp => pp.factura_id === factura.id);
+
+      // Sumar solo los pagos del método específico
+      const montoPorMetodo = pagosDeEstaFactura
+        .filter(pp => pp.metodo_pago === metodoPago)
+        .reduce((sum, pp) => sum + (pp.monto || 0), 0);
+
+      total += montoPorMetodo;
+    });
+
+    return Math.round(total);
   };
 
   const getFilteredFacturas = () => {
@@ -116,21 +160,15 @@ export function GastosPagados() {
   };
 
   const calcularTotalPagadoBancos = () => {
-    return getFilteredFacturas()
-      .filter(f => f.metodo_pago === 'Pago Banco')
-      .reduce((total, factura) => total + factura.total_a_pagar, 0);
+    return calcularMontoPorMetodo(getFilteredFacturas(), 'Pago Banco');
   };
 
   const calcularTotalPagadoTobias = () => {
-    return getFilteredFacturas()
-      .filter(f => f.metodo_pago === 'Pago Tobías')
-      .reduce((total, factura) => total + factura.total_a_pagar, 0);
+    return calcularMontoPorMetodo(getFilteredFacturas(), 'Pago Tobías');
   };
 
   const calcularTotalPagadoCaja = () => {
-    return getFilteredFacturas()
-      .filter(f => f.metodo_pago === 'Caja')
-      .reduce((total, factura) => total + factura.total_a_pagar, 0);
+    return calcularMontoPorMetodo(getFilteredFacturas(), 'Caja');
   };
 
   const calcularTotalGeneral = () => {

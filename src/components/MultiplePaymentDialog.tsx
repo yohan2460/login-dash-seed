@@ -10,7 +10,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Separator } from '@/components/ui/separator';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
-import { CreditCard, Package, Calculator, X, CheckCircle, TrendingDown, Percent, CalendarIcon, Building2, User, Wallet, Download } from 'lucide-react';
+import { CreditCard, Package, Calculator, X, CheckCircle, TrendingDown, Percent, CalendarIcon, Building2, User, Wallet, Download, Plus, Trash2 } from 'lucide-react';
 import { calcularValorRealAPagar, calcularMontoRetencionReal } from '@/utils/calcularValorReal';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -38,6 +38,11 @@ interface MultiplePaymentDialogProps {
   onPaymentProcessed: () => void;
 }
 
+interface MetodoPagoPartido {
+  metodo: string;
+  monto: number;
+}
+
 export function MultiplePaymentDialog({
   isOpen,
   onClose,
@@ -51,6 +56,13 @@ export function MultiplePaymentDialog({
   const [facturasConProntoPago, setFacturasConProntoPago] = useState<Set<string>>(
     new Set(facturas.filter(f => f.porcentaje_pronto_pago && f.porcentaje_pronto_pago > 0).map(f => f.id))
   );
+
+  // Estados para pagos partidos
+  const [usarPagoPartido, setUsarPagoPartido] = useState(false);
+  const [metodosPago, setMetodosPago] = useState<MetodoPagoPartido[]>([
+    { metodo: '', monto: 0 }
+  ]);
+
   const { toast } = useToast();
 
   const formatCurrency = (amount: number) => {
@@ -147,8 +159,69 @@ export function MultiplePaymentDialog({
     });
   };
 
+  // Funciones para pagos partidos
+  const agregarMetodoPago = () => {
+    setMetodosPago([...metodosPago, { metodo: '', monto: 0 }]);
+  };
+
+  const eliminarMetodoPago = (index: number) => {
+    if (metodosPago.length > 1) {
+      setMetodosPago(metodosPago.filter((_, i) => i !== index));
+    }
+  };
+
+  const actualizarMetodoPago = (index: number, campo: 'metodo' | 'monto', valor: string | number) => {
+    const nuevosMetodos = [...metodosPago];
+    if (campo === 'metodo') {
+      nuevosMetodos[index].metodo = valor as string;
+    } else {
+      // Parsear el monto, permitir decimales
+      const montoStr = valor.toString().replace(/[^0-9.]/g, '');
+      nuevosMetodos[index].monto = montoStr ? parseFloat(montoStr) : 0;
+    }
+    setMetodosPago(nuevosMetodos);
+  };
+
+  const calcularTotalMetodosPago = (): number => {
+    return metodosPago.reduce((total, mp) => total + (mp.monto || 0), 0);
+  };
+
+  const validarPagoPartido = (): boolean => {
+    if (!usarPagoPartido) return true;
+
+    const totalReal = calcularTotalReal();
+    const totalMetodos = calcularTotalMetodosPago();
+
+    // Verificar que todos los métodos estén seleccionados y tengan monto
+    const todosCompletos = metodosPago.every(mp => mp.metodo && mp.monto > 0);
+
+    // Verificar que la suma sea igual al total (con margen de error de 1 peso)
+    const sumaCorrecta = Math.abs(totalMetodos - totalReal) < 1;
+
+    return todosCompletos && sumaCorrecta;
+  };
+
   // Función para generar y descargar PDF
   const generarPDF = () => {
+    // Validar que haya método de pago
+    if (!usarPagoPartido && !metodoPago) {
+      toast({
+        title: "Error",
+        description: "Selecciona un método de pago antes de generar el PDF",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    if (usarPagoPartido && !validarPagoPartido()) {
+      toast({
+        title: "Error en pago partido",
+        description: "La suma de los métodos debe igualar el total a pagar",
+        variant: "destructive"
+      });
+      return;
+    }
+
     const doc = new jsPDF();
     const pageWidth = doc.internal.pageSize.width;
     let currentY = 15;
@@ -419,29 +492,72 @@ export function MultiplePaymentDialog({
     doc.text('DETALLES DEL PAGO', 18, currentY + 7);
     currentY += 15;
 
-    // Caja de detalles
+    // Caja de detalles - ajustar altura si es pago partido
+    const detalleBoxHeight = usarPagoPartido ? 35 + (metodosPago.length * 8) : 25;
     doc.setDrawColor(229, 231, 235);
-    doc.roundedRect(14, currentY, pageWidth - 28, 25, 3, 3, 'S');
+    doc.roundedRect(14, currentY, pageWidth - 28, detalleBoxHeight, 3, 3, 'S');
 
-    doc.setFontSize(9);
-    doc.setFont('helvetica', 'normal');
-    doc.setTextColor(107, 114, 128);
-    doc.text('Método de pago:', 20, currentY + 8);
-    doc.setFont('helvetica', 'bold');
-    doc.setTextColor(0, 0, 0);
-    doc.text(metodoPago, 60, currentY + 8);
+    if (usarPagoPartido) {
+      // Pago Partido
+      doc.setFontSize(9);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(107, 114, 128);
+      doc.text('Método de pago:', 20, currentY + 8);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(59, 130, 246);
+      doc.text('Pago Partido', 60, currentY + 8);
 
-    doc.setFont('helvetica', 'normal');
-    doc.setTextColor(107, 114, 128);
-    doc.text('Fecha de Pago:', 20, currentY + 16);
-    doc.setFont('helvetica', 'bold');
-    doc.setTextColor(0, 0, 0);
-    doc.text(new Date(fechaPago).toLocaleDateString('es-CO', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric'
-    }), 60, currentY + 16);
+      currentY += 18;
+      doc.setFontSize(8);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(0, 0, 0);
+      doc.text('Distribución:', 20, currentY);
+
+      currentY += 5;
+      metodosPago.forEach((mp, index) => {
+        doc.setFontSize(8);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(107, 114, 128);
+        doc.text(`${mp.metodo}:`, 25, currentY);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(0, 0, 0);
+        doc.text(formatCurrency(mp.monto), 80, currentY, { align: 'left' });
+        currentY += 6;
+      });
+
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(107, 114, 128);
+      doc.text('Fecha de Pago:', 20, currentY + 5);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(0, 0, 0);
+      doc.text(new Date(fechaPago).toLocaleDateString('es-CO', {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+      }), 60, currentY + 5);
+    } else {
+      // Pago Normal
+      doc.setFontSize(9);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(107, 114, 128);
+      doc.text('Método de pago:', 20, currentY + 8);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(0, 0, 0);
+      doc.text(metodoPago, 60, currentY + 8);
+
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(107, 114, 128);
+      doc.text('Fecha de Pago:', 20, currentY + 16);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(0, 0, 0);
+      doc.text(new Date(fechaPago).toLocaleDateString('es-CO', {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+      }), 60, currentY + 16);
+    }
 
     // ========== PIE DE PÁGINA ==========
     const pageCount = doc.getNumberOfPages();
@@ -492,10 +608,23 @@ export function MultiplePaymentDialog({
   };
 
   const handlePayment = async () => {
-    if (!metodoPago) {
+    // Validar método de pago
+    if (!usarPagoPartido && !metodoPago) {
       toast({
         title: "Error",
         description: "Selecciona un método de pago",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    // Validar pago partido
+    if (usarPagoPartido && !validarPagoPartido()) {
+      const totalReal = calcularTotalReal();
+      const totalMetodos = calcularTotalMetodosPago();
+      toast({
+        title: "Error en pago partido",
+        description: `La suma de los métodos (${formatCurrency(totalMetodos)}) debe ser igual al total a pagar (${formatCurrency(totalReal)})`,
         variant: "destructive"
       });
       return;
@@ -507,33 +636,102 @@ export function MultiplePaymentDialog({
       // Convertir la fecha seleccionada a ISO string con hora actual
       const fechaPagoISO = new Date(fechaPago + 'T00:00:00').toISOString();
 
-      // Actualizar todas las facturas
-      const updates = facturas.map(factura => {
-        const detalles = calcularDetallesFactura(factura);
-        return {
-          id: factura.id,
-          estado_mercancia: 'pagada',
-          metodo_pago: metodoPago,
-          fecha_pago: fechaPagoISO,
-          uso_pronto_pago: facturasConProntoPago.has(factura.id),
-          monto_pagado: detalles.valorReal
-        };
-      });
+      // Si es pago partido, procesamos diferente
+      if (usarPagoPartido) {
+        // Actualizar todas las facturas sin método de pago específico
+        const updatePromises = facturas.map(factura => {
+          const detalles = calcularDetallesFactura(factura);
+          return supabase
+            .from('facturas')
+            .update({
+              estado_mercancia: 'pagada',
+              metodo_pago: 'Pago Partido', // Marcador especial
+              fecha_pago: fechaPagoISO,
+              uso_pronto_pago: facturasConProntoPago.has(factura.id),
+              monto_pagado: detalles.valorReal
+            })
+            .eq('id', factura.id);
+        });
 
-      // Procesar todas las actualizaciones
-      const updatePromises = updates.map(update =>
-        supabase
-          .from('facturas')
-          .update(update)
-          .eq('id', update.id)
-      );
+        const results = await Promise.all(updatePromises);
 
-      const results = await Promise.all(updatePromises);
+        // Verificar errores en actualización
+        const errors = results.filter(result => result.error);
+        if (errors.length > 0) {
+          throw new Error(`Error al actualizar facturas`);
+        }
 
-      // Verificar si hubo errores
-      const errors = results.filter(result => result.error);
-      if (errors.length > 0) {
-        throw new Error(`Error en ${errors.length} facturas`);
+        // Insertar registros de pago partido para CADA factura
+        const pagoPartidoPromises = facturas.flatMap(factura =>
+          metodosPago.map(mp =>
+            supabase
+              .from('pagos_partidos')
+              .insert({
+                factura_id: factura.id,
+                metodo_pago: mp.metodo,
+                monto: mp.monto / facturas.length, // Dividir proporcionalmente
+                fecha_pago: fechaPagoISO
+              })
+          )
+        );
+
+        const pagoResults = await Promise.all(pagoPartidoPromises);
+
+        // Verificar errores en inserción
+        const pagoErrors = pagoResults.filter(result => result.error);
+        if (pagoErrors.length > 0) {
+          throw new Error(`Error al crear registros de pago partido`);
+        }
+
+      } else {
+        // Pago normal (un solo método) - también guardarlo en pagos_partidos
+        const updates = facturas.map(factura => {
+          const detalles = calcularDetallesFactura(factura);
+          return {
+            id: factura.id,
+            estado_mercancia: 'pagada',
+            metodo_pago: metodoPago,
+            fecha_pago: fechaPagoISO,
+            uso_pronto_pago: facturasConProntoPago.has(factura.id),
+            monto_pagado: detalles.valorReal
+          };
+        });
+
+        const updatePromises = updates.map(update =>
+          supabase
+            .from('facturas')
+            .update(update)
+            .eq('id', update.id)
+        );
+
+        const results = await Promise.all(updatePromises);
+
+        // Verificar si hubo errores en actualización de facturas
+        const errors = results.filter(result => result.error);
+        if (errors.length > 0) {
+          throw new Error(`Error en ${errors.length} facturas`);
+        }
+
+        // Insertar registros en pagos_partidos para cada factura
+        const pagoPartidoPromises = facturas.map(factura => {
+          const detalles = calcularDetallesFactura(factura);
+          return supabase
+            .from('pagos_partidos')
+            .insert({
+              factura_id: factura.id,
+              metodo_pago: metodoPago,
+              monto: detalles.valorReal,
+              fecha_pago: fechaPagoISO
+            });
+        });
+
+        const pagoResults = await Promise.all(pagoPartidoPromises);
+
+        // Verificar errores en inserción de pagos
+        const pagoErrors = pagoResults.filter(result => result.error);
+        if (pagoErrors.length > 0) {
+          throw new Error(`Error al crear registros de pago en ${pagoErrors.length} facturas`);
+        }
       }
 
       toast({
@@ -718,10 +916,32 @@ export function MultiplePaymentDialog({
               <CardTitle>Detalles del Pago</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              {/* Método de Pago con Cards */}
-              <div className="space-y-2">
-                <Label>Método de pago:</Label>
-                <div className="grid grid-cols-3 gap-3">
+              {/* Toggle para Pago Partido */}
+              <div className="flex items-center space-x-2 p-3 bg-muted/50 rounded-lg">
+                <Checkbox
+                  id="pago-partido"
+                  checked={usarPagoPartido}
+                  onCheckedChange={(checked) => {
+                    setUsarPagoPartido(checked as boolean);
+                    if (checked) {
+                      setMetodoPago(''); // Limpiar método simple
+                      setMetodosPago([{ metodo: '', monto: 0 }]); // Reset
+                    }
+                  }}
+                />
+                <label
+                  htmlFor="pago-partido"
+                  className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                >
+                  Usar pago partido (dividir entre varios métodos)
+                </label>
+              </div>
+
+              {/* Método de Pago con Cards (Solo si NO es pago partido) */}
+              {!usarPagoPartido && (
+                <div className="space-y-2">
+                  <Label>Método de pago:</Label>
+                  <div className="grid grid-cols-3 gap-3">
                   {/* Pago Banco */}
                   <button
                     type="button"
@@ -791,7 +1011,126 @@ export function MultiplePaymentDialog({
                     )}
                   </button>
                 </div>
-              </div>
+                </div>
+              )}
+
+              {/* Interface para Pago Partido */}
+              {usarPagoPartido && (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <Label>Métodos de Pago:</Label>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={agregarMetodoPago}
+                      className="h-8"
+                    >
+                      <Plus className="w-4 h-4 mr-1" />
+                      Agregar Método
+                    </Button>
+                  </div>
+
+                  {/* Lista de métodos de pago */}
+                  <div className="space-y-2">
+                    {metodosPago.map((mp, index) => (
+                      <div key={index} className="flex gap-2 items-start p-3 bg-muted/30 rounded-lg">
+                        <div className="flex-1 space-y-2">
+                          {/* Selector de método */}
+                          <Select
+                            value={mp.metodo}
+                            onValueChange={(value) => actualizarMetodoPago(index, 'metodo', value)}
+                          >
+                            <SelectTrigger className="w-full">
+                              <SelectValue placeholder="Seleccionar método" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="Pago Banco">
+                                <div className="flex items-center gap-2">
+                                  <Building2 className="w-4 h-4 text-blue-600" />
+                                  <span>Banco</span>
+                                </div>
+                              </SelectItem>
+                              <SelectItem value="Pago Tobías">
+                                <div className="flex items-center gap-2">
+                                  <User className="w-4 h-4 text-green-600" />
+                                  <span>Tobías</span>
+                                </div>
+                              </SelectItem>
+                              <SelectItem value="Caja">
+                                <div className="flex items-center gap-2">
+                                  <Wallet className="w-4 h-4 text-orange-600" />
+                                  <span>Caja</span>
+                                </div>
+                              </SelectItem>
+                            </SelectContent>
+                          </Select>
+
+                          {/* Input de monto */}
+                          <div className="relative">
+                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
+                            <Input
+                              type="text"
+                              placeholder="0"
+                              value={mp.monto > 0 ? new Intl.NumberFormat('es-CO').format(mp.monto) : ''}
+                              onChange={(e) => {
+                                const value = e.target.value.replace(/[^0-9]/g, '');
+                                actualizarMetodoPago(index, 'monto', value ? parseInt(value) : 0);
+                              }}
+                              className="pl-8"
+                            />
+                          </div>
+                        </div>
+
+                        {/* Botón eliminar */}
+                        {metodosPago.length > 1 && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => eliminarMetodoPago(index)}
+                            className="h-10 w-10 text-destructive hover:text-destructive"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Indicador de progreso */}
+                  <div className="p-3 bg-muted rounded-lg space-y-2">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Total ingresado:</span>
+                      <span className={`font-semibold ${
+                        Math.abs(calcularTotalMetodosPago() - calcularTotalReal()) < 1
+                          ? 'text-green-600'
+                          : 'text-orange-600'
+                      }`}>
+                        {formatCurrency(calcularTotalMetodosPago())}
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Total a pagar:</span>
+                      <span className="font-semibold">{formatCurrency(calcularTotalReal())}</span>
+                    </div>
+                    {Math.abs(calcularTotalMetodosPago() - calcularTotalReal()) >= 1 && (
+                      <div className="flex justify-between text-sm">
+                        <span className="text-muted-foreground">Diferencia:</span>
+                        <span className="font-semibold text-destructive">
+                          {formatCurrency(Math.abs(calcularTotalMetodosPago() - calcularTotalReal()))}
+                        </span>
+                      </div>
+                    )}
+                    {Math.abs(calcularTotalMetodosPago() - calcularTotalReal()) < 1 && (
+                      <div className="flex items-center gap-1 text-sm text-green-600">
+                        <CheckCircle className="w-4 h-4" />
+                        <span>Los montos coinciden correctamente</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
 
               {/* Fecha de Pago */}
               <div className="space-y-2">
@@ -816,7 +1155,6 @@ export function MultiplePaymentDialog({
             <Button
               variant="outline"
               onClick={generarPDF}
-              disabled={!metodoPago}
               className="w-full border-blue-300 hover:bg-blue-50 dark:hover:bg-blue-950/20"
             >
               <Download className="w-4 h-4 mr-2" />
@@ -837,7 +1175,10 @@ export function MultiplePaymentDialog({
               <Button
                 onClick={handlePayment}
                 className="flex-1"
-                disabled={!metodoPago || isProcessing}
+                disabled={
+                  isProcessing ||
+                  (usarPagoPartido ? !validarPagoPartido() : !metodoPago)
+                }
               >
                 {isProcessing ? (
                   <>

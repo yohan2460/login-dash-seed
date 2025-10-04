@@ -5,7 +5,9 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Input } from '@/components/ui/input';
-import { CreditCard, Building2, Percent, Banknote, Calendar, Download } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Checkbox } from '@/components/ui/checkbox';
+import { CreditCard, Building2, Percent, Banknote, Calendar, Download, Plus, Trash2, User, Wallet, CheckCircle } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { calcularValorRealAPagar, calcularMontoRetencionReal } from '@/utils/calcularValorReal';
@@ -42,12 +44,24 @@ interface PaymentMethodDialogProps {
   onPaymentProcessed: () => void;
 }
 
+interface MetodoPagoPartido {
+  metodo: string;
+  monto: number;
+}
+
 export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcessed }: PaymentMethodDialogProps) {
   const [processing, setProcessing] = useState(false);
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<string>('');
   const [usedProntoPago, setUsedProntoPago] = useState<string>('');
   const [amountPaid, setAmountPaid] = useState<string>('');
   const [paymentDate, setPaymentDate] = useState<string>(new Date().toISOString().split('T')[0]);
+
+  // Estados para pagos partidos
+  const [usarPagoPartido, setUsarPagoPartido] = useState(false);
+  const [metodosPago, setMetodosPago] = useState<MetodoPagoPartido[]>([
+    { metodo: '', monto: 0 }
+  ]);
+
   const { toast } = useToast();
 
   const formatCurrency = (amount: number) => {
@@ -99,12 +113,62 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
     }
   }, [usedProntoPago, factura]);
 
+  // Funciones para pagos partidos
+  const agregarMetodoPago = () => {
+    setMetodosPago([...metodosPago, { metodo: '', monto: 0 }]);
+  };
+
+  const eliminarMetodoPago = (index: number) => {
+    if (metodosPago.length > 1) {
+      setMetodosPago(metodosPago.filter((_, i) => i !== index));
+    }
+  };
+
+  const actualizarMetodoPago = (index: number, campo: 'metodo' | 'monto', valor: string | number) => {
+    const nuevosMetodos = [...metodosPago];
+    if (campo === 'metodo') {
+      nuevosMetodos[index].metodo = valor as string;
+    } else {
+      const montoStr = valor.toString().replace(/[^0-9.]/g, '');
+      nuevosMetodos[index].monto = montoStr ? parseFloat(montoStr) : 0;
+    }
+    setMetodosPago(nuevosMetodos);
+  };
+
+  const calcularTotalMetodosPago = (): number => {
+    return metodosPago.reduce((total, mp) => total + (mp.monto || 0), 0);
+  };
+
+  const validarPagoPartido = (): boolean => {
+    if (!usarPagoPartido || !factura) return true;
+
+    const totalReal = obtenerValorFinal(factura);
+    const totalMetodos = calcularTotalMetodosPago();
+
+    const todosCompletos = metodosPago.every(mp => mp.metodo && mp.monto > 0);
+    const sumaCorrecta = Math.abs(totalMetodos - totalReal) < 1;
+
+    return todosCompletos && sumaCorrecta;
+  };
+
   // Función para generar PDF
   const generarPDF = () => {
-    if (!factura || !selectedPaymentMethod) {
+    if (!factura) return;
+
+    // Validar que haya método de pago
+    if (!usarPagoPartido && !selectedPaymentMethod) {
       toast({
-        title: "Campos requeridos",
-        description: "Por favor selecciona un método de pago",
+        title: "Error",
+        description: "Selecciona un método de pago antes de generar el PDF",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    if (usarPagoPartido && !validarPagoPartido()) {
+      toast({
+        title: "Error en pago partido",
+        description: "La suma de los métodos debe igualar el total a pagar",
         variant: "destructive"
       });
       return;
@@ -276,28 +340,72 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
     doc.text('DETALLES DEL PAGO', 18, currentY + 7);
     currentY += 15;
 
+    // Ajustar altura si es pago partido
+    const detalleBoxHeight = usarPagoPartido ? 35 + (metodosPago.length * 8) : 25;
     doc.setDrawColor(229, 231, 235);
-    doc.roundedRect(14, currentY, pageWidth - 28, 25, 3, 3, 'S');
+    doc.roundedRect(14, currentY, pageWidth - 28, detalleBoxHeight, 3, 3, 'S');
 
-    doc.setFontSize(9);
-    doc.setFont('helvetica', 'normal');
-    doc.setTextColor(107, 114, 128);
-    doc.text('Metodo de pago:', 20, currentY + 8);
-    doc.setFont('helvetica', 'bold');
-    doc.setTextColor(0, 0, 0);
-    doc.text(selectedPaymentMethod, 60, currentY + 8);
+    if (usarPagoPartido) {
+      // Pago Partido
+      doc.setFontSize(9);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(107, 114, 128);
+      doc.text('Metodo de pago:', 20, currentY + 8);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(59, 130, 246);
+      doc.text('Pago Partido', 60, currentY + 8);
 
-    doc.setFont('helvetica', 'normal');
-    doc.setTextColor(107, 114, 128);
-    doc.text('Fecha de Pago:', 20, currentY + 16);
-    doc.setFont('helvetica', 'bold');
-    doc.setTextColor(0, 0, 0);
-    doc.text(new Date(paymentDate).toLocaleDateString('es-CO', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric'
-    }), 60, currentY + 16);
+      currentY += 18;
+      doc.setFontSize(8);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(0, 0, 0);
+      doc.text('Distribución:', 20, currentY);
+
+      currentY += 5;
+      metodosPago.forEach((mp) => {
+        doc.setFontSize(8);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(107, 114, 128);
+        doc.text(`${mp.metodo}:`, 25, currentY);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(0, 0, 0);
+        doc.text(formatCurrency(mp.monto), 80, currentY, { align: 'left' });
+        currentY += 6;
+      });
+
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(107, 114, 128);
+      doc.text('Fecha de Pago:', 20, currentY + 5);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(0, 0, 0);
+      doc.text(new Date(paymentDate).toLocaleDateString('es-CO', {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+      }), 60, currentY + 5);
+    } else {
+      // Pago Normal
+      doc.setFontSize(9);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(107, 114, 128);
+      doc.text('Metodo de pago:', 20, currentY + 8);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(0, 0, 0);
+      doc.text(selectedPaymentMethod, 60, currentY + 8);
+
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(107, 114, 128);
+      doc.text('Fecha de Pago:', 20, currentY + 16);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(0, 0, 0);
+      doc.text(new Date(paymentDate).toLocaleDateString('es-CO', {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+      }), 60, currentY + 16);
+    }
 
     // Pie de página
     doc.setDrawColor(229, 231, 235);
@@ -329,24 +437,42 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
   };
 
   const handlePayment = async () => {
-    if (!factura || !selectedPaymentMethod || !usedProntoPago || !amountPaid) {
-      toast({
-        title: "Campos requeridos",
-        description: "Por favor completa todos los campos requeridos",
-        variant: "destructive"
-      });
-      return;
-    }
+    // Validaciones básicas
+    if (!factura) return;
 
-    const cleanAmount = amountPaid.replace(/,/g, '');
-    const amountNumber = parseFloat(cleanAmount);
-    if (isNaN(amountNumber) || amountNumber <= 0) {
-      toast({
-        title: "Monto inválido",
-        description: "Por favor ingresa un monto válido",
-        variant: "destructive"
-      });
-      return;
+    // Validar pago partido
+    if (usarPagoPartido) {
+      if (!validarPagoPartido()) {
+        const totalReal = obtenerValorFinal(factura);
+        const totalMetodos = calcularTotalMetodosPago();
+        toast({
+          title: "Error en pago partido",
+          description: `La suma de los métodos (${formatCurrency(totalMetodos)}) debe ser igual al total a pagar (${formatCurrency(totalReal)})`,
+          variant: "destructive"
+        });
+        return;
+      }
+    } else {
+      // Validar pago normal
+      if (!selectedPaymentMethod || !usedProntoPago || !amountPaid) {
+        toast({
+          title: "Campos requeridos",
+          description: "Por favor completa todos los campos requeridos",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      const cleanAmount = amountPaid.replace(/,/g, '');
+      const amountNumber = parseFloat(cleanAmount);
+      if (isNaN(amountNumber) || amountNumber <= 0) {
+        toast({
+          title: "Monto inválido",
+          description: "Por favor ingresa un monto válido",
+          variant: "destructive"
+        });
+        return;
+      }
     }
 
     setProcessing(true);
@@ -358,25 +484,78 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
       };
       const valorRealAPagar = calcularValorRealAPagar(facturaParaCalculo);
 
-      const { error } = await supabase
-        .from('facturas')
-        .update({
-          estado_mercancia: 'pagada',
-          metodo_pago: selectedPaymentMethod,
-          uso_pronto_pago: usedProntoPago === 'yes',
-          fecha_pago: new Date(paymentDate).toISOString(),
-          valor_real_a_pagar: valorRealAPagar
-        })
-        .eq('id', factura.id);
+      if (usarPagoPartido) {
+        // Pago partido
+        const { error: updateError } = await supabase
+          .from('facturas')
+          .update({
+            estado_mercancia: 'pagada',
+            metodo_pago: 'Pago Partido',
+            uso_pronto_pago: usedProntoPago === 'yes',
+            fecha_pago: new Date(paymentDate).toISOString(),
+            valor_real_a_pagar: valorRealAPagar
+          })
+          .eq('id', factura.id);
 
-      if (error) throw error;
+        if (updateError) throw updateError;
 
-      const prontoPagoText = usedProntoPago === 'yes' ? ' con descuento pronto pago' : ' sin descuento pronto pago';
+        // Insertar registros de pagos partidos
+        const pagoPartidoPromises = metodosPago.map(mp =>
+          supabase
+            .from('pagos_partidos')
+            .insert({
+              factura_id: factura.id,
+              metodo_pago: mp.metodo,
+              monto: mp.monto,
+              fecha_pago: new Date(paymentDate).toISOString()
+            })
+        );
 
-      toast({
-        title: "Factura pagada",
-        description: `Factura ${factura.numero_factura} marcada como pagada via ${selectedPaymentMethod}${prontoPagoText}`,
-      });
+        const pagoResults = await Promise.all(pagoPartidoPromises);
+        const pagoErrors = pagoResults.filter(result => result.error);
+        if (pagoErrors.length > 0) {
+          throw new Error('Error al crear registros de pago partido');
+        }
+
+        toast({
+          title: "Factura pagada",
+          description: `Factura ${factura.numero_factura} marcada como pagada con pago partido`,
+        });
+
+      } else {
+        // Pago normal - también guardarlo en pagos_partidos
+        const { error: updateError } = await supabase
+          .from('facturas')
+          .update({
+            estado_mercancia: 'pagada',
+            metodo_pago: selectedPaymentMethod,
+            uso_pronto_pago: usedProntoPago === 'yes',
+            fecha_pago: new Date(paymentDate).toISOString(),
+            valor_real_a_pagar: valorRealAPagar
+          })
+          .eq('id', factura.id);
+
+        if (updateError) throw updateError;
+
+        // Insertar registro en pagos_partidos para mantener consistencia
+        const { error: pagoError } = await supabase
+          .from('pagos_partidos')
+          .insert({
+            factura_id: factura.id,
+            metodo_pago: selectedPaymentMethod,
+            monto: valorRealAPagar,
+            fecha_pago: new Date(paymentDate).toISOString()
+          });
+
+        if (pagoError) throw pagoError;
+
+        const prontoPagoText = usedProntoPago === 'yes' ? ' con descuento pronto pago' : ' sin descuento pronto pago';
+
+        toast({
+          title: "Factura pagada",
+          description: `Factura ${factura.numero_factura} marcada como pagada via ${selectedPaymentMethod}${prontoPagoText}`,
+        });
+      }
 
       onPaymentProcessed();
       onClose();
@@ -385,6 +564,8 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
       setUsedProntoPago('');
       setAmountPaid('');
       setPaymentDate(new Date().toISOString().split('T')[0]);
+      setUsarPagoPartido(false);
+      setMetodosPago([{ metodo: '', monto: 0 }]);
     } catch (error) {
       console.error('Error updating payment status:', error);
       toast({
@@ -530,10 +711,32 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
 
           {/* Columna Derecha - Formulario de pago */}
           <div className="space-y-4">
-            {/* Método de pago */}
-            <div>
-              <Label className="text-base font-medium mb-3 block">Método de pago:</Label>
-              <RadioGroup value={selectedPaymentMethod} onValueChange={setSelectedPaymentMethod}>
+            {/* Toggle para Pago Partido */}
+            <div className="flex items-center space-x-2 p-3 bg-muted/50 rounded-lg">
+              <Checkbox
+                id="pago-partido-single"
+                checked={usarPagoPartido}
+                onCheckedChange={(checked) => {
+                  setUsarPagoPartido(checked as boolean);
+                  if (checked) {
+                    setSelectedPaymentMethod('');
+                    setMetodosPago([{ metodo: '', monto: 0 }]);
+                  }
+                }}
+              />
+              <label
+                htmlFor="pago-partido-single"
+                className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+              >
+                Usar pago partido (dividir entre varios métodos)
+              </label>
+            </div>
+
+            {/* Método de pago (Solo si NO es pago partido) */}
+            {!usarPagoPartido && (
+              <div>
+                <Label className="text-base font-medium mb-3 block">Método de pago:</Label>
+                <RadioGroup value={selectedPaymentMethod} onValueChange={setSelectedPaymentMethod}>
                 <div className="grid grid-cols-3 gap-2">
                   <Card className={`cursor-pointer transition-all ${selectedPaymentMethod === 'Pago Banco' ? 'ring-2 ring-blue-500 bg-blue-50' : 'hover:bg-accent/20'}`}>
                     <CardContent className="p-3">
@@ -578,10 +781,127 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
                   </Card>
                 </div>
               </RadioGroup>
-            </div>
+              </div>
+            )}
+
+            {/* Interface para Pago Partido */}
+            {usarPagoPartido && (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <Label className="text-base font-medium">Métodos de Pago:</Label>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={agregarMetodoPago}
+                    className="h-8"
+                  >
+                    <Plus className="w-4 h-4 mr-1" />
+                    Agregar
+                  </Button>
+                </div>
+
+                {/* Lista de métodos de pago */}
+                <div className="space-y-2">
+                  {metodosPago.map((mp, index) => (
+                    <div key={index} className="flex gap-2 items-start p-3 bg-muted/30 rounded-lg">
+                      <div className="flex-1 space-y-2">
+                        <Select
+                          value={mp.metodo}
+                          onValueChange={(value) => actualizarMetodoPago(index, 'metodo', value)}
+                        >
+                          <SelectTrigger className="w-full">
+                            <SelectValue placeholder="Seleccionar método" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="Pago Banco">
+                              <div className="flex items-center gap-2">
+                                <Building2 className="w-4 h-4 text-blue-600" />
+                                <span>Banco</span>
+                              </div>
+                            </SelectItem>
+                            <SelectItem value="Pago Tobías">
+                              <div className="flex items-center gap-2">
+                                <User className="w-4 h-4 text-green-600" />
+                                <span>Tobías</span>
+                              </div>
+                            </SelectItem>
+                            <SelectItem value="Caja">
+                              <div className="flex items-center gap-2">
+                                <Wallet className="w-4 h-4 text-orange-600" />
+                                <span>Caja</span>
+                              </div>
+                            </SelectItem>
+                          </SelectContent>
+                        </Select>
+
+                        <div className="relative">
+                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
+                          <Input
+                            type="text"
+                            placeholder="0"
+                            value={mp.monto > 0 ? new Intl.NumberFormat('es-CO').format(mp.monto) : ''}
+                            onChange={(e) => {
+                              const value = e.target.value.replace(/[^0-9]/g, '');
+                              actualizarMetodoPago(index, 'monto', value ? parseInt(value) : 0);
+                            }}
+                            className="pl-8"
+                          />
+                        </div>
+                      </div>
+
+                      {metodosPago.length > 1 && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => eliminarMetodoPago(index)}
+                          className="h-10 w-10 text-destructive hover:text-destructive"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                {/* Indicador de progreso */}
+                <div className="p-3 bg-muted rounded-lg space-y-2">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Total ingresado:</span>
+                    <span className={`font-semibold ${
+                      Math.abs(calcularTotalMetodosPago() - obtenerValorFinal(factura)) < 1
+                        ? 'text-green-600'
+                        : 'text-orange-600'
+                    }`}>
+                      {formatCurrency(calcularTotalMetodosPago())}
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Total a pagar:</span>
+                    <span className="font-semibold">{formatCurrency(obtenerValorFinal(factura))}</span>
+                  </div>
+                  {Math.abs(calcularTotalMetodosPago() - obtenerValorFinal(factura)) >= 1 && (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Diferencia:</span>
+                      <span className="font-semibold text-destructive">
+                        {formatCurrency(Math.abs(calcularTotalMetodosPago() - obtenerValorFinal(factura)))}
+                      </span>
+                    </div>
+                  )}
+                  {Math.abs(calcularTotalMetodosPago() - obtenerValorFinal(factura)) < 1 && (
+                    <div className="flex items-center gap-1 text-sm text-green-600">
+                      <CheckCircle className="w-4 h-4" />
+                      <span>Los montos coinciden correctamente</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
 
             {/* ¿Se aplicó pronto pago? */}
-            <div>
+            {!usarPagoPartido && (
+              <div>
               <Label className="text-base font-medium mb-3 block">¿Se aplicó descuento por pronto pago?</Label>
               <RadioGroup value={usedProntoPago} onValueChange={setUsedProntoPago}>
                 <div className="grid grid-cols-2 gap-3">
@@ -605,7 +925,8 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
                   </Card>
                 </div>
               </RadioGroup>
-            </div>
+              </div>
+            )}
 
             {/* Fecha de pago */}
             <div>
@@ -672,7 +993,6 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
           <Button
             variant="outline"
             onClick={generarPDF}
-            disabled={!selectedPaymentMethod}
             className="w-full border-blue-300 hover:bg-blue-50 dark:hover:bg-blue-950/20"
           >
             <Download className="w-4 h-4 mr-2" />
@@ -686,7 +1006,12 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
             </Button>
             <Button
               onClick={handlePayment}
-              disabled={processing || !selectedPaymentMethod || !usedProntoPago || !amountPaid}
+              disabled={
+                processing ||
+                (usarPagoPartido
+                  ? !validarPagoPartido()
+                  : !selectedPaymentMethod)
+              }
               className="min-w-[140px]"
               size="lg"
             >

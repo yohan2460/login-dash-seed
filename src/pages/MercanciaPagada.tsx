@@ -37,11 +37,20 @@ interface Factura {
   valor_real_a_pagar?: number | null;
 }
 
+interface PagoPartido {
+  id: string;
+  factura_id: string;
+  metodo_pago: string;
+  monto: number;
+  fecha_pago: string;
+}
+
 export function MercanciaPagada() {
   const { user, loading } = useAuth();
   const { toast } = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
   const [facturas, setFacturas] = useState<Factura[]>([]);
+  const [pagosPartidos, setPagosPartidos] = useState<PagoPartido[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [dateFrom, setDateFrom] = useState<Date | undefined>(undefined);
   const [dateTo, setDateTo] = useState<Date | undefined>(undefined);
@@ -76,6 +85,19 @@ export function MercanciaPagada() {
     }
   }, [searchParams, setSearchParams]);
 
+  const fetchPagosPartidos = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('pagos_partidos')
+        .select('*');
+
+      if (error) throw error;
+      setPagosPartidos(data || []);
+    } catch (error) {
+      console.error('Error fetching pagos partidos:', error);
+    }
+  };
+
   const fetchFacturas = async () => {
     setIsLoading(true);
     try {
@@ -88,6 +110,9 @@ export function MercanciaPagada() {
 
       if (error) throw error;
       setFacturas(data || []);
+
+      // Cargar pagos partidos
+      await fetchPagosPartidos();
     } catch (error) {
       console.error('Error fetching facturas:', error);
     } finally {
@@ -111,6 +136,25 @@ export function MercanciaPagada() {
       minimumFractionDigits: 0,
       maximumFractionDigits: 0
     }).format(numericAmount);
+  };
+
+  // Helper: Calcular monto por método de pago desde pagos_partidos
+  const calcularMontoPorMetodo = (facturas: Factura[], metodoPago: string): number => {
+    let total = 0;
+
+    facturas.forEach(factura => {
+      // Buscar pagos de esta factura en pagos_partidos
+      const pagosDeEstaFactura = pagosPartidos.filter(pp => pp.factura_id === factura.id);
+
+      // Sumar solo los pagos del método específico
+      const montoPorMetodo = pagosDeEstaFactura
+        .filter(pp => pp.metodo_pago === metodoPago)
+        .reduce((sum, pp) => sum + (pp.monto || 0), 0);
+
+      total += montoPorMetodo;
+    });
+
+    return Math.round(total);
   };
 
   // Memorizar las facturas filtradas para optimizar rendimiento
@@ -158,26 +202,10 @@ export function MercanciaPagada() {
 
   // Memorizar los totales calculados
   const stats = useMemo(() => {
-    const totalPagadoBancos = filteredFacturas
-      .filter(f => f.metodo_pago === 'Pago Banco')
-      .reduce((total, factura) => {
-        const monto = factura.valor_real_a_pagar ?? factura.total_a_pagar ?? 0;
-        return total + Math.round(Number(monto));
-      }, 0);
-
-    const totalPagadoTobias = filteredFacturas
-      .filter(f => f.metodo_pago === 'Pago Tobías')
-      .reduce((total, factura) => {
-        const monto = factura.valor_real_a_pagar ?? factura.total_a_pagar ?? 0;
-        return total + Math.round(Number(monto));
-      }, 0);
-
-    const totalPagadoCaja = filteredFacturas
-      .filter(f => f.metodo_pago === 'Caja')
-      .reduce((total, factura) => {
-        const monto = factura.valor_real_a_pagar ?? factura.total_a_pagar ?? 0;
-        return total + Math.round(Number(monto));
-      }, 0);
+    // Calcular desde pagos_partidos (fuente única de verdad)
+    const totalPagadoBancos = calcularMontoPorMetodo(filteredFacturas, 'Pago Banco');
+    const totalPagadoTobias = calcularMontoPorMetodo(filteredFacturas, 'Pago Tobías');
+    const totalPagadoCaja = calcularMontoPorMetodo(filteredFacturas, 'Caja');
 
     const totalGeneral = filteredFacturas
       .reduce((total, factura) => {
@@ -191,7 +219,7 @@ export function MercanciaPagada() {
       totalPagadoCaja,
       totalGeneral,
     };
-  }, [filteredFacturas]);
+  }, [filteredFacturas, pagosPartidos]);
 
   const handleSistematizar = async (factura: Factura) => {
     try {

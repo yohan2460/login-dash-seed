@@ -56,11 +56,20 @@ interface Factura {
   notas?: string | null;
 }
 
+interface PagoPartido {
+  id: string;
+  factura_id: string;
+  metodo_pago: string;
+  monto: number;
+  fecha_pago: string;
+}
+
 export default function ModernDashboard() {
   const { user, loading } = useAuth();
   const { activeCategory } = useDashboard();
   const { toast } = useToast();
   const [facturas, setFacturas] = useState<Factura[]>([]);
+  const [pagosPartidos, setPagosPartidos] = useState<PagoPartido[]>([]);
   const [loadingFacturas, setLoadingFacturas] = useState(true);
   const [selectedFactura, setSelectedFactura] = useState<Factura | null>(null);
   const [isClassificationDialogOpen, setIsClassificationDialogOpen] = useState(false);
@@ -84,26 +93,42 @@ export default function ModernDashboard() {
     return <Navigate to="/auth" replace />;
   }
 
+  const fetchPagosPartidos = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('pagos_partidos')
+        .select('*');
+
+      if (error) throw error;
+      setPagosPartidos(data || []);
+    } catch (error) {
+      console.error('Error fetching pagos partidos:', error);
+    }
+  };
+
   const fetchFacturas = async () => {
     try {
       const { data, error } = await supabase
         .from('facturas')
         .select('*')
         .order('created_at', { ascending: false });
-      
+
       if (error) throw error;
       // Validar y filtrar datos válidos
       const validData = (data || []).filter(factura => factura && factura.id);
       console.log('ModernDashboard: facturas cargadas:', validData.length);
-      
+
       // Debug: mostrar facturas con notas
       validData.forEach(factura => {
         if (factura.notas) {
           console.log('📋 Factura con notas:', factura.numero_factura, 'notas:', factura.notas);
         }
       });
-      
+
       setFacturas(validData);
+
+      // Cargar pagos partidos
+      await fetchPagosPartidos();
     } catch (error) {
       console.error('Error fetching facturas:', error);
     } finally {
@@ -176,6 +201,25 @@ export default function ModernDashboard() {
     return baseParaRetencion * (factura.monto_retencion / 100);
   };
 
+  // Helper: Calcular monto por método de pago desde pagos_partidos
+  const calcularMontoPorMetodo = (facturas: Factura[], metodoPago: string): number => {
+    let total = 0;
+
+    facturas.forEach(factura => {
+      // Buscar pagos de esta factura en pagos_partidos
+      const pagosDeEstaFactura = pagosPartidos.filter(pp => pp.factura_id === factura.id);
+
+      // Sumar solo los pagos del método específico
+      const montoPorMetodo = pagosDeEstaFactura
+        .filter(pp => pp.metodo_pago === metodoPago)
+        .reduce((sum, pp) => sum + (pp.monto || 0), 0);
+
+      total += montoPorMetodo;
+    });
+
+    return Math.round(total);
+  };
+
   const handleSistematizarClick = async (factura: Factura) => {
     try {
       const { error } = await supabase
@@ -206,38 +250,38 @@ export default function ModernDashboard() {
   };
 
   const calcularTotalPagadoBancos = (filtrarPorFechas = true) => {
-    let facturasPagadas = facturas.filter(f => f.clasificacion === 'mercancia' && f.estado_mercancia === 'pagada' && f.metodo_pago === 'Pago Banco');
+    let facturasPagadas = facturas.filter(f => f.clasificacion === 'mercancia' && f.estado_mercancia === 'pagada');
     if (filtrarPorFechas && (dateFrom || dateTo)) {
       facturasPagadas = facturasPagadas.filter(factura => {
         if (!factura.fecha_emision) return false;
         const fechaEmision = new Date(factura.fecha_emision);
-        
+
         if (dateFrom && fechaEmision < dateFrom) return false;
         if (dateTo && fechaEmision > dateTo) return false;
-        
+
         return true;
       });
     }
-    
-    return facturasPagadas.reduce((total, factura) => total + (factura.monto_pagado || 0), 0);
+
+    return calcularMontoPorMetodo(facturasPagadas, 'Pago Banco');
   };
 
   const calcularTotalPagadoTobias = (filtrarPorFechas = true) => {
-    let facturasPagadas = facturas.filter(f => f.clasificacion === 'mercancia' && f.estado_mercancia === 'pagada' && f.metodo_pago === 'Pago Tobías');
-    
+    let facturasPagadas = facturas.filter(f => f.clasificacion === 'mercancia' && f.estado_mercancia === 'pagada');
+
     if (filtrarPorFechas && (dateFrom || dateTo)) {
       facturasPagadas = facturasPagadas.filter(factura => {
         if (!factura.fecha_emision) return false;
         const fechaEmision = new Date(factura.fecha_emision);
-        
+
         if (dateFrom && fechaEmision < dateFrom) return false;
         if (dateTo && fechaEmision > dateTo) return false;
-        
+
         return true;
       });
     }
-    
-    return facturasPagadas.reduce((total, factura) => total + (factura.monto_pagado || 0), 0);
+
+    return calcularMontoPorMetodo(facturasPagadas, 'Pago Tobías');
   };
 
   const calcularTotalFacturas = () => {
@@ -305,73 +349,73 @@ export default function ModernDashboard() {
   };
 
   const calcularTotalPagadoBancosGastos = (filtrarPorFechas = true) => {
-    let facturasPagadas = facturas.filter(f => f.clasificacion === 'gasto' && f.estado_mercancia === 'pagada' && f.metodo_pago === 'Pago Banco');
-    
+    let facturasPagadas = facturas.filter(f => f.clasificacion === 'gasto' && f.estado_mercancia === 'pagada');
+
     if (filtrarPorFechas && (dateFrom || dateTo)) {
       facturasPagadas = facturasPagadas.filter(factura => {
         if (!factura.fecha_emision) return false;
         const fechaEmision = new Date(factura.fecha_emision);
-        
+
         if (dateFrom && fechaEmision < dateFrom) return false;
         if (dateTo && fechaEmision > dateTo) return false;
-        
+
         return true;
       });
     }
-    
-    return facturasPagadas.reduce((total, factura) => total + (factura.monto_pagado || 0), 0);
+
+    return calcularMontoPorMetodo(facturasPagadas, 'Pago Banco');
   };
 
   const calcularTotalPagadoTobiasGastos = (filtrarPorFechas = true) => {
-    let facturasPagadas = facturas.filter(f => f.clasificacion === 'gasto' && f.estado_mercancia === 'pagada' && f.metodo_pago === 'Pago Tobías');
-    
+    let facturasPagadas = facturas.filter(f => f.clasificacion === 'gasto' && f.estado_mercancia === 'pagada');
+
     if (filtrarPorFechas && (dateFrom || dateTo)) {
       facturasPagadas = facturasPagadas.filter(factura => {
         if (!factura.fecha_emision) return false;
         const fechaEmision = new Date(factura.fecha_emision);
-        
+
         if (dateFrom && fechaEmision < dateFrom) return false;
         if (dateTo && fechaEmision > dateTo) return false;
-        
+
         return true;
       });
     }
-    
-    return facturasPagadas.reduce((total, factura) => total + (factura.monto_pagado || 0), 0);
+
+    return calcularMontoPorMetodo(facturasPagadas, 'Pago Tobías');
   };
 
   const calcularTotalPagadoCaja = (filtrarPorFechas = true) => {
-    let facturasPagadas = facturas.filter(f => f.clasificacion === 'mercancia' && f.estado_mercancia === 'pagada' && f.metodo_pago === 'Caja');
-    
+    let facturasPagadas = facturas.filter(f => f.clasificacion === 'mercancia' && f.estado_mercancia === 'pagada');
+
     if (filtrarPorFechas && (dateFrom || dateTo)) {
       facturasPagadas = facturasPagadas.filter(factura => {
         if (!factura.fecha_emision) return false;
         const fechaEmision = new Date(factura.fecha_emision);
-        
+
         if (dateFrom && fechaEmision < dateFrom) return false;
         if (dateTo && fechaEmision > dateTo) return false;
         return true;
       });
     }
-    
-    return facturasPagadas.reduce((total, factura) => total + (factura.monto_pagado || 0), 0);
+
+    return calcularMontoPorMetodo(facturasPagadas, 'Caja');
   };
 
   const calcularTotalPagadoCajaGastos = (filtrarPorFechas = true) => {
-    let facturasPagadas = facturas.filter(f => f.clasificacion === 'gasto' && f.estado_mercancia === 'pagada' && f.metodo_pago === 'Caja');
-    
+    let facturasPagadas = facturas.filter(f => f.clasificacion === 'gasto' && f.estado_mercancia === 'pagada');
+
     if (filtrarPorFechas && (dateFrom || dateTo)) {
       facturasPagadas = facturasPagadas.filter(factura => {
         if (!factura.fecha_emision) return false;
         const fechaEmision = new Date(factura.fecha_emision);
-        
+
         if (dateFrom && fechaEmision < dateFrom) return false;
         if (dateTo && fechaEmision > dateTo) return false;
         return true;
       });
     }
-    
-    return facturasPagadas.reduce((total, factura) => total + (factura.monto_pagado || 0), 0);
+
+    return calcularMontoPorMetodo(facturasPagadas, 'Caja');
   };
 
   const getFilteredPaidGastos = () => {

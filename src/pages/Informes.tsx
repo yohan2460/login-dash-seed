@@ -63,6 +63,14 @@ interface Factura {
   pdf_file_path: string | null;
 }
 
+interface PagoPartido {
+  id: string;
+  factura_id: string;
+  metodo_pago: string;
+  monto: number;
+  fecha_pago: string;
+}
+
 interface FilterState {
   fechaInicio: string;
   fechaFin: string;
@@ -89,6 +97,7 @@ export default function Informes() {
   const [loadingPdf, setLoadingPdf] = useState(false);
   const [editingSerieId, setEditingSerieId] = useState<string | null>(null);
   const [editingSerieValue, setEditingSerieValue] = useState<string>('');
+  const [pagosPartidos, setPagosPartidos] = useState<PagoPartido[]>([]);
   // Obtener el primer y último día del mes actual
   const getCurrentMonthRange = () => {
     const now = new Date();
@@ -164,6 +173,20 @@ export default function Informes() {
     return <Navigate to="/auth" replace />;
   }
 
+  const fetchPagosPartidos = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('pagos_partidos')
+        .select('*');
+
+      if (error) throw error;
+
+      setPagosPartidos(data || []);
+    } catch (error) {
+      console.error('Error en fetchPagosPartidos:', error);
+    }
+  };
+
   const fetchFacturas = async () => {
     setLoadingData(true);
     try {
@@ -178,7 +201,10 @@ export default function Informes() {
       if (error) throw error;
 
       setFacturas(data || []);
-      
+
+      // Cargar pagos partidos
+      await fetchPagosPartidos();
+
     } catch (error) {
       console.error('Error en fetchFacturas:', error);
       toast({
@@ -335,25 +361,39 @@ export default function Informes() {
     }
 
     const facturasToExport = filteredFacturas.filter(f => selectedFacturas.includes(f.id));
-    
-    const dataForExcel = facturasToExport.map(factura => ({
-      'Proveedor': factura.emisor_nombre,
-      'NIT': factura.emisor_nit,
-      'Serie de Factura': factura.numero_factura,
-      'Número de Serie': factura.numero_serie || 'No especificado',
-      'Clasificación': factura.clasificacion_original || factura.clasificacion || 'Sin clasificar',
-      'Fecha de Emisión': formatFechaSafe(factura.fecha_emision),
-      'Fecha de Vencimiento': formatFechaSafe(factura.fecha_vencimiento),
-      'Total de la Factura': factura.total_a_pagar,
-      'Total Pagado': factura.valor_real_a_pagar || factura.monto_pagado || 0,
-      'Estado': factura.estado_mercancia || 'Pendiente',
-      'Método de Pago': factura.metodo_pago || 'No especificado',
-      'Fecha de Pago': factura.fecha_pago ? formatFechaSafe(factura.fecha_pago) : 'No pagada',
-      'IVA': factura.factura_iva || 0,
-      'Días para Vencer': factura.fecha_vencimiento ?
-        Math.ceil((new Date(factura.fecha_vencimiento).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)) :
-        'No especificado'
-    }));
+
+    const dataForExcel = facturasToExport.map(factura => {
+      // Preparar información del método de pago
+      let metodoPagoTexto = factura.metodo_pago || 'No especificado';
+      let desglosePagos = '';
+
+      if (factura.metodo_pago === 'Pago Partido') {
+        const pagosDeFactura = getPagosPartidosPorFactura(factura.id);
+        desglosePagos = pagosDeFactura
+          .map(pp => `${pp.metodo_pago}: ${formatCurrency(pp.monto)}`)
+          .join('; ');
+        metodoPagoTexto = `Pago Partido (${desglosePagos})`;
+      }
+
+      return {
+        'Proveedor': factura.emisor_nombre,
+        'NIT': factura.emisor_nit,
+        'Serie de Factura': factura.numero_factura,
+        'Número de Serie': factura.numero_serie || 'No especificado',
+        'Clasificación': factura.clasificacion_original || factura.clasificacion || 'Sin clasificar',
+        'Fecha de Emisión': formatFechaSafe(factura.fecha_emision),
+        'Fecha de Vencimiento': formatFechaSafe(factura.fecha_vencimiento),
+        'Total de la Factura': factura.total_a_pagar,
+        'Total Pagado': factura.valor_real_a_pagar || factura.monto_pagado || 0,
+        'Estado': factura.estado_mercancia || 'Pendiente',
+        'Método de Pago': metodoPagoTexto,
+        'Fecha de Pago': factura.fecha_pago ? formatFechaSafe(factura.fecha_pago) : 'No pagada',
+        'IVA': factura.factura_iva || 0,
+        'Días para Vencer': factura.fecha_vencimiento ?
+          Math.ceil((new Date(factura.fecha_vencimiento).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)) :
+          'No especificado'
+      };
+    });
 
     const worksheet = XLSX.utils.json_to_sheet(dataForExcel);
     const workbook = XLSX.utils.book_new();
@@ -511,41 +551,101 @@ export default function Informes() {
     setEditingSerieValue('');
   };
 
+  // Helper: Obtener pagos partidos de una factura
+  const getPagosPartidosPorFactura = (facturaId: string): PagoPartido[] => {
+    return pagosPartidos.filter(pp => pp.factura_id === facturaId);
+  };
+
+  // Helper: Calcular monto por método considerando pagos partidos
+  const calcularMontoPorMetodo = (facturasPagadas: Factura[], metodoPago: string, usarValorReal: boolean = false) => {
+    let total = 0;
+
+    facturasPagadas.forEach(factura => {
+      // Buscar pagos de esta factura en pagos_partidos
+      const pagosDeEstaFactura = getPagosPartidosPorFactura(factura.id);
+
+      // Sumar solo los pagos del método específico
+      const montoPorMetodo = pagosDeEstaFactura
+        .filter(pp => pp.metodo_pago === metodoPago)
+        .reduce((sum, pp) => sum + (pp.monto || 0), 0);
+
+      total += montoPorMetodo;
+    });
+
+    return Math.round(total);
+  };
+
   // Calcular estadísticas
   const stats = (() => {
     const facturasPagadas = filteredFacturas.filter(f => f.estado_mercancia === 'pagada');
 
-    // Métodos de pago - Valor OFICIAL (total_a_pagar)
-    const pagosTobiasOficial = facturasPagadas.filter(f => f.metodo_pago === 'Pago Tobías').reduce((sum, f) => sum + (f.total_a_pagar || 0), 0);
-    const pagosBancosOficial = facturasPagadas.filter(f => f.metodo_pago === 'Pago Banco').reduce((sum, f) => sum + (f.total_a_pagar || 0), 0);
-    const pagosCajaOficial = facturasPagadas.filter(f => f.metodo_pago === 'Caja').reduce((sum, f) => sum + (f.total_a_pagar || 0), 0);
+    // Métodos de pago - Valor REAL PAGADO (desde pagos_partidos)
+    const pagosTobiasReal = calcularMontoPorMetodo(facturasPagadas, 'Pago Tobías');
+    const pagosBancosReal = calcularMontoPorMetodo(facturasPagadas, 'Pago Banco');
+    const pagosCajaReal = calcularMontoPorMetodo(facturasPagadas, 'Caja');
 
-    // Métodos de pago - Valor REAL PAGADO (con descuentos/retenciones)
-    const pagosTobiasReal = facturasPagadas.filter(f => f.metodo_pago === 'Pago Tobías').reduce((sum, f) => sum + (f.valor_real_a_pagar || f.monto_pagado || 0), 0);
-    const pagosBancosReal = facturasPagadas.filter(f => f.metodo_pago === 'Pago Banco').reduce((sum, f) => sum + (f.valor_real_a_pagar || f.monto_pagado || 0), 0);
-    const pagosCajaReal = facturasPagadas.filter(f => f.metodo_pago === 'Caja').reduce((sum, f) => sum + (f.valor_real_a_pagar || f.monto_pagado || 0), 0);
+    // Métodos de pago - Valor OFICIAL (proporción del total_a_pagar)
+    const calcularValorOficial = (metodoPago: string): number => {
+      let total = 0;
 
-    // Desglose de ahorro por método de pago (Pronto Pago y Retención)
-    const calcularDesglosePorMetodo = (metodoPago: string) => {
-      const facturas = facturasPagadas.filter(f => f.metodo_pago === metodoPago);
+      facturasPagadas.forEach(factura => {
+        const pagosDeEstaFactura = getPagosPartidosPorFactura(factura.id);
+        const totalPagado = pagosDeEstaFactura.reduce((sum, pp) => sum + pp.monto, 0);
 
-      let totalProntoPago = 0;
-      let totalRetencion = 0;
+        if (totalPagado > 0) {
+          // Calcular proporción que representa este método
+          const montoPorMetodo = pagosDeEstaFactura
+            .filter(pp => pp.metodo_pago === metodoPago)
+            .reduce((sum, pp) => sum + pp.monto, 0);
 
-      facturas.forEach(f => {
-        // Pronto pago
-        if (f.uso_pronto_pago && f.porcentaje_pronto_pago) {
-          const baseParaDescuento = f.total_sin_iva || (f.total_a_pagar - (f.factura_iva || 0));
-          totalProntoPago += baseParaDescuento * (f.porcentaje_pronto_pago / 100);
-        }
-
-        // Retención
-        if (f.tiene_retencion) {
-          totalRetencion += calcularMontoRetencionReal(f);
+          const proporcion = montoPorMetodo / totalPagado;
+          total += (factura.total_a_pagar * proporcion);
         }
       });
 
-      return { totalProntoPago, totalRetencion };
+      return Math.round(total);
+    };
+
+    const pagosTobiasOficial = calcularValorOficial('Pago Tobías');
+    const pagosBancosOficial = calcularValorOficial('Pago Banco');
+    const pagosCajaOficial = calcularValorOficial('Caja');
+
+    // Desglose de ahorro por método de pago (Pronto Pago y Retención)
+    const calcularDesglosePorMetodo = (metodoPago: string) => {
+      let totalProntoPago = 0;
+      let totalRetencion = 0;
+
+      facturasPagadas.forEach(factura => {
+        // Buscar pagos de esta factura en pagos_partidos
+        const pagosDeEstaFactura = getPagosPartidosPorFactura(factura.id);
+
+        // Verificar si esta factura usó este método de pago
+        const montoPorMetodo = pagosDeEstaFactura
+          .filter(pp => pp.metodo_pago === metodoPago)
+          .reduce((sum, pp) => sum + pp.monto, 0);
+
+        if (montoPorMetodo > 0) {
+          // Calcular proporción que representa este método en esta factura
+          const totalPagadoFactura = pagosDeEstaFactura.reduce((sum, pp) => sum + pp.monto, 0);
+          const proporcion = totalPagadoFactura > 0 ? montoPorMetodo / totalPagadoFactura : 0;
+
+          // Pronto pago (proporcional)
+          if (factura.uso_pronto_pago && factura.porcentaje_pronto_pago) {
+            const baseParaDescuento = factura.total_sin_iva || (factura.total_a_pagar - (factura.factura_iva || 0));
+            totalProntoPago += (baseParaDescuento * (factura.porcentaje_pronto_pago / 100)) * proporcion;
+          }
+
+          // Retención (proporcional)
+          if (factura.tiene_retencion) {
+            totalRetencion += calcularMontoRetencionReal(factura) * proporcion;
+          }
+        }
+      });
+
+      return {
+        totalProntoPago: Math.round(totalProntoPago),
+        totalRetencion: Math.round(totalRetencion)
+      };
     };
 
     const desgloseTobias = calcularDesglosePorMetodo('Pago Tobías');
@@ -736,19 +836,24 @@ export default function Informes() {
                     <p className="text-xs font-medium text-orange-600">{formatCurrency(stats.pagosTobiasOficial - stats.pagosTobiasReal)}</p>
                   </div>
                   {(stats.desgloseTobias.totalProntoPago > 0 || stats.desgloseTobias.totalRetencion > 0) && (
-                    <div className="ml-2 space-y-0.5 text-xs text-muted-foreground">
+                    <div className="ml-2 space-y-0.5 text-xs">
+                      <div className="text-muted-foreground">Desglose:</div>
                       {stats.desgloseTobias.totalProntoPago > 0 && (
-                        <div className="flex items-center justify-between">
+                        <div className="flex items-center justify-between text-green-600">
                           <span>• Pronto Pago:</span>
-                          <span>{formatCurrency(stats.desgloseTobias.totalProntoPago)}</span>
+                          <span className="font-medium">{formatCurrency(stats.desgloseTobias.totalProntoPago)}</span>
                         </div>
                       )}
                       {stats.desgloseTobias.totalRetencion > 0 && (
-                        <div className="flex items-center justify-between">
+                        <div className="flex items-center justify-between text-blue-600">
                           <span>• Retención:</span>
-                          <span>{formatCurrency(stats.desgloseTobias.totalRetencion)}</span>
+                          <span className="font-medium">{formatCurrency(stats.desgloseTobias.totalRetencion)}</span>
                         </div>
                       )}
+                      <div className="flex items-center justify-between text-xs border-t pt-1 mt-1">
+                        <span className="text-muted-foreground">Suma:</span>
+                        <span className="font-medium">{formatCurrency(stats.desgloseTobias.totalProntoPago + stats.desgloseTobias.totalRetencion)}</span>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -778,19 +883,24 @@ export default function Informes() {
                     <p className="text-xs font-medium text-orange-600">{formatCurrency(stats.pagosBancosOficial - stats.pagosBancosReal)}</p>
                   </div>
                   {(stats.desgloseBancos.totalProntoPago > 0 || stats.desgloseBancos.totalRetencion > 0) && (
-                    <div className="ml-2 space-y-0.5 text-xs text-muted-foreground">
+                    <div className="ml-2 space-y-0.5 text-xs">
+                      <div className="text-muted-foreground">Desglose:</div>
                       {stats.desgloseBancos.totalProntoPago > 0 && (
-                        <div className="flex items-center justify-between">
+                        <div className="flex items-center justify-between text-green-600">
                           <span>• Pronto Pago:</span>
-                          <span>{formatCurrency(stats.desgloseBancos.totalProntoPago)}</span>
+                          <span className="font-medium">{formatCurrency(stats.desgloseBancos.totalProntoPago)}</span>
                         </div>
                       )}
                       {stats.desgloseBancos.totalRetencion > 0 && (
-                        <div className="flex items-center justify-between">
+                        <div className="flex items-center justify-between text-blue-600">
                           <span>• Retención:</span>
-                          <span>{formatCurrency(stats.desgloseBancos.totalRetencion)}</span>
+                          <span className="font-medium">{formatCurrency(stats.desgloseBancos.totalRetencion)}</span>
                         </div>
                       )}
+                      <div className="flex items-center justify-between text-xs border-t pt-1 mt-1">
+                        <span className="text-muted-foreground">Suma:</span>
+                        <span className="font-medium">{formatCurrency(stats.desgloseBancos.totalProntoPago + stats.desgloseBancos.totalRetencion)}</span>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -820,19 +930,24 @@ export default function Informes() {
                     <p className="text-xs font-medium text-orange-600">{formatCurrency(stats.pagosCajaOficial - stats.pagosCajaReal)}</p>
                   </div>
                   {(stats.desgloseCaja.totalProntoPago > 0 || stats.desgloseCaja.totalRetencion > 0) && (
-                    <div className="ml-2 space-y-0.5 text-xs text-muted-foreground">
+                    <div className="ml-2 space-y-0.5 text-xs">
+                      <div className="text-muted-foreground">Desglose:</div>
                       {stats.desgloseCaja.totalProntoPago > 0 && (
-                        <div className="flex items-center justify-between">
+                        <div className="flex items-center justify-between text-green-600">
                           <span>• Pronto Pago:</span>
-                          <span>{formatCurrency(stats.desgloseCaja.totalProntoPago)}</span>
+                          <span className="font-medium">{formatCurrency(stats.desgloseCaja.totalProntoPago)}</span>
                         </div>
                       )}
                       {stats.desgloseCaja.totalRetencion > 0 && (
-                        <div className="flex items-center justify-between">
+                        <div className="flex items-center justify-between text-blue-600">
                           <span>• Retención:</span>
-                          <span>{formatCurrency(stats.desgloseCaja.totalRetencion)}</span>
+                          <span className="font-medium">{formatCurrency(stats.desgloseCaja.totalRetencion)}</span>
                         </div>
                       )}
+                      <div className="flex items-center justify-between text-xs border-t pt-1 mt-1">
+                        <span className="text-muted-foreground">Suma:</span>
+                        <span className="font-medium">{formatCurrency(stats.desgloseCaja.totalProntoPago + stats.desgloseCaja.totalRetencion)}</span>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -1257,7 +1372,25 @@ export default function Informes() {
                             )}
                           </div>
                         </TableCell>
-                        <TableCell className="py-3 text-xs">{factura.metodo_pago || '-'}</TableCell>
+                        <TableCell className="py-3 text-xs">
+                          {factura.metodo_pago === 'Pago Partido' ? (
+                            <div className="space-y-1">
+                              <Badge variant="outline" className="text-xs bg-blue-50 border-blue-300">
+                                Pago Partido
+                              </Badge>
+                              <div className="text-xs text-muted-foreground space-y-0.5">
+                                {getPagosPartidosPorFactura(factura.id).map((pp, idx) => (
+                                  <div key={idx} className="flex items-center gap-1">
+                                    <span className="w-2 h-2 rounded-full bg-blue-500"></span>
+                                    <span>{pp.metodo_pago}: {formatCurrency(pp.monto)}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          ) : (
+                            <span>{factura.metodo_pago || '-'}</span>
+                          )}
+                        </TableCell>
                         <TableCell className="py-3 text-center">
                           <Button
                             variant="ghost"
