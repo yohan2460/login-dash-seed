@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Navigate } from 'react-router-dom';
+import { Navigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -52,15 +52,38 @@ interface NotaCreditoConFactura {
 
 export default function NotasCredito() {
   const { user, loading } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [facturas, setFacturas] = useState<Factura[]>([]);
   const [notasConFacturas, setNotasConFacturas] = useState<NotaCreditoConFactura[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [highlightedId, setHighlightedId] = useState<string | null>(null);
 
   useEffect(() => {
     if (user) {
       fetchNotasCredito();
     }
   }, [user]);
+
+  useEffect(() => {
+    const highlightId = searchParams.get('highlight');
+    if (highlightId) {
+      setHighlightedId(highlightId);
+      // Scroll to the element
+      setTimeout(() => {
+        const element = document.getElementById(`factura-${highlightId}`);
+        if (element) {
+          element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }, 100);
+
+      const timeout = setTimeout(() => {
+        setHighlightedId(null);
+        searchParams.delete('highlight');
+        setSearchParams(searchParams);
+      }, 5000);
+      return () => clearTimeout(timeout);
+    }
+  }, [searchParams, setSearchParams]);
 
   const fetchNotasCredito = async () => {
     setIsLoading(true);
@@ -210,6 +233,7 @@ export default function NotasCredito() {
                     showActions={false}
                     showClassifyButton={false}
                     showOriginalValueForNC={true}
+                    highlightedId={highlightedId}
                   />
                   {item.facturaAfectada && (
                     <div className="border-t pt-2 mt-1">
@@ -220,6 +244,7 @@ export default function NotasCredito() {
                         refreshData={fetchNotasCredito}
                         showActions={false}
                         showClassifyButton={false}
+                        highlightedId={highlightedId}
                       />
                     </div>
                   )}
@@ -251,6 +276,7 @@ export default function NotasCredito() {
                     showActions={false}
                     showClassifyButton={false}
                     showOriginalValueForNC={true}
+                    highlightedId={highlightedId}
                   />
                   {item.facturaAfectada && (
                     <div className="border-t pt-2 mt-1">
@@ -261,6 +287,7 @@ export default function NotasCredito() {
                         refreshData={fetchNotasCredito}
                         showActions={false}
                         showClassifyButton={false}
+                        highlightedId={highlightedId}
                       />
                     </div>
                   )}
@@ -292,6 +319,7 @@ export default function NotasCredito() {
                     showActions={true}
                     showClassifyButton={false}
                     showOriginalValueForNC={true}
+                    highlightedId={highlightedId}
                   />
                   {item.facturaAfectada && (
                     <div className="border-t pt-2 mt-1">
@@ -302,6 +330,7 @@ export default function NotasCredito() {
                         refreshData={fetchNotasCredito}
                         showActions={false}
                         showClassifyButton={false}
+                        highlightedId={highlightedId}
                       />
                     </div>
                   )}

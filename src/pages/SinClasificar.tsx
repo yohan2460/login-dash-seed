@@ -56,11 +56,19 @@ export function SinClasificar() {
     const highlightId = searchParams.get('highlight');
     if (highlightId) {
       setHighlightedId(highlightId);
+      // Scroll to the element
+      setTimeout(() => {
+        const element = document.getElementById(`factura-${highlightId}`);
+        if (element) {
+          element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }, 100);
+
       const timeout = setTimeout(() => {
         setHighlightedId(null);
         searchParams.delete('highlight');
         setSearchParams(searchParams);
-      }, 3000);
+      }, 5000);
       return () => clearTimeout(timeout);
     }
   }, [searchParams, setSearchParams]);

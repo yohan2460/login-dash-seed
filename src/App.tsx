@@ -5,6 +5,7 @@ import NotFound from "./pages/NotFound";
 import ModernDashboard from "./pages/ModernDashboard";
 import FacturasPorProveedor from "./pages/FacturasPorProveedor";
 import Informes from "./pages/Informes";
+import PagosProximos from "./pages/PagosProximos";
 import Usuarios from "./pages/Usuarios";
 import { SinClasificar } from "./pages/SinClasificar";
 import { MercanciaPendiente } from "./pages/MercanciaPendiente";
@@ -25,6 +26,7 @@ function App() {
         <Route path="/dashboard" element={<ModernDashboard />} />
         <Route path="/facturas-por-proveedor" element={<FacturasPorProveedor />} />
         <Route path="/informes" element={<Informes />} />
+        <Route path="/pagos-proximos" element={<PagosProximos />} />
         <Route path="/usuarios" element={<Usuarios />} />
 
         {/* Rutas por Estado de Facturas */}

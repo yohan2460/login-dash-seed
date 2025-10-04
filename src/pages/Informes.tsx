@@ -31,7 +31,9 @@ import {
   RefreshCw,
   ArrowUpDown,
   Eye,
-  X
+  X,
+  Edit2,
+  Check
 } from 'lucide-react';
 
 interface Factura {
@@ -85,6 +87,8 @@ export default function Informes() {
   const [pdfDialogOpen, setPdfDialogOpen] = useState(false);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [loadingPdf, setLoadingPdf] = useState(false);
+  const [editingSerieId, setEditingSerieId] = useState<string | null>(null);
+  const [editingSerieValue, setEditingSerieValue] = useState<string>('');
   // Obtener el primer y último día del mes actual
   const getCurrentMonthRange = () => {
     const now = new Date();
@@ -130,7 +134,6 @@ export default function Informes() {
             table: 'facturas'
           },
           () => {
-            console.log('Cambio detectado en facturas, actualizando...');
             fetchFacturas();
           }
         )
@@ -164,9 +167,6 @@ export default function Informes() {
   const fetchFacturas = async () => {
     setLoadingData(true);
     try {
-      console.log('Iniciando fetch de facturas...');
-      
-      // Limpiar cache y forzar nueva consulta
       const { data, error } = await supabase
         .from('facturas')
         .select(`
@@ -175,30 +175,8 @@ export default function Informes() {
         `)
         .order('created_at', { ascending: false });
 
-      console.log('Respuesta de la base de datos:', {
-        cantidadFacturas: data?.length || 0,
-        error: error,
-        timestamp: new Date().toISOString()
-      });
+      if (error) throw error;
 
-      // Debug: verificar si el campo ingresado_sistema viene en los datos
-      if (data && data.length > 0) {
-        console.log('Muestra de facturas con campos:',
-          data.slice(0, 5).map(f => ({
-            numero: f.numero_factura,
-            ingresado_sistema: f.ingresado_sistema,
-            pdf_file_path: f.pdf_file_path,
-            tiene_pdf: !!f.pdf_file_path
-          }))
-        );
-      }
-      
-      if (error) {
-        console.error('Error fetching facturas:', error);
-        throw error;
-      }
-
-      // Actualizar el estado directamente
       setFacturas(data || []);
       
     } catch (error) {
@@ -218,25 +196,33 @@ export default function Informes() {
 
     // Filtro por búsqueda
     if (searchTerm) {
-      filtered = filtered.filter(f => 
+      filtered = filtered.filter(f =>
         f.emisor_nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
         f.numero_factura.toLowerCase().includes(searchTerm.toLowerCase()) ||
         f.emisor_nit.includes(searchTerm)
       );
     }
 
-    // Filtro por fechas
+    // Filtro por fechas (comparación segura sin problemas de zona horaria)
     if (filters.fechaInicio) {
       filtered = filtered.filter(f => {
         const fechaFactura = f.fecha_emision || f.created_at;
-        return new Date(fechaFactura) >= new Date(filters.fechaInicio);
+        if (!fechaFactura) return false;
+
+        // Extraer solo la fecha (YYYY-MM-DD) para comparación
+        const fechaStr = fechaFactura.split('T')[0];
+        return fechaStr >= filters.fechaInicio;
       });
     }
 
     if (filters.fechaFin) {
       filtered = filtered.filter(f => {
         const fechaFactura = f.fecha_emision || f.created_at;
-        return new Date(fechaFactura) <= new Date(filters.fechaFin);
+        if (!fechaFactura) return false;
+
+        // Extraer solo la fecha (YYYY-MM-DD) para comparación
+        const fechaStr = fechaFactura.split('T')[0];
+        return fechaStr <= filters.fechaFin;
       });
     }
 
@@ -245,10 +231,21 @@ export default function Informes() {
       filtered = filtered.filter(f => f.emisor_nit === filters.proveedor);
     }
 
-    // Filtro por clasificación
+    // Filtro por clasificación (Tipo)
     if (filters.clasificacion) {
       if (filters.clasificacion === 'sistematizada') {
         filtered = filtered.filter(f => f.clasificacion === 'sistematizada');
+      } else if (filters.clasificacion === 'Mercancía') {
+        filtered = filtered.filter(f =>
+          f.clasificacion_original === 'Mercancía' ||
+          f.clasificacion?.toLowerCase() === 'mercancia'
+        );
+      } else if (filters.clasificacion === 'Gastos') {
+        filtered = filtered.filter(f =>
+          f.clasificacion_original === 'Gastos' ||
+          f.clasificacion?.toLowerCase() === 'gasto' ||
+          f.clasificacion?.toLowerCase() === 'gastos'
+        );
       } else {
         filtered = filtered.filter(f => f.clasificacion_original === filters.clasificacion);
       }
@@ -266,38 +263,22 @@ export default function Informes() {
 
     // Filtro por montos
     if (filters.montoMinimo) {
-      filtered = filtered.filter(f => f.total_a_pagar >= parseFloat(filters.montoMinimo));
+      const minimo = parseFloat(filters.montoMinimo);
+      filtered = filtered.filter(f => f.total_a_pagar >= minimo);
     }
 
     if (filters.montoMaximo) {
-      filtered = filtered.filter(f => f.total_a_pagar <= parseFloat(filters.montoMaximo));
+      const maximo = parseFloat(filters.montoMaximo);
+      filtered = filtered.filter(f => f.total_a_pagar <= maximo);
     }
 
     // Filtro por ingreso al sistema
     if (filters.ingresoSistema) {
-      console.log('=== DEBUG FILTRO INGRESO SISTEMA ===');
-      console.log('Valor del filtro:', filters.ingresoSistema);
-      console.log('Total facturas antes de filtrar:', filtered.length);
-      console.log('Muestra de valores ingresado_sistema:',
-        filtered.slice(0, 10).map(f => ({
-          numero: f.numero_factura,
-          ingresado_sistema: f.ingresado_sistema,
-          tipo: typeof f.ingresado_sistema
-        }))
-      );
-
       if (filters.ingresoSistema === 'ingresado') {
-        // Solo facturas con ingresado_sistema = true
-        const antes = filtered.length;
         filtered = filtered.filter(f => f.ingresado_sistema === true);
-        console.log(`Filtrado 'ingresado': ${antes} -> ${filtered.length}`);
       } else if (filters.ingresoSistema === 'pendiente') {
-        // Facturas con ingresado_sistema = false o null
-        const antes = filtered.length;
         filtered = filtered.filter(f => f.ingresado_sistema === false || f.ingresado_sistema === null);
-        console.log(`Filtrado 'pendiente': ${antes} -> ${filtered.length}`);
       }
-      console.log('=== FIN DEBUG ===');
     }
 
     // Ordenar por fecha de emisión
@@ -489,47 +470,90 @@ export default function Informes() {
     }
   };
 
+  const handleEditSerie = (facturaId: string, currentSerie: string | null) => {
+    setEditingSerieId(facturaId);
+    setEditingSerieValue(currentSerie || '');
+  };
+
+  const handleSaveSerie = async (facturaId: string) => {
+    try {
+      const { error } = await supabase
+        .from('facturas')
+        .update({ numero_serie: editingSerieValue || null })
+        .eq('id', facturaId);
+
+      if (error) throw error;
+
+      // Actualizar la factura en el estado local
+      setFacturas(prev => prev.map(f =>
+        f.id === facturaId ? { ...f, numero_serie: editingSerieValue || null } : f
+      ));
+
+      toast({
+        title: "Serie actualizada",
+        description: "El número de serie se ha actualizado correctamente",
+      });
+
+      setEditingSerieId(null);
+      setEditingSerieValue('');
+    } catch (error) {
+      console.error('Error al actualizar serie:', error);
+      toast({
+        title: "Error",
+        description: "No se pudo actualizar el número de serie",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleCancelEdit = () => {
+    setEditingSerieId(null);
+    setEditingSerieValue('');
+  };
+
   // Calcular estadísticas
   const stats = (() => {
-    // console.log('Calculando estadísticas con facturas:', {
-    //   totalFacturas: filteredFacturas.length,
-    //   facturasIds: filteredFacturas.map(f => f.id),
-    //   ultimaActualizacion: new Date().toISOString()
-    // });
-
     const facturasPagadas = filteredFacturas.filter(f => f.estado_mercancia === 'pagada');
 
-    // Verificar qué valor estamos usando para cada factura
-    facturasPagadas.forEach(f => {
-      const valorUsado = f.valor_real_a_pagar || f.monto_pagado || 0;
-      console.log(`Factura ${f.numero_factura}:`, {
-        total_a_pagar: f.total_a_pagar,
-        factura_iva: f.factura_iva,
-        valor_real_a_pagar: f.valor_real_a_pagar,
-        monto_pagado: f.monto_pagado,
-        valorUsado,
-        metodo_pago: f.metodo_pago,
-        usando: f.valor_real_a_pagar ? 'valor_real_a_pagar' : (f.monto_pagado ? 'monto_pagado' : 'cero')
+    // Métodos de pago - Valor OFICIAL (total_a_pagar)
+    const pagosTobiasOficial = facturasPagadas.filter(f => f.metodo_pago === 'Pago Tobías').reduce((sum, f) => sum + (f.total_a_pagar || 0), 0);
+    const pagosBancosOficial = facturasPagadas.filter(f => f.metodo_pago === 'Pago Banco').reduce((sum, f) => sum + (f.total_a_pagar || 0), 0);
+    const pagosCajaOficial = facturasPagadas.filter(f => f.metodo_pago === 'Caja').reduce((sum, f) => sum + (f.total_a_pagar || 0), 0);
+
+    // Métodos de pago - Valor REAL PAGADO (con descuentos/retenciones)
+    const pagosTobiasReal = facturasPagadas.filter(f => f.metodo_pago === 'Pago Tobías').reduce((sum, f) => sum + (f.valor_real_a_pagar || f.monto_pagado || 0), 0);
+    const pagosBancosReal = facturasPagadas.filter(f => f.metodo_pago === 'Pago Banco').reduce((sum, f) => sum + (f.valor_real_a_pagar || f.monto_pagado || 0), 0);
+    const pagosCajaReal = facturasPagadas.filter(f => f.metodo_pago === 'Caja').reduce((sum, f) => sum + (f.valor_real_a_pagar || f.monto_pagado || 0), 0);
+
+    // Desglose de ahorro por método de pago (Pronto Pago y Retención)
+    const calcularDesglosePorMetodo = (metodoPago: string) => {
+      const facturas = facturasPagadas.filter(f => f.metodo_pago === metodoPago);
+
+      let totalProntoPago = 0;
+      let totalRetencion = 0;
+
+      facturas.forEach(f => {
+        // Pronto pago
+        if (f.uso_pronto_pago && f.porcentaje_pronto_pago) {
+          const baseParaDescuento = f.total_sin_iva || (f.total_a_pagar - (f.factura_iva || 0));
+          totalProntoPago += baseParaDescuento * (f.porcentaje_pronto_pago / 100);
+        }
+
+        // Retención
+        if (f.tiene_retencion) {
+          totalRetencion += calcularMontoRetencionReal(f);
+        }
       });
-    });
 
-    const pagosTobias = facturasPagadas.filter(f => f.metodo_pago === 'Pago Tobías').reduce((sum, f) => sum + (f.valor_real_a_pagar || f.monto_pagado || 0), 0);
-    const pagosBancos = facturasPagadas.filter(f => f.metodo_pago === 'Pago Banco').reduce((sum, f) => sum + (f.valor_real_a_pagar || f.monto_pagado || 0), 0);
-    const pagosCaja = facturasPagadas.filter(f => f.metodo_pago === 'Caja').reduce((sum, f) => sum + (f.valor_real_a_pagar || f.monto_pagado || 0), 0);
-    const totalPagado = facturasPagadas.reduce((sum, f) => sum + (f.valor_real_a_pagar || f.monto_pagado || 0), 0);
+      return { totalProntoPago, totalRetencion };
+    };
 
-    console.log('💰 Verificación de pagos:', {
-      totalPagado,
-      pagosTobias,
-      pagosBancos,
-      pagosCaja,
-      suma: pagosTobias + pagosBancos + pagosCaja,
-      diferencia: totalPagado - (pagosTobias + pagosBancos + pagosCaja),
-      facturasPagadas: facturasPagadas.length,
-      metodosUnicos: [...new Set(facturasPagadas.map(f => f.metodo_pago))],
-      facturasConValorReal: facturasPagadas.filter(f => f.valor_real_a_pagar).length,
-      facturasSinValorReal: facturasPagadas.filter(f => !f.valor_real_a_pagar).length
-    });
+    const desgloseTobias = calcularDesglosePorMetodo('Pago Tobías');
+    const desgloseBancos = calcularDesglosePorMetodo('Pago Banco');
+    const desgloseCaja = calcularDesglosePorMetodo('Caja');
+
+    const totalPagadoOficial = facturasPagadas.reduce((sum, f) => sum + (f.total_a_pagar || 0), 0);
+    const totalPagadoReal = facturasPagadas.reduce((sum, f) => sum + (f.valor_real_a_pagar || f.monto_pagado || 0), 0);
 
     // Calcular pronto pago utilizado (facturas pagadas con uso_pronto_pago = true)
     const facturasProntoPagoUtilizado = filteredFacturas.filter(f =>
@@ -558,16 +582,27 @@ export default function Informes() {
       return sum + descuento;
     }, 0);
 
+    const facturasPendientes = filteredFacturas.filter(f => f.estado_mercancia !== 'pagada');
+    const totalPendiente = facturasPendientes.reduce((sum, f) => sum + f.total_a_pagar, 0);
+
+
     return {
       totalFacturas: filteredFacturas.length,
       totalMonto: filteredFacturas.reduce((sum, f) => sum + f.total_a_pagar, 0),
-      totalPagado,
-      totalPendiente: filteredFacturas.filter(f => f.estado_mercancia !== 'pagada').reduce((sum, f) => sum + f.total_a_pagar, 0),
-      pagosMercancia: filteredFacturas.filter(f => f.clasificacion_original === 'Mercancía' && f.estado_mercancia === 'pagada').reduce((sum, f) => sum + (f.valor_real_a_pagar || f.monto_pagado || 0), 0),
-      pagosGastos: filteredFacturas.filter(f => f.clasificacion_original === 'Gastos' && f.estado_mercancia === 'pagada').reduce((sum, f) => sum + (f.valor_real_a_pagar || f.monto_pagado || 0), 0),
-      pagosTobias,
-      pagosBancos,
-      pagosCaja,
+      totalPagadoOficial,
+      totalPagadoReal,
+      totalPendiente,
+      pagosMercancia: filteredFacturas.filter(f => f.clasificacion_original === 'Mercancía' && f.estado_mercancia === 'pagada').reduce((sum, f) => sum + (f.total_a_pagar || 0), 0),
+      pagosGastos: filteredFacturas.filter(f => f.clasificacion_original === 'Gastos' && f.estado_mercancia === 'pagada').reduce((sum, f) => sum + (f.total_a_pagar || 0), 0),
+      pagosTobiasOficial,
+      pagosTobiasReal,
+      pagosBancosOficial,
+      pagosBancosReal,
+      pagosCajaOficial,
+      pagosCajaReal,
+      desgloseTobias,
+      desgloseBancos,
+      desgloseCaja,
       totalImpuestosPagados: filteredFacturas.filter(f => f.estado_mercancia === 'pagada').reduce((sum, f) => sum + (f.factura_iva || 0), 0),
       totalImpuestos: filteredFacturas.reduce((sum, f) => sum + (f.factura_iva || 0), 0),
       totalRetenciones: filteredFacturas.filter(f => f.tiene_retencion).reduce((sum, f) => sum + calcularMontoRetencionReal(f), 0),
@@ -639,7 +674,7 @@ export default function Informes() {
                   <CheckCircle className="h-8 w-8 text-green-600" />
                   <div className="ml-3">
                     <p className="text-xs font-medium text-green-700">Total Pagado</p>
-                    <p className="text-xl font-bold text-green-700">{formatCurrency(stats.totalPagado)}</p>
+                    <p className="text-xl font-bold text-green-700">{formatCurrency(stats.totalPagadoReal)}</p>
                   </div>
                 </div>
               </CardContent>
@@ -678,38 +713,128 @@ export default function Informes() {
             Métodos de Pago
           </h3>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {/* Pago Tobías */}
             <Card>
               <CardContent className="p-4">
-                <div className="flex items-center">
+                <div className="flex items-center mb-2">
                   <Building2 className="h-8 w-8 text-blue-600" />
                   <div className="ml-3">
                     <p className="text-xs font-medium text-muted-foreground">Pagos por Tobías</p>
-                    <p className="text-xl font-bold">{formatCurrency(stats.pagosTobias)}</p>
                   </div>
+                </div>
+                <div className="ml-11 space-y-1">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs text-muted-foreground">Valor Oficial:</p>
+                    <p className="text-sm font-bold text-blue-700">{formatCurrency(stats.pagosTobiasOficial)}</p>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs text-muted-foreground">Valor Pagado:</p>
+                    <p className="text-sm font-semibold text-green-600">{formatCurrency(stats.pagosTobiasReal)}</p>
+                  </div>
+                  <div className="flex items-center justify-between pt-1 border-t">
+                    <p className="text-xs text-orange-600">Diferencia Total:</p>
+                    <p className="text-xs font-medium text-orange-600">{formatCurrency(stats.pagosTobiasOficial - stats.pagosTobiasReal)}</p>
+                  </div>
+                  {(stats.desgloseTobias.totalProntoPago > 0 || stats.desgloseTobias.totalRetencion > 0) && (
+                    <div className="ml-2 space-y-0.5 text-xs text-muted-foreground">
+                      {stats.desgloseTobias.totalProntoPago > 0 && (
+                        <div className="flex items-center justify-between">
+                          <span>• Pronto Pago:</span>
+                          <span>{formatCurrency(stats.desgloseTobias.totalProntoPago)}</span>
+                        </div>
+                      )}
+                      {stats.desgloseTobias.totalRetencion > 0 && (
+                        <div className="flex items-center justify-between">
+                          <span>• Retención:</span>
+                          <span>{formatCurrency(stats.desgloseTobias.totalRetencion)}</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               </CardContent>
             </Card>
 
+            {/* Pago Bancos */}
             <Card>
               <CardContent className="p-4">
-                <div className="flex items-center">
+                <div className="flex items-center mb-2">
                   <CreditCard className="h-8 w-8 text-green-600" />
                   <div className="ml-3">
                     <p className="text-xs font-medium text-muted-foreground">Pagos por Bancos</p>
-                    <p className="text-xl font-bold">{formatCurrency(stats.pagosBancos)}</p>
                   </div>
+                </div>
+                <div className="ml-11 space-y-1">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs text-muted-foreground">Valor Oficial:</p>
+                    <p className="text-sm font-bold text-blue-700">{formatCurrency(stats.pagosBancosOficial)}</p>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs text-muted-foreground">Valor Pagado:</p>
+                    <p className="text-sm font-semibold text-green-600">{formatCurrency(stats.pagosBancosReal)}</p>
+                  </div>
+                  <div className="flex items-center justify-between pt-1 border-t">
+                    <p className="text-xs text-orange-600">Diferencia Total:</p>
+                    <p className="text-xs font-medium text-orange-600">{formatCurrency(stats.pagosBancosOficial - stats.pagosBancosReal)}</p>
+                  </div>
+                  {(stats.desgloseBancos.totalProntoPago > 0 || stats.desgloseBancos.totalRetencion > 0) && (
+                    <div className="ml-2 space-y-0.5 text-xs text-muted-foreground">
+                      {stats.desgloseBancos.totalProntoPago > 0 && (
+                        <div className="flex items-center justify-between">
+                          <span>• Pronto Pago:</span>
+                          <span>{formatCurrency(stats.desgloseBancos.totalProntoPago)}</span>
+                        </div>
+                      )}
+                      {stats.desgloseBancos.totalRetencion > 0 && (
+                        <div className="flex items-center justify-between">
+                          <span>• Retención:</span>
+                          <span>{formatCurrency(stats.desgloseBancos.totalRetencion)}</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               </CardContent>
             </Card>
 
+            {/* Pago Caja */}
             <Card>
               <CardContent className="p-4">
-                <div className="flex items-center">
+                <div className="flex items-center mb-2">
                   <DollarSign className="h-8 w-8 text-purple-600" />
                   <div className="ml-3">
                     <p className="text-xs font-medium text-muted-foreground">Pagos por Caja</p>
-                    <p className="text-xl font-bold">{formatCurrency(stats.pagosCaja)}</p>
                   </div>
+                </div>
+                <div className="ml-11 space-y-1">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs text-muted-foreground">Valor Oficial:</p>
+                    <p className="text-sm font-bold text-blue-700">{formatCurrency(stats.pagosCajaOficial)}</p>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs text-muted-foreground">Valor Pagado:</p>
+                    <p className="text-sm font-semibold text-green-600">{formatCurrency(stats.pagosCajaReal)}</p>
+                  </div>
+                  <div className="flex items-center justify-between pt-1 border-t">
+                    <p className="text-xs text-orange-600">Diferencia Total:</p>
+                    <p className="text-xs font-medium text-orange-600">{formatCurrency(stats.pagosCajaOficial - stats.pagosCajaReal)}</p>
+                  </div>
+                  {(stats.desgloseCaja.totalProntoPago > 0 || stats.desgloseCaja.totalRetencion > 0) && (
+                    <div className="ml-2 space-y-0.5 text-xs text-muted-foreground">
+                      {stats.desgloseCaja.totalProntoPago > 0 && (
+                        <div className="flex items-center justify-between">
+                          <span>• Pronto Pago:</span>
+                          <span>{formatCurrency(stats.desgloseCaja.totalProntoPago)}</span>
+                        </div>
+                      )}
+                      {stats.desgloseCaja.totalRetencion > 0 && (
+                        <div className="flex items-center justify-between">
+                          <span>• Retención:</span>
+                          <span>{formatCurrency(stats.desgloseCaja.totalRetencion)}</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -850,21 +975,18 @@ export default function Informes() {
                 </Select>
               </div>
 
-              {/* Clasificación */}
+              {/* Tipo: Mercancía o Gastos */}
               <div>
-                <Label htmlFor="clasificacion">Clasificación</Label>
+                <Label htmlFor="tipo">Tipo</Label>
                 <Select value={filters.clasificacion || 'todas'} onValueChange={(value) => setFilters(prev => ({ ...prev, clasificacion: value === 'todas' ? '' : value }))}>
                   <SelectTrigger>
-                    <SelectValue placeholder="Seleccionar clasificación" />
+                    <SelectValue placeholder="Seleccionar tipo" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="todas">Todas las clasificaciones</SelectItem>
+                    <SelectItem value="todas">Todas</SelectItem>
+                    <SelectItem value="Mercancía">Mercancía</SelectItem>
+                    <SelectItem value="Gastos">Gastos</SelectItem>
                     <SelectItem value="sistematizada">Sistematizada</SelectItem>
-                    {uniqueClasificaciones.map(clasificacion => (
-                      <SelectItem key={clasificacion} value={clasificacion}>
-                        {clasificacion}
-                      </SelectItem>
-                    ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -970,40 +1092,46 @@ export default function Informes() {
               </div>
             </div>
           </CardHeader>
-          <CardContent>
+          <CardContent className="p-0">
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-12">
+                  <TableRow className="bg-muted/50">
+                    <TableHead className="w-10">
                       <Checkbox
                         checked={selectedFacturas.length === filteredFacturas.length && filteredFacturas.length > 0}
                         onCheckedChange={toggleSelectAll}
                       />
                     </TableHead>
-                    <TableHead>Proveedor</TableHead>
-                    <TableHead>Número Factura</TableHead>
-                    <TableHead>Número de Serie</TableHead>
-                    <TableHead>Clasificación</TableHead>
-                    <TableHead>
+                    <TableHead className="min-w-[180px]">Proveedor</TableHead>
+                    <TableHead className="w-[120px]">
+                      <div className="flex flex-col gap-1">
+                        <span className="text-xs">N° Factura</span>
+                        <span className="text-xs text-muted-foreground">Clasificación</span>
+                      </div>
+                    </TableHead>
+                    <TableHead className="w-[70px] text-xs">Serie</TableHead>
+                    <TableHead className="w-[100px]">
                       <Button
                         variant="ghost"
                         size="sm"
                         onClick={() => setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc')}
-                        className="h-8 font-medium"
+                        className="h-8 p-0 hover:bg-transparent"
                       >
-                        Fecha Emisión
-                        <ArrowUpDown className="ml-2 h-4 w-4" />
+                        <div className="flex items-center gap-1">
+                          <span className="text-xs">Emisión</span>
+                          <ArrowUpDown className="h-3 w-3" />
+                        </div>
                       </Button>
                     </TableHead>
-                    <TableHead>Fecha Vencimiento</TableHead>
-                    <TableHead>Fecha Pago</TableHead>
-                    <TableHead>Total Factura</TableHead>
-                    <TableHead>Total Pagado</TableHead>
-                    <TableHead>Estado</TableHead>
-                    <TableHead>Método Pago</TableHead>
-                    <TableHead>Días Vencimiento</TableHead>
-                    <TableHead>Acciones</TableHead>
+                    <TableHead className="w-[100px] text-xs">Vencimiento</TableHead>
+                    <TableHead className="w-[110px] text-right">Total Factura</TableHead>
+                    <TableHead className="w-[110px] text-right">Total Pagado</TableHead>
+                    <TableHead className="w-[90px]">Estado</TableHead>
+                    <TableHead className="w-[100px] text-xs">Método Pago</TableHead>
+                    <TableHead className="w-[50px] text-center">
+                      <Eye className="h-4 w-4 mx-auto" />
+                    </TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -1012,66 +1140,129 @@ export default function Informes() {
                     const urgencyBadge = getUrgencyBadge(diasVencimiento);
 
                     return (
-                      <TableRow key={factura.id}>
-                        <TableCell>
+                      <TableRow key={factura.id} className="hover:bg-muted/30">
+                        <TableCell className="py-3">
                           <Checkbox
                             checked={selectedFacturas.includes(factura.id)}
                             onCheckedChange={() => toggleSelection(factura.id)}
                           />
                         </TableCell>
-                        <TableCell className="font-medium">
-                          <div>
-                            <div>{factura.emisor_nombre}</div>
-                            <div className="text-xs text-muted-foreground">{factura.emisor_nit}</div>
+                        <TableCell className="py-3">
+                          <div className="flex flex-col gap-0.5">
+                            <span className="font-medium text-sm truncate max-w-[180px]" title={factura.emisor_nombre}>
+                              {factura.emisor_nombre}
+                            </span>
+                            <span className="text-xs text-muted-foreground">{factura.emisor_nit}</span>
                           </div>
                         </TableCell>
-                        <TableCell>
-                          <Link
-                            to={getFacturaRoute(factura)}
-                            className="text-blue-600 hover:text-blue-800 hover:underline font-medium"
-                          >
-                            {factura.numero_factura}
-                          </Link>
+                        <TableCell className="py-3">
+                          <div className="flex flex-col gap-1">
+                            <Link
+                              to={getFacturaRoute(factura)}
+                              className="text-blue-600 hover:text-blue-800 hover:underline font-medium text-sm"
+                            >
+                              {factura.numero_factura}
+                            </Link>
+                            <Badge variant="outline" className="text-xs w-fit">
+                              {(factura.clasificacion_original || factura.clasificacion || 'Sin clasificar').substring(0, 10)}
+                            </Badge>
+                          </div>
                         </TableCell>
-                        <TableCell className="text-xs">{factura.numero_serie || 'No especificado'}</TableCell>
-                        <TableCell>
-                          <Badge variant="outline">
-                            {factura.clasificacion_original || factura.clasificacion || 'Sin clasificar'}
-                          </Badge>
+                        <TableCell className="py-3">
+                          {editingSerieId === factura.id ? (
+                            <div className="flex items-center gap-1">
+                              <Input
+                                type="text"
+                                value={editingSerieValue}
+                                onChange={(e) => setEditingSerieValue(e.target.value)}
+                                className="h-7 w-16 text-sm text-center"
+                                autoFocus
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') {
+                                    handleSaveSerie(factura.id);
+                                  } else if (e.key === 'Escape') {
+                                    handleCancelEdit();
+                                  }
+                                }}
+                              />
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-7 w-7 p-0"
+                                onClick={() => handleSaveSerie(factura.id)}
+                              >
+                                <Check className="h-3 w-3 text-green-600" />
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-7 w-7 p-0"
+                                onClick={handleCancelEdit}
+                              >
+                                <X className="h-3 w-3 text-red-600" />
+                              </Button>
+                            </div>
+                          ) : (
+                            <div className="flex items-center justify-center gap-2 group">
+                              <span className="text-sm font-medium">{factura.numero_serie || '-'}</span>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                                onClick={() => handleEditSerie(factura.id, factura.numero_serie)}
+                              >
+                                <Edit2 className="h-3 w-3 text-blue-600" />
+                              </Button>
+                            </div>
+                          )}
                         </TableCell>
-                        <TableCell>{formatFechaSafe(factura.fecha_emision)}</TableCell>
-                        <TableCell>{formatFechaSafe(factura.fecha_vencimiento)}</TableCell>
-                        <TableCell className="font-semibold text-blue-600">{formatFechaSafe(factura.fecha_pago)}</TableCell>
-                        <TableCell className="font-semibold">{formatCurrency(factura.total_a_pagar)}</TableCell>
-                        <TableCell className="font-semibold text-green-600">
-                          {formatCurrency(factura.valor_real_a_pagar || factura.monto_pagado || 0)}
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant={factura.estado_mercancia === 'pagada' ? 'default' : 'destructive'}>
-                            {factura.estado_mercancia || 'Pendiente'}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>{factura.metodo_pago || 'No especificado'}</TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            {diasVencimiento !== null && (
-                              <>
-                                <span className={diasVencimiento < 0 ? 'text-red-600 font-semibold' : ''}>
-                                  {diasVencimiento < 0 ? `${Math.abs(diasVencimiento)} días vencida` : `${diasVencimiento} días`}
-                                </span>
-                                {urgencyBadge && (
-                                  <Badge className={`text-xs px-2 py-1 ${urgencyBadge.color}`}>
-                                    {urgencyBadge.text}
-                                  </Badge>
-                                )}
-                              </>
+                        <TableCell className="py-3">
+                          <div className="flex flex-col gap-0.5">
+                            <span className="text-sm">{formatFechaSafe(factura.fecha_emision)}</span>
+                            {urgencyBadge && (
+                              <Badge className={`text-xs px-1.5 py-0 w-fit ${urgencyBadge.color}`}>
+                                {urgencyBadge.text}
+                              </Badge>
                             )}
                           </div>
                         </TableCell>
-                        <TableCell>
+                        <TableCell className="py-3">
+                          <div className="flex flex-col gap-0.5">
+                            <span className="text-sm">{formatFechaSafe(factura.fecha_vencimiento)}</span>
+                            {factura.fecha_pago && (
+                              <span className="text-xs text-blue-600">Pago: {formatFechaSafe(factura.fecha_pago)}</span>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell className="py-3 text-right">
+                          <span className="font-semibold text-sm">{formatCurrency(factura.total_a_pagar)}</span>
+                        </TableCell>
+                        <TableCell className="py-3 text-right">
+                          <span className="font-semibold text-green-600 text-sm">
+                            {formatCurrency(factura.valor_real_a_pagar || factura.monto_pagado || 0)}
+                          </span>
+                        </TableCell>
+                        <TableCell className="py-3">
+                          <div className="flex flex-col gap-1">
+                            <Badge
+                              variant={factura.estado_mercancia === 'pagada' ? 'default' : 'destructive'}
+                              className="w-fit text-xs"
+                            >
+                              {factura.estado_mercancia || 'Pendiente'}
+                            </Badge>
+                            {diasVencimiento !== null && diasVencimiento < 0 && (
+                              <span className="text-xs text-red-600 font-medium">
+                                {Math.abs(diasVencimiento)}d
+                              </span>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell className="py-3 text-xs">{factura.metodo_pago || '-'}</TableCell>
+                        <TableCell className="py-3 text-center">
                           <Button
                             variant="ghost"
                             size="sm"
+                            className="h-8 w-8 p-0"
                             onClick={() => {
                               if (factura.pdf_file_path) {
                                 handleOpenPdf(factura.pdf_file_path);
