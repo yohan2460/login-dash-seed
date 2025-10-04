@@ -512,6 +512,60 @@ export default function Informes() {
     }
   };
 
+  // Función para descargar comprobante de pago
+  const descargarComprobantePago = async (facturaId: string) => {
+    try {
+      console.log('🔍 Buscando comprobante para factura:', facturaId);
+
+      // Buscar comprobante asociado a esta factura usando el operador @>
+      const { data: comprobantes, error } = await supabase
+        .from('comprobantes_pago')
+        .select('*')
+        .filter('facturas_ids', 'cs', `{${facturaId}}`)
+        .order('created_at', { ascending: false })
+        .limit(1);
+
+      console.log('📊 Resultado búsqueda:', { comprobantes, error });
+
+      if (error) throw error;
+
+      if (!comprobantes || comprobantes.length === 0) {
+        toast({
+          title: "Comprobante no encontrado",
+          description: "No hay comprobante de pago asociado a esta factura. El comprobante se genera automáticamente al registrar el pago.",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      const comprobante = comprobantes[0];
+
+      // Obtener URL firmada del PDF
+      const { data: urlData, error: urlError } = await supabase.storage
+        .from('facturas-pdf')
+        .createSignedUrl(comprobante.pdf_file_path, 3600);
+
+      if (urlError) throw urlError;
+
+      if (urlData?.signedUrl) {
+        // Abrir el PDF en una nueva pestaña
+        window.open(urlData.signedUrl, '_blank');
+
+        toast({
+          title: "Comprobante abierto",
+          description: "El comprobante de pago se abrió en una nueva pestaña"
+        });
+      }
+    } catch (error) {
+      console.error('Error al descargar comprobante:', error);
+      toast({
+        title: "Error al descargar",
+        description: "Hubo un error al descargar el comprobante",
+        variant: "destructive"
+      });
+    }
+  };
+
   const handleEditSerie = (facturaId: string, currentSerie: string | null) => {
     setEditingSerieId(facturaId);
     setEditingSerieValue(currentSerie || '');
@@ -1496,26 +1550,42 @@ export default function Informes() {
                           )}
                         </TableCell>
                         <TableCell className="py-3 text-center">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-8 w-8 p-0"
-                            onClick={() => {
-                              if (factura.pdf_file_path) {
-                                handleOpenPdf(factura.pdf_file_path);
-                              } else {
-                                toast({
-                                  title: "PDF no disponible",
-                                  description: "Esta factura no tiene un PDF asociado",
-                                  variant: "destructive",
-                                });
-                              }
-                            }}
-                            title={factura.pdf_file_path ? "Ver PDF" : "PDF no disponible"}
-                            disabled={!factura.pdf_file_path || loadingPdf}
-                          >
-                            <Eye className={`h-4 w-4 ${factura.pdf_file_path ? 'text-blue-600' : 'text-gray-400'}`} />
-                          </Button>
+                          <div className="flex items-center justify-center gap-1">
+                            {/* Botón Ver PDF de Factura */}
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-8 w-8 p-0"
+                              onClick={() => {
+                                if (factura.pdf_file_path) {
+                                  handleOpenPdf(factura.pdf_file_path);
+                                } else {
+                                  toast({
+                                    title: "PDF no disponible",
+                                    description: "Esta factura no tiene un PDF asociado",
+                                    variant: "destructive",
+                                  });
+                                }
+                              }}
+                              title={factura.pdf_file_path ? "Ver PDF de Factura" : "PDF no disponible"}
+                              disabled={!factura.pdf_file_path || loadingPdf}
+                            >
+                              <Eye className={`h-4 w-4 ${factura.pdf_file_path ? 'text-blue-600' : 'text-gray-400'}`} />
+                            </Button>
+
+                            {/* Botón Descargar Comprobante de Pago */}
+                            {factura.estado_mercancia === 'pagada' && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-8 w-8 p-0"
+                                onClick={() => descargarComprobantePago(factura.id)}
+                                title="Descargar Comprobante de Pago"
+                              >
+                                <Receipt className="h-4 w-4 text-green-600" />
+                              </Button>
+                            )}
+                          </div>
                         </TableCell>
                       </TableRow>
                     );

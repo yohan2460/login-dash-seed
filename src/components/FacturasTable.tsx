@@ -179,17 +179,12 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
       if (urlError) throw urlError;
 
       if (urlData?.signedUrl) {
-        // Descargar el PDF
-        const link = document.createElement('a');
-        link.href = urlData.signedUrl;
-        link.download = comprobante.pdf_file_path.split('/').pop() || 'comprobante.pdf';
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
+        // Abrir el PDF en una nueva pestaña
+        window.open(urlData.signedUrl, '_blank');
 
         toast({
-          title: "Comprobante descargado",
-          description: "El comprobante de pago se descargó correctamente"
+          title: "Comprobante abierto",
+          description: "El comprobante de pago se abrió en una nueva pestaña"
         });
       }
     } catch (error) {
