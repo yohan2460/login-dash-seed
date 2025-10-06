@@ -435,7 +435,10 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
       doc.text('Fecha de Pago:', 20, currentY + 5);
       doc.setFont('helvetica', 'bold');
       doc.setTextColor(0, 0, 0);
-      doc.text(new Date(paymentDate).toLocaleDateString('es-CO', {
+      // Convertir fecha correctamente evitando problemas de zona horaria
+      const [yearPdf, monthPdf, dayPdf] = paymentDate.split('-');
+      const fechaCorrecta = new Date(parseInt(yearPdf), parseInt(monthPdf) - 1, parseInt(dayPdf), 12, 0, 0);
+      doc.text(fechaCorrecta.toLocaleDateString('es-CO', {
         weekday: 'long',
         year: 'numeric',
         month: 'long',
@@ -456,7 +459,10 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
       doc.text('Fecha de Pago:', 20, currentY + 16);
       doc.setFont('helvetica', 'bold');
       doc.setTextColor(0, 0, 0);
-      doc.text(new Date(paymentDate).toLocaleDateString('es-CO', {
+      // Convertir fecha correctamente evitando problemas de zona horaria
+      const [yearPdf2, monthPdf2, dayPdf2] = paymentDate.split('-');
+      const fechaCorrecta2 = new Date(parseInt(yearPdf2), parseInt(monthPdf2) - 1, parseInt(dayPdf2), 12, 0, 0);
+      doc.text(fechaCorrecta2.toLocaleDateString('es-CO', {
         weekday: 'long',
         year: 'numeric',
         month: 'long',
@@ -519,11 +525,15 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
 
       console.log('👤 User ID:', userId);
 
+      // Convertir la fecha correctamente
+      const [year, month, day] = paymentDate.split('-');
+      const fechaPagoComprobante = new Date(parseInt(year), parseInt(month) - 1, parseInt(day), 12, 0, 0).toISOString();
+
       const comprobanteData = {
         user_id: userId,
         tipo_comprobante: 'pago_individual' as const,
         metodo_pago: usarPagoPartido ? 'Pago Partido' : selectedPaymentMethod,
-        fecha_pago: new Date(paymentDate).toISOString(),
+        fecha_pago: fechaPagoComprobante,
         total_pagado: valorFinal,
         cantidad_facturas: 1,
         pdf_file_path: storagePath,
@@ -624,6 +634,10 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
       const pdfFileName = await generarYGuardarComprobantePDF();
       console.log('✅ PDF guardado:', pdfFileName);
 
+      // Convertir la fecha correctamente para evitar problemas de zona horaria
+      const [year, month, day] = paymentDate.split('-');
+      const fechaPagoISO = new Date(parseInt(year), parseInt(month) - 1, parseInt(day), 12, 0, 0).toISOString();
+
       // PASO 2: Actualizar el estado de la factura
       console.log('🎯 PASO 2: Actualizando estado de factura...');
       if (usarPagoPartido) {
@@ -634,7 +648,7 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
             estado_mercancia: 'pagada',
             metodo_pago: 'Pago Partido',
             uso_pronto_pago: factura.porcentaje_pronto_pago && factura.porcentaje_pronto_pago > 0,
-            fecha_pago: new Date(paymentDate).toISOString(),
+            fecha_pago: fechaPagoISO,
             valor_real_a_pagar: valorRealAPagar
           })
           .eq('id', factura.id);
@@ -645,7 +659,7 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
         console.log('📝 Intentando insertar pagos partidos:', {
           factura_id: factura.id,
           metodos: metodosPago,
-          fecha: new Date(paymentDate).toISOString()
+          fecha: fechaPagoISO
         });
 
         const pagoPartidoPromises = metodosPago.map(mp =>
@@ -655,7 +669,7 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
               factura_id: factura.id,
               metodo_pago: mp.metodo,
               monto: mp.monto,
-              fecha_pago: new Date(paymentDate).toISOString()
+              fecha_pago: fechaPagoISO
             })
         );
 
@@ -684,7 +698,7 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
             estado_mercancia: 'pagada',
             metodo_pago: selectedPaymentMethod,
             uso_pronto_pago: usedProntoPago === 'yes',
-            fecha_pago: new Date(paymentDate).toISOString(),
+            fecha_pago: fechaPagoISO,
             valor_real_a_pagar: valorRealAPagar
           })
           .eq('id', factura.id);
@@ -704,7 +718,7 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
             factura_id: factura.id,
             metodo_pago: selectedPaymentMethod,
             monto: valorRealAPagar,
-            fecha_pago: new Date(paymentDate).toISOString()
+            fecha_pago: fechaPagoISO
           });
 
         if (pagoError) {

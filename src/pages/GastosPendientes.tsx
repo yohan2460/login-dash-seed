@@ -12,6 +12,7 @@ import { FacturasTable } from '@/components/FacturasTable';
 import { PaymentMethodDialog } from '@/components/PaymentMethodDialog';
 import { EditFacturaDialog } from '@/components/EditFacturaDialog';
 import { MultiplePaymentDialog } from '@/components/MultiplePaymentDialog';
+import { NotaCreditoDialog } from '@/components/NotaCreditoDialog';
 import { ModernLayout } from '@/components/ModernLayout';
 
 interface Factura {
@@ -51,6 +52,8 @@ export function GastosPendientes() {
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
   const [selectedFacturasForPayment, setSelectedFacturasForPayment] = useState<Factura[]>([]);
   const [isMultiplePaymentDialogOpen, setIsMultiplePaymentDialogOpen] = useState(false);
+  const [selectedFacturaForNotaCredito, setSelectedFacturaForNotaCredito] = useState<Factura | null>(null);
+  const [isNotaCreditoDialogOpen, setIsNotaCreditoDialogOpen] = useState(false);
 
   useEffect(() => {
     if (user) {
@@ -111,6 +114,17 @@ export function GastosPendientes() {
   const handleMultiplePayment = (facturas: Factura[]) => {
     setSelectedFacturasForPayment(facturas);
     setIsMultiplePaymentDialogOpen(true);
+  };
+
+  const handleNotaCredito = (factura: Factura) => {
+    setSelectedFacturaForNotaCredito(factura);
+    setIsNotaCreditoDialogOpen(true);
+  };
+
+  const handleNotaCreditoCreated = () => {
+    fetchFacturas();
+    setIsNotaCreditoDialogOpen(false);
+    setSelectedFacturaForNotaCredito(null);
   };
 
   const formatCurrency = (amount: number) => {
@@ -338,6 +352,7 @@ export function GastosPendientes() {
                 showValorRealAPagar={true}
                 showEditButton={true}
                 onEditClick={handleEdit}
+                onNotaCreditoClick={handleNotaCredito}
                 showMultiplePayment={true}
                 onMultiplePayClick={handleMultiplePayment}
                 highlightedId={highlightedId}
@@ -377,6 +392,17 @@ export function GastosPendientes() {
           }}
           facturas={selectedFacturasForPayment}
           onPaymentProcessed={fetchFacturas}
+        />
+
+        {/* Nota de Crédito Dialog */}
+        <NotaCreditoDialog
+          factura={selectedFacturaForNotaCredito}
+          isOpen={isNotaCreditoDialogOpen}
+          onClose={() => {
+            setIsNotaCreditoDialogOpen(false);
+            setSelectedFacturaForNotaCredito(null);
+          }}
+          onNotaCreditoCreated={handleNotaCreditoCreated}
         />
       </div>
     </ModernLayout>

@@ -420,44 +420,43 @@ export function MultiplePaymentDialog({
       ]);
 
       // Fila de detalles (retención, pronto pago y descuentos adicionales) - SOLO si hay algo que mostrar
-      if (detalles.retencion > 0 || detalles.prontoPago > 0 || detalles.totalDescuentosAdicionales > 0 || detalles.totalDescuento > 0) {
-        let detallesText = '';
+      let detallesText = '';
 
-        // Descuentos adicionales
-        if (detalles.descuentosAdicionales && detalles.descuentosAdicionales.length > 0) {
-          const descuentosTexto = detalles.descuentosAdicionales.map((desc: any) => {
-            const valorDesc = desc.tipo === 'porcentaje'
-              ? (factura.total_sin_iva || (factura.total_a_pagar - (factura.factura_iva || 0))) * (desc.valor / 100)
-              : desc.valor;
-            return `${desc.concepto} (${desc.tipo === 'porcentaje' ? desc.valor + '%' : formatCurrency(desc.valor)}): -${formatCurrency(valorDesc)}`;
-          }).join('  |  ');
-          detallesText += descuentosTexto;
-        }
+      // Descuentos adicionales PRIMERO
+      if (detalles.descuentosAdicionales && detalles.descuentosAdicionales.length > 0) {
+        const descuentosTexto = detalles.descuentosAdicionales.map((desc: any) => {
+          const valorDesc = desc.tipo === 'porcentaje'
+            ? (factura.total_sin_iva || (factura.total_a_pagar - (factura.factura_iva || 0))) * (desc.valor / 100)
+            : desc.valor;
+          return `${desc.concepto} (${desc.tipo === 'porcentaje' ? desc.valor + '%' : formatCurrency(desc.valor)}): -${formatCurrency(valorDesc)}`;
+        }).join('  |  ');
+        detallesText += descuentosTexto;
+      }
 
-        if (detalles.retencion > 0) {
-          if (detallesText) detallesText += '  |  ';
-          detallesText += `Retencion (${factura.monto_retencion}%): -${formatCurrency(detalles.retencion)}`;
-        }
+      if (detalles.retencion > 0) {
+        if (detallesText) detallesText += '  |  ';
+        detallesText += `Retencion (${factura.monto_retencion}%): -${formatCurrency(detalles.retencion)}`;
+      }
 
-        if (detalles.prontoPago > 0) {
-          if (detallesText) detallesText += '  |  ';
-          detallesText += `Pronto Pago (${factura.porcentaje_pronto_pago}%): -${formatCurrency(detalles.prontoPago)}`;
-        }
+      if (detalles.prontoPago > 0) {
+        if (detallesText) detallesText += '  |  ';
+        detallesText += `Pronto Pago (${factura.porcentaje_pronto_pago}%): -${formatCurrency(detalles.prontoPago)}`;
+      }
 
-        if (detalles.totalDescuento > 0) {
-          if (detallesText) detallesText += '  |  ';
-          detallesText += `Total Descuento: -${formatCurrency(detalles.totalDescuento)}`;
-        }
+      if (detalles.totalDescuento > 0) {
+        if (detallesText) detallesText += '  |  ';
+        detallesText += `Total Descuento: -${formatCurrency(detalles.totalDescuento)}`;
+      }
 
-        if (detallesText) {
-          rows.push([
-            {
-              content: detallesText,
-              colSpan: 5,
-              styles: { fontSize: 7, textColor: [107, 114, 128], fillColor: [249, 250, 251] }
-            }
-          ]);
-        }
+      // Agregar la fila de detalles si hay contenido
+      if (detallesText) {
+        rows.push([
+          {
+            content: detallesText,
+            colSpan: 5,
+            styles: { fontSize: 7, textColor: [107, 114, 128], fillColor: [249, 250, 251] }
+          }
+        ]);
       }
 
       return rows;
@@ -549,7 +548,10 @@ export function MultiplePaymentDialog({
       doc.text('Fecha de Pago:', 20, currentY + 5);
       doc.setFont('helvetica', 'bold');
       doc.setTextColor(0, 0, 0);
-      doc.text(new Date(fechaPago).toLocaleDateString('es-CO', {
+      // Convertir fecha correctamente evitando problemas de zona horaria
+      const [yearPdf, monthPdf, dayPdf] = fechaPago.split('-');
+      const fechaCorrecta = new Date(parseInt(yearPdf), parseInt(monthPdf) - 1, parseInt(dayPdf), 12, 0, 0);
+      doc.text(fechaCorrecta.toLocaleDateString('es-CO', {
         weekday: 'long',
         year: 'numeric',
         month: 'long',
@@ -570,7 +572,10 @@ export function MultiplePaymentDialog({
       doc.text('Fecha de Pago:', 20, currentY + 16);
       doc.setFont('helvetica', 'bold');
       doc.setTextColor(0, 0, 0);
-      doc.text(new Date(fechaPago).toLocaleDateString('es-CO', {
+      // Convertir fecha correctamente evitando problemas de zona horaria
+      const [yearPdf2, monthPdf2, dayPdf2] = fechaPago.split('-');
+      const fechaCorrecta2 = new Date(parseInt(yearPdf2), parseInt(monthPdf2) - 1, parseInt(dayPdf2), 12, 0, 0);
+      doc.text(fechaCorrecta2.toLocaleDateString('es-CO', {
         weekday: 'long',
         year: 'numeric',
         month: 'long',
@@ -661,11 +666,15 @@ export function MultiplePaymentDialog({
       const facturasIds = facturas.map(f => f.id);
       console.log('📋 IDs de facturas:', facturasIds);
 
+      // Convertir la fecha correctamente
+      const [year, month, day] = fechaPago.split('-');
+      const fechaPagoComprobante = new Date(parseInt(year), parseInt(month) - 1, parseInt(day), 12, 0, 0).toISOString();
+
       const comprobanteData = {
         user_id: userId,
         tipo_comprobante: 'pago_multiple' as const,
         metodo_pago: usarPagoPartido ? 'Pago Partido' : metodoPago,
-        fecha_pago: new Date(fechaPago).toISOString(),
+        fecha_pago: fechaPagoComprobante,
         total_pagado: totalPagado,
         cantidad_facturas: facturas.length,
         pdf_file_path: storagePath,
@@ -781,8 +790,10 @@ export function MultiplePaymentDialog({
       // PASO 2: Actualizar el estado de las facturas
       console.log('🎯 PASO 2: Actualizando estado de facturas...');
 
-      // Convertir la fecha seleccionada a ISO string con hora actual
-      const fechaPagoISO = new Date(fechaPago + 'T00:00:00').toISOString();
+      // Convertir la fecha seleccionada a ISO string manteniendo la fecha correcta
+      // Agregar la zona horaria local para evitar que se reste un día al convertir a UTC
+      const [year, month, day] = fechaPago.split('-');
+      const fechaPagoISO = new Date(parseInt(year), parseInt(month) - 1, parseInt(day), 12, 0, 0).toISOString();
 
       // Si es pago partido, procesamos diferente
       if (usarPagoPartido) {

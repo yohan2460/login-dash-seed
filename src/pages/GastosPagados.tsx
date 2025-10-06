@@ -13,6 +13,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ModernStatsCard } from '@/components/ModernStatsCard';
 import { FacturasTable } from '@/components/FacturasTable';
+import { NotaCreditoDialog } from '@/components/NotaCreditoDialog';
 import { ModernLayout } from '@/components/ModernLayout';
 
 interface Factura {
@@ -52,6 +53,8 @@ export function GastosPagados() {
   const [sortByDate, setSortByDate] = useState<'newest' | 'oldest'>('newest');
   const [searchKeyword, setSearchKeyword] = useState('');
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
+  const [selectedFacturaForNotaCredito, setSelectedFacturaForNotaCredito] = useState<Factura | null>(null);
+  const [isNotaCreditoDialogOpen, setIsNotaCreditoDialogOpen] = useState(false);
 
   useEffect(() => {
     if (user) {
@@ -113,6 +116,17 @@ export function GastosPagados() {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleNotaCredito = (factura: Factura) => {
+    setSelectedFacturaForNotaCredito(factura);
+    setIsNotaCreditoDialogOpen(true);
+  };
+
+  const handleNotaCreditoCreated = () => {
+    fetchFacturas();
+    setIsNotaCreditoDialogOpen(false);
+    setSelectedFacturaForNotaCredito(null);
   };
 
   const formatCurrency = (amount: number) => {
@@ -338,11 +352,23 @@ export function GastosPagados() {
                 refreshData={fetchFacturas}
                 showActions={false}
                 showClassifyButton={false}
+                onNotaCreditoClick={handleNotaCredito}
                 highlightedId={highlightedId}
               />
             )}
           </CardContent>
         </Card>
+
+        {/* Nota de Crédito Dialog */}
+        <NotaCreditoDialog
+          factura={selectedFacturaForNotaCredito}
+          isOpen={isNotaCreditoDialogOpen}
+          onClose={() => {
+            setIsNotaCreditoDialogOpen(false);
+            setSelectedFacturaForNotaCredito(null);
+          }}
+          onNotaCreditoCreated={handleNotaCreditoCreated}
+        />
       </div>
     </ModernLayout>
   );
