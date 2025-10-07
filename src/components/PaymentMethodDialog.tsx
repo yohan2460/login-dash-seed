@@ -35,6 +35,11 @@ interface Factura {
   valor_real_a_pagar?: number | null;
   descuentos_antes_iva?: string | null;
   total_sin_iva?: number | null;
+  notas?: string | null;
+  estado_nota_credito?: 'pendiente' | 'aplicada' | 'anulada' | null;
+  valor_nota_credito?: number | null;
+  factura_original_id?: string | null;
+  total_con_descuento?: number | null;
 }
 
 interface PaymentMethodDialogProps {
@@ -85,6 +90,31 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
       style: 'currency',
       currency: 'COP'
     }).format(amount);
+  };
+
+  const obtenerNotasCreditoAplicadas = (facturaActual: Factura | null) => {
+    if (!facturaActual?.notas) {
+      return { notasCredito: [] as { numero: string; valor: number; fecha?: string | null }[], totalNotasCredito: 0 };
+    }
+
+    try {
+      const notasData = JSON.parse(facturaActual.notas);
+      if (Array.isArray(notasData?.notas_credito)) {
+        const notasCredito = notasData.notas_credito
+          .filter((nc: any) => nc)
+          .map((nc: any) => ({
+            numero: nc.numero_factura || notasData.numero_factura_aplicada || 'Nota Crédito',
+            valor: nc.valor_descuento ?? nc.valor_aplicado ?? 0,
+            fecha: nc.fecha_aplicacion || notasData.fecha_aplicacion || null
+          }));
+        const totalNotasCredito = notasCredito.reduce((sum, nc) => sum + (nc.valor || 0), 0);
+        return { notasCredito, totalNotasCredito };
+      }
+    } catch (error) {
+      console.error('Error parsing notas de crédito:', error);
+    }
+
+    return { notasCredito: [] as { numero: string; valor: number; fecha?: string | null }[], totalNotasCredito: 0 };
   };
 
 
@@ -354,7 +384,17 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
 
     const doc = new jsPDF();
     const pageWidth = doc.internal.pageSize.width;
+    const pageHeight = doc.internal.pageSize.height;
+    const topMargin = 20;
+    const bottomMargin = 30;
     let currentY = 15;
+
+    const ensureSpace = (height: number) => {
+      if (currentY + height > pageHeight - bottomMargin) {
+        doc.addPage();
+        currentY = topMargin;
+      }
+    };
 
     // Si los saldos fueron aplicados, obtener las aplicaciones desde la BD
     let saldosAplicadosDesdeDB: any[] = [];
@@ -415,6 +455,7 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
         console.error('Error parsing descuentos_antes_iva:', error);
       }
     }
+    const { notasCredito, totalNotasCredito } = obtenerNotasCreditoAplicadas(factura);
 
     // ========== ENCABEZADO ==========
     doc.setFillColor(59, 130, 246);
@@ -557,6 +598,13 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
       });
     }
 
+    if (notasCredito.length > 0) {
+      notasCredito.forEach((nc) => {
+        const etiqueta = nc.numero ? `Nota Crédito ${nc.numero}` : 'Nota Crédito';
+        tableData.push([etiqueta, `-${formatCurrency(nc.valor || 0)}`]);
+      });
+    }
+
     autoTable(doc, {
       startY: currentY,
       body: tableData,
@@ -644,7 +692,54 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
       currentY += 15;
     }
 
+    if (notasCredito.length > 0) {
+      ensureSpace(20 + notasCredito.length * 8);
+      doc.setFillColor(255, 247, 237); // Naranja claro
+      doc.roundedRect(14, currentY, pageWidth - 28, 10, 2, 2, 'F');
+      doc.setFontSize(11);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(249, 115, 22);
+      doc.text('NOTAS DE CRÉDITO APLICADAS', 18, currentY + 7);
+      currentY += 15;
+
+      autoTable(doc, {
+        startY: currentY,
+        body: notasCredito.map((nc) => [
+          nc.numero || 'Nota Crédito',
+          `-${formatCurrency(nc.valor || 0)}`
+        ]),
+        theme: 'plain',
+        styles: {
+          fontSize: 9,
+          cellPadding: 3,
+          textColor: [249, 115, 22]
+        },
+        columnStyles: {
+          0: { cellWidth: 100, fontStyle: 'bold' },
+          1: { cellWidth: 60, halign: 'right', fontStyle: 'bold' }
+        }
+      });
+
+      currentY = (doc as any).lastAutoTable.finalY + 8;
+
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(249, 115, 22);
+      doc.text('Total Notas Crédito Aplicadas:', pageWidth - 110, currentY);
+      doc.text(`-${formatCurrency(totalNotasCredito)}`, pageWidth - 14, currentY, { align: 'right' });
+
+      currentY += 15;
+    }
+
     // ========== DETALLES DEL PAGO ==========
+    const valorFinalDisponible = obtenerValorFinal(factura);
+    const esPagadoConSoloSaldos = totalSaldosAplicados > 0 && valorFinalDisponible - totalSaldosAplicados < 1;
+    const detalleBoxHeight = esPagadoConSoloSaldos
+      ? 20
+      : usarPagoPartido ? 35 + (metodosPago.length * 8) : 25;
+
+    ensureSpace(15 + detalleBoxHeight);
+
     doc.setFillColor(245, 247, 250);
     doc.roundedRect(14, currentY, pageWidth - 28, 10, 2, 2, 'F');
     doc.setFontSize(11);
@@ -653,11 +748,6 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
     doc.text('DETALLES DEL PAGO', 18, currentY + 7);
     currentY += 15;
 
-    // Ajustar altura si es pago partido o si no hay método de pago (solo saldos)
-    const esPagadoConSoloSaldos = totalSaldosAplicados > 0 && obtenerValorFinal(factura) - totalSaldosAplicados < 1;
-    const detalleBoxHeight = esPagadoConSoloSaldos
-      ? 20
-      : usarPagoPartido ? 35 + (metodosPago.length * 8) : 25;
     doc.setDrawColor(229, 231, 235);
     doc.roundedRect(14, currentY, pageWidth - 28, detalleBoxHeight, 3, 3, 'S');
 
@@ -847,7 +937,9 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
           descuentos_adicionales: totalDescuentosAdicionales,
           pagos_partidos: usarPagoPartido ? metodosPago.filter(p => p.monto > 0) : null,
           saldos_aplicados: saldosAplicadosInfo.length > 0 ? saldosAplicadosInfo : null,
-          total_saldos_aplicados: totalSaldosInfo
+          total_saldos_aplicados: totalSaldosInfo,
+          notas_credito: notasCredito.length > 0 ? notasCredito : null,
+          total_notas_credito: totalNotasCredito
         }
       };
 

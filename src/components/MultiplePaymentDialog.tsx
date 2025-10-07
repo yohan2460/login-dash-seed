@@ -30,6 +30,11 @@ interface Factura {
   total_sin_iva?: number | null;
   uso_pronto_pago?: boolean | null;
   descuentos_antes_iva?: string | null;
+  notas?: string | null;
+  estado_nota_credito?: 'pendiente' | 'aplicada' | 'anulada' | null;
+  valor_nota_credito?: number | null;
+  factura_original_id?: string | null;
+  total_con_descuento?: number | null;
 }
 
 interface MultiplePaymentDialogProps {
@@ -83,6 +88,32 @@ export function MultiplePaymentDialog({
   const [aplicandoSaldos, setAplicandoSaldos] = useState(false);
 
   const { toast } = useToast();
+
+  const extraerNotasCredito = (factura: Factura) => {
+    if (!factura.notas) {
+      return { notasCredito: [] as { numero: string; valor: number; fecha?: string | null }[], totalNotasCredito: 0 };
+    }
+
+    try {
+      const notasData = JSON.parse(factura.notas);
+      if (Array.isArray(notasData?.notas_credito)) {
+        const notasCredito = notasData.notas_credito
+          .filter((nc: any) => nc)
+          .map((nc: any) => ({
+            numero: nc.numero_factura || notasData.numero_factura_aplicada || 'Nota Crédito',
+            valor: nc.valor_descuento ?? nc.valor_aplicado ?? 0,
+            fecha: nc.fecha_aplicacion || notasData.fecha_aplicacion || null
+          }));
+
+        const totalNotasCredito = notasCredito.reduce((sum, nc) => sum + (nc.valor || 0), 0);
+        return { notasCredito, totalNotasCredito };
+      }
+    } catch (error) {
+      console.error('Error parsing notas de crédito:', error);
+    }
+
+    return { notasCredito: [] as { numero: string; valor: number; fecha?: string | null }[], totalNotasCredito: 0 };
+  };
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('es-CO', {
@@ -286,6 +317,8 @@ export function MultiplePaymentDialog({
     // Si los saldos ya fueron aplicados, usar el valor_real_a_pagar de la base de datos
     // que ya tiene los saldos descontados
     if (saldosAplicados && factura.valor_real_a_pagar !== null && factura.valor_real_a_pagar !== undefined) {
+      const { notasCredito, totalNotasCredito } = extraerNotasCredito(factura);
+
       // Calcular retención
       const retencion = factura.tiene_retencion && factura.monto_retencion
         ? calcularMontoRetencionReal(factura)
@@ -329,11 +362,15 @@ export function MultiplePaymentDialog({
         totalDescuento,
         aplicarProntoPago,
         descuentosAdicionales,
-        totalDescuentosAdicionales
+        totalDescuentosAdicionales,
+        notasCredito,
+        totalNotasCredito
       };
     }
 
     // Si NO se han aplicado saldos, calcular normalmente
+    const { notasCredito, totalNotasCredito } = extraerNotasCredito(factura);
+
     // Calcular retención
     const retencion = factura.tiene_retencion && factura.monto_retencion
       ? calcularMontoRetencionReal(factura)
@@ -394,7 +431,9 @@ export function MultiplePaymentDialog({
       totalDescuento,
       aplicarProntoPago,
       descuentosAdicionales,
-      totalDescuentosAdicionales
+      totalDescuentosAdicionales,
+      notasCredito,
+      totalNotasCredito
     };
   };
 
@@ -457,7 +496,17 @@ export function MultiplePaymentDialog({
   const generarYGuardarComprobantePDF = async () => {
     const doc = new jsPDF();
     const pageWidth = doc.internal.pageSize.width;
+    const pageHeight = doc.internal.pageSize.height;
+    const topMargin = 20;
+    const bottomMargin = 30;
     let currentY = 15;
+
+    const ensureSpace = (height: number) => {
+      if (currentY + height > pageHeight - bottomMargin) {
+        doc.addPage();
+        currentY = topMargin;
+      }
+    };
 
     // Si los saldos fueron aplicados, obtener las aplicaciones desde la BD
     let saldosAplicadosDesdeDB: any[] = [];
@@ -696,6 +745,17 @@ export function MultiplePaymentDialog({
         detallesText += `Pronto Pago (${factura.porcentaje_pronto_pago}%): -${formatCurrency(detalles.prontoPago)}`;
       }
 
+      if (detalles.notasCredito && detalles.notasCredito.length > 0) {
+        const notasTexto = detalles.notasCredito
+          .map((nc: { numero: string; valor: number }) => {
+            const etiqueta = nc.numero ? `Nota Crédito ${nc.numero}` : 'Nota Crédito';
+            return `${etiqueta}: -${formatCurrency(nc.valor || 0)}`;
+          })
+          .join('  |  ');
+        if (detallesText) detallesText += '  |  ';
+        detallesText += notasTexto;
+      }
+
       if (detalles.totalDescuento > 0) {
         if (detallesText) detallesText += '  |  ';
         detallesText += `Total Descuento: -${formatCurrency(detalles.totalDescuento)}`;
@@ -845,7 +905,71 @@ export function MultiplePaymentDialog({
       currentY += 20;
     }
 
+    const notasCreditoAplicadas = facturas.flatMap((f) => {
+      const detalles = calcularDetallesFactura(f);
+      if (!detalles.notasCredito || detalles.notasCredito.length === 0) {
+        return [];
+      }
+      return detalles.notasCredito.map((nc: { numero: string; valor: number }) => ({
+        facturaNumero: f.numero_factura,
+        proveedor: f.emisor_nombre,
+        notaNumero: nc.numero,
+        valor: nc.valor || 0
+      }));
+    });
+    const totalNotasCreditoAplicadas = notasCreditoAplicadas.reduce((sum, item) => sum + (item.valor || 0), 0);
+
+    if (notasCreditoAplicadas.length > 0) {
+      ensureSpace(20 + notasCreditoAplicadas.length * 8);
+      doc.setFillColor(255, 247, 237); // Naranja claro
+      doc.roundedRect(14, currentY, pageWidth - 28, 10, 2, 2, 'F');
+      doc.setFontSize(11);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(249, 115, 22);
+      doc.text('NOTAS DE CRÉDITO APLICADAS', 18, currentY + 7);
+      currentY += 15;
+
+      autoTable(doc, {
+        startY: currentY,
+        body: notasCreditoAplicadas.map((item) => [
+          `${item.proveedor} - Factura ${item.facturaNumero}`,
+          item.notaNumero || 'Nota Crédito',
+          `-${formatCurrency(item.valor)}`
+        ]),
+        theme: 'plain',
+        styles: {
+          fontSize: 9,
+          cellPadding: 3,
+          textColor: [249, 115, 22]
+        },
+        columnStyles: {
+          0: { cellWidth: 90 },
+          1: { cellWidth: 60, fontStyle: 'bold' },
+          2: { cellWidth: 42, halign: 'right', fontStyle: 'bold' }
+        },
+        margin: { left: 14, right: 14 }
+      });
+
+      currentY = (doc as any).lastAutoTable.finalY + 8;
+
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(249, 115, 22);
+      doc.text('Total Notas Crédito Aplicadas:', pageWidth - 110, currentY);
+      doc.text(`-${formatCurrency(totalNotasCreditoAplicadas)}`, pageWidth - 14, currentY, { align: 'right' });
+
+      currentY += 18;
+    }
+
     // ========== DETALLES DEL PAGO ==========
+    const totalReal = calcularTotalReal();
+    const esPagadoConSoloSaldos = totalSaldosAplicados > 0 && (totalReal - totalSaldosAplicados) < 1;
+    const detalleBoxHeight = esPagadoConSoloSaldos
+      ? 28
+      : usarPagoPartido ? 45 + (metodosPago.length * 8) : 35;
+
+    ensureSpace(18 + detalleBoxHeight);
+
     doc.setFillColor(245, 247, 250);
     doc.roundedRect(14, currentY, pageWidth - 28, 10, 2, 2, 'F');
     doc.setFontSize(11);
@@ -854,12 +978,6 @@ export function MultiplePaymentDialog({
     doc.text('DETALLES DEL PAGO', 18, currentY + 7);
     currentY += 18;
 
-    // Caja de detalles - ajustar altura según el tipo de pago
-    const totalReal = calcularTotalReal();
-    const esPagadoConSoloSaldos = totalSaldosAplicados > 0 && (totalReal - totalSaldosAplicados) < 1;
-    const detalleBoxHeight = esPagadoConSoloSaldos
-      ? 28
-      : usarPagoPartido ? 45 + (metodosPago.length * 8) : 35;
     doc.setDrawColor(229, 231, 235);
     doc.roundedRect(14, currentY, pageWidth - 28, detalleBoxHeight, 3, 3, 'S');
 
@@ -1079,6 +1197,7 @@ export function MultiplePaymentDialog({
           pagos_partidos: usarPagoPartido ? metodosPago.filter(p => p.monto > 0) : null,
           saldos_aplicados: saldosAplicadosInfo.length > 0 ? saldosAplicadosInfo : null,
           total_saldos_aplicados: totalSaldosInfo,
+          total_notas_credito: totalNotasCreditoAplicadas,
           facturas: facturas.map(f => {
             const detalles = calcularDetallesFactura(f);
             return {
@@ -1087,7 +1206,9 @@ export function MultiplePaymentDialog({
               proveedor: f.emisor_nombre,
               total_original: f.total_a_pagar,
               total_pagado: detalles.valorReal,
-              descuentos: detalles.totalDescuento
+              descuentos: detalles.totalDescuento,
+              notas_credito: detalles.notasCredito && detalles.notasCredito.length > 0 ? detalles.notasCredito : null,
+              total_notas_credito: detalles.totalNotasCredito
             };
           })
         }
