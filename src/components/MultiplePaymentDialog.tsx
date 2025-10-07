@@ -115,6 +115,37 @@ export function MultiplePaymentDialog({
     return { notasCredito: [] as { numero: string; valor: number; fecha?: string | null }[], totalNotasCredito: 0 };
   };
 
+  const obtenerValoresOriginales = (factura: Factura) => {
+    if (!factura.notas) {
+      return {
+        totalOriginal: null as number | null,
+        ivaOriginal: null as number | null,
+        totalSinIvaOriginal: null as number | null
+      };
+    }
+
+    try {
+      const notasData = JSON.parse(factura.notas);
+      return {
+        totalOriginal: notasData.total_original ?? null,
+        ivaOriginal: notasData.iva_original ?? null,
+        totalSinIvaOriginal: notasData.total_sin_iva_original ?? null
+      };
+    } catch (error) {
+      console.error('Error parsing valores originales:', error);
+      return {
+        totalOriginal: null,
+        ivaOriginal: null,
+        totalSinIvaOriginal: null
+      };
+    }
+  };
+
+  const obtenerTotalOriginalFactura = (factura: Factura) => {
+    const originales = obtenerValoresOriginales(factura);
+    return originales.totalOriginal ?? factura.total_a_pagar;
+  };
+
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('es-CO', {
       style: 'currency',
@@ -123,7 +154,7 @@ export function MultiplePaymentDialog({
   };
 
   const calcularTotalOriginal = () => {
-    return facturas.reduce((total, factura) => total + factura.total_a_pagar, 0);
+    return facturas.reduce((total, factura) => total + obtenerTotalOriginalFactura(factura), 0);
   };
 
   const calcularTotalReal = () => {
@@ -318,6 +349,9 @@ export function MultiplePaymentDialog({
     // que ya tiene los saldos descontados
     if (saldosAplicados && factura.valor_real_a_pagar !== null && factura.valor_real_a_pagar !== undefined) {
       const { notasCredito, totalNotasCredito } = extraerNotasCredito(factura);
+      const originales = obtenerValoresOriginales(factura);
+      const totalOriginal = originales.totalOriginal ?? factura.total_a_pagar;
+      const baseSinIva = factura.total_sin_iva || (factura.total_a_pagar - (factura.factura_iva || 0));
 
       // Calcular retención
       const retencion = factura.tiene_retencion && factura.monto_retencion
@@ -328,8 +362,7 @@ export function MultiplePaymentDialog({
       const aplicarProntoPago = facturasConProntoPago.has(factura.id);
       const prontoPago = aplicarProntoPago && factura.porcentaje_pronto_pago && factura.porcentaje_pronto_pago > 0
         ? (() => {
-            const baseParaDescuento = factura.total_sin_iva || (factura.total_a_pagar - (factura.factura_iva || 0));
-            return baseParaDescuento * (factura.porcentaje_pronto_pago / 100);
+            return baseSinIva * (factura.porcentaje_pronto_pago / 100);
           })()
         : 0;
 
@@ -341,8 +374,7 @@ export function MultiplePaymentDialog({
           descuentosAdicionales = JSON.parse(factura.descuentos_antes_iva);
           totalDescuentosAdicionales = descuentosAdicionales.reduce((sum, desc) => {
             if (desc.tipo === 'porcentaje') {
-              const base = factura.total_sin_iva || (factura.total_a_pagar - (factura.factura_iva || 0));
-              return sum + (base * desc.valor / 100);
+              return sum + (baseSinIva * desc.valor / 100);
             }
             return sum + desc.valor;
           }, 0);
@@ -353,7 +385,7 @@ export function MultiplePaymentDialog({
 
       // Usar el valor_real_a_pagar actualizado de la BD (ya incluye saldos aplicados)
       const valorReal = factura.valor_real_a_pagar;
-      const totalDescuento = factura.total_a_pagar - valorReal;
+      const totalDescuento = Math.max(0, totalOriginal - valorReal);
 
       return {
         valorReal,
@@ -363,6 +395,8 @@ export function MultiplePaymentDialog({
         aplicarProntoPago,
         descuentosAdicionales,
         totalDescuentosAdicionales,
+        totalOriginal,
+        baseSinIva,
         notasCredito,
         totalNotasCredito
       };
@@ -370,6 +404,9 @@ export function MultiplePaymentDialog({
 
     // Si NO se han aplicado saldos, calcular normalmente
     const { notasCredito, totalNotasCredito } = extraerNotasCredito(factura);
+    const originales = obtenerValoresOriginales(factura);
+    const totalOriginal = originales.totalOriginal ?? factura.total_a_pagar;
+    const baseSinIva = factura.total_sin_iva || (factura.total_a_pagar - (factura.factura_iva || 0));
 
     // Calcular retención
     const retencion = factura.tiene_retencion && factura.monto_retencion
@@ -380,8 +417,7 @@ export function MultiplePaymentDialog({
     const aplicarProntoPago = facturasConProntoPago.has(factura.id);
     const prontoPago = aplicarProntoPago && factura.porcentaje_pronto_pago && factura.porcentaje_pronto_pago > 0
       ? (() => {
-          const baseParaDescuento = factura.total_sin_iva || (factura.total_a_pagar - (factura.factura_iva || 0));
-          return baseParaDescuento * (factura.porcentaje_pronto_pago / 100);
+          return baseSinIva * (factura.porcentaje_pronto_pago / 100);
         })()
       : 0;
 
@@ -393,8 +429,7 @@ export function MultiplePaymentDialog({
         descuentosAdicionales = JSON.parse(factura.descuentos_antes_iva);
         totalDescuentosAdicionales = descuentosAdicionales.reduce((sum, desc) => {
           if (desc.tipo === 'porcentaje') {
-            const base = factura.total_sin_iva || (factura.total_a_pagar - (factura.factura_iva || 0));
-            return sum + (base * desc.valor / 100);
+            return sum + (baseSinIva * desc.valor / 100);
           }
           return sum + desc.valor;
         }, 0);
@@ -422,7 +457,7 @@ export function MultiplePaymentDialog({
     }
 
     // Total descuento = diferencia entre total original y valor real
-    const totalDescuento = factura.total_a_pagar - valorReal;
+    const totalDescuento = Math.max(0, totalOriginal - valorReal);
 
     return {
       valorReal,
@@ -432,6 +467,8 @@ export function MultiplePaymentDialog({
       aplicarProntoPago,
       descuentosAdicionales,
       totalDescuentosAdicionales,
+      totalOriginal,
+      baseSinIva,
       notasCredito,
       totalNotasCredito
     };
@@ -631,7 +668,7 @@ export function MultiplePaymentDialog({
     doc.setFontSize(11);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(34, 197, 94);
-    doc.text(formatCurrency(calcularTotalOriginal() - calcularTotalReal()), 14 + colWidth * 3.5, currentY + 18, { align: 'center' });
+    doc.text(formatCurrency(Math.max(0, calcularTotalOriginal() - calcularTotalReal())), 14 + colWidth * 3.5, currentY + 18, { align: 'center' });
 
     // Línea separadora dentro de la caja
     currentY += 28;
@@ -712,7 +749,7 @@ export function MultiplePaymentDialog({
           styles: { fontSize: 7, halign: 'center', fillColor: [243, 244, 246] }
         },
         {
-          content: formatCurrency(factura.total_a_pagar),
+          content: formatCurrency(detalles.totalOriginal),
           styles: { halign: 'right', fontSize: 9 }
         },
         {
@@ -1141,7 +1178,7 @@ export function MultiplePaymentDialog({
       console.log('✅ PDF subido correctamente:', uploadData);
 
       // Calcular resumen de totales
-      const totalOriginal = facturas.reduce((sum, f) => sum + f.total_a_pagar, 0);
+      const totalOriginal = facturas.reduce((sum, f) => sum + obtenerTotalOriginalFactura(f), 0);
       const totalPagado = facturas.reduce((sum, f) => {
         const detalles = calcularDetallesFactura(f);
         return sum + detalles.valorReal;
@@ -1194,6 +1231,7 @@ export function MultiplePaymentDialog({
         detalles: {
           proveedor_unico: esProveedorUnico ? proveedoresUnicos[0] : null,
           total_original: totalOriginal,
+          total_descuentos: Math.max(0, totalOriginal - totalPagado),
           pagos_partidos: usarPagoPartido ? metodosPago.filter(p => p.monto > 0) : null,
           saldos_aplicados: saldosAplicadosInfo.length > 0 ? saldosAplicadosInfo : null,
           total_saldos_aplicados: totalSaldosInfo,
@@ -1204,7 +1242,7 @@ export function MultiplePaymentDialog({
               id: f.id,
               numero: f.numero_factura,
               proveedor: f.emisor_nombre,
-              total_original: f.total_a_pagar,
+              total_original: detalles.totalOriginal,
               total_pagado: detalles.valorReal,
               descuentos: detalles.totalDescuento,
               notas_credito: detalles.notasCredito && detalles.notasCredito.length > 0 ? detalles.notasCredito : null,
@@ -1471,7 +1509,7 @@ export function MultiplePaymentDialog({
                 <div className="text-center">
                   <p className="text-sm text-muted-foreground">Descuentos Factura</p>
                   <p className="text-lg font-semibold text-green-500">
-                    {formatCurrency(calcularTotalOriginal() - calcularTotalReal())}
+                  {formatCurrency(Math.max(0, calcularTotalOriginal() - calcularTotalReal()))}
                   </p>
                 </div>
               </div>

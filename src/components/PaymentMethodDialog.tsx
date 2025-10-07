@@ -117,6 +117,32 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
     return { notasCredito: [] as { numero: string; valor: number; fecha?: string | null }[], totalNotasCredito: 0 };
   };
 
+  const obtenerValoresOriginales = (facturaActual: Factura | null) => {
+    if (!facturaActual?.notas) {
+      return {
+        totalOriginal: null as number | null,
+        ivaOriginal: null as number | null,
+        totalSinIvaOriginal: null as number | null
+      };
+    }
+
+    try {
+      const notasData = JSON.parse(facturaActual.notas);
+      return {
+        totalOriginal: notasData.total_original ?? null,
+        ivaOriginal: notasData.iva_original ?? null,
+        totalSinIvaOriginal: notasData.total_sin_iva_original ?? null
+      };
+    } catch (error) {
+      console.error('Error parsing valores originales:', error);
+      return {
+        totalOriginal: null,
+        ivaOriginal: null,
+        totalSinIvaOriginal: null
+      };
+    }
+  };
+
 
   // Obtener valor real disponible - SIEMPRE recalcular para incluir descuentos
   const obtenerValorRealDisponible = (factura: Factura) => {
@@ -427,6 +453,9 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
     const retencion = factura.tiene_retencion && factura.monto_retencion
       ? calcularMontoRetencionReal(factura)
       : 0;
+    const valoresOriginales = obtenerValoresOriginales(factura);
+    const totalOriginalDisplay = valoresOriginales.totalOriginal ?? factura.total_a_pagar;
+    const totalSinIvaBase = factura.total_sin_iva ?? (factura.total_a_pagar - (factura.factura_iva || 0));
 
     // Para pago partido, siempre aplicar pronto pago si está disponible
     // Para pago normal, respetar la decisión del usuario
@@ -435,8 +464,9 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
       : usedProntoPago === 'yes' && factura.porcentaje_pronto_pago;
 
     const prontoPago = aplicarProntoPago
-      ? (factura.total_sin_iva || (factura.total_a_pagar - (factura.factura_iva || 0))) * ((factura.porcentaje_pronto_pago || 0) / 100)
+      ? totalSinIvaBase * ((factura.porcentaje_pronto_pago || 0) / 100)
       : 0;
+    const totalDescuentosResumen = Math.max(0, totalOriginalDisplay - valorFinal);
 
     // Calcular descuentos adicionales antes de IVA
     let descuentosAdicionales: any[] = [];
@@ -446,8 +476,7 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
         descuentosAdicionales = JSON.parse(factura.descuentos_antes_iva);
         totalDescuentosAdicionales = descuentosAdicionales.reduce((sum, desc) => {
           if (desc.tipo === 'porcentaje') {
-            const base = factura.total_sin_iva || (factura.total_a_pagar - (factura.factura_iva || 0));
-            return sum + (base * desc.valor / 100);
+            return sum + (totalSinIvaBase * desc.valor / 100);
           }
           return sum + desc.valor;
         }, 0);
@@ -503,7 +532,7 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
     doc.setFontSize(11);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(0, 0, 0);
-    doc.text(formatCurrency(factura.total_a_pagar), 14 + colWidth / 2, currentY + 18, { align: 'center' });
+    doc.text(formatCurrency(totalOriginalDisplay), 14 + colWidth / 2, currentY + 18, { align: 'center' });
 
     doc.setFontSize(8);
     doc.setFont('helvetica', 'normal');
@@ -521,7 +550,7 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
     doc.setFontSize(11);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(34, 197, 94);
-    doc.text(formatCurrency(factura.total_a_pagar - valorFinal), 14 + colWidth * 2.5, currentY + 18, { align: 'center' });
+    doc.text(formatCurrency(totalDescuentosResumen), 14 + colWidth * 2.5, currentY + 18, { align: 'center' });
 
     // Línea separadora
     currentY += 28;
@@ -732,7 +761,7 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
     }
 
     // ========== DETALLES DEL PAGO ==========
-    const valorFinalDisponible = obtenerValorFinal(factura);
+    const valorFinalDisponible = valorFinal;
     const esPagadoConSoloSaldos = totalSaldosAplicados > 0 && valorFinalDisponible - totalSaldosAplicados < 1;
     const detalleBoxHeight = esPagadoConSoloSaldos
       ? 20
@@ -931,10 +960,11 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
           factura_numero: factura.numero_factura,
           proveedor: factura.emisor_nombre,
           nit: factura.emisor_nit,
-          total_original: factura.total_a_pagar,
+          total_original: totalOriginalDisplay,
           retencion: retencion,
           pronto_pago: prontoPago,
           descuentos_adicionales: totalDescuentosAdicionales,
+          total_descuentos: totalDescuentosResumen,
           pagos_partidos: usarPagoPartido ? metodosPago.filter(p => p.monto > 0) : null,
           saldos_aplicados: saldosAplicadosInfo.length > 0 ? saldosAplicadosInfo : null,
           total_saldos_aplicados: totalSaldosInfo,
