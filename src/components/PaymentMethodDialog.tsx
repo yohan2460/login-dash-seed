@@ -7,7 +7,7 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
-import { CreditCard, Building2, Percent, Banknote, Calendar, Download, Plus, Trash2, User, Wallet, CheckCircle } from 'lucide-react';
+import { CreditCard, Building2, Percent, Banknote, Calendar, Download, Plus, Trash2, User, Wallet, CheckCircle, DollarSign } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { calcularValorRealAPagar, calcularMontoRetencionReal } from '@/utils/calcularValorReal';
@@ -49,6 +49,15 @@ interface MetodoPagoPartido {
   monto: number;
 }
 
+interface SaldoFavor {
+  id: string;
+  monto_inicial: number;
+  saldo_disponible: number;
+  motivo: string;
+  numero_factura_origen: string | null;
+  fecha_generacion: string;
+}
+
 export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcessed }: PaymentMethodDialogProps) {
   const [processing, setProcessing] = useState(false);
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<string>('');
@@ -62,6 +71,13 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
     { metodo: '', monto: 0 }
   ]);
 
+  // Estados para saldos a favor
+  const [saldosDisponibles, setSaldosDisponibles] = useState<SaldoFavor[]>([]);
+  const [saldosSeleccionados, setSaldosSeleccionados] = useState<{[key: string]: number}>({});
+  const [loadingSaldos, setLoadingSaldos] = useState(false);
+  const [saldosAplicados, setSaldosAplicados] = useState(false);
+  const [aplicandoSaldos, setAplicandoSaldos] = useState(false);
+
   const { toast } = useToast();
 
   const formatCurrency = (amount: number) => {
@@ -74,6 +90,11 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
 
   // Obtener valor real disponible - SIEMPRE recalcular para incluir descuentos
   const obtenerValorRealDisponible = (factura: Factura) => {
+    // Si los saldos ya fueron aplicados, usar el valor_real_a_pagar de la base de datos
+    if (saldosAplicados && factura.valor_real_a_pagar !== null && factura.valor_real_a_pagar !== undefined) {
+      return factura.valor_real_a_pagar;
+    }
+
     // IMPORTANTE: Siempre recalcular para asegurar que los descuentos estén incluidos
     // La función calcularValorRealAPagar maneja: descuentos + retención + pronto pago
     return calcularValorRealAPagar(factura);
@@ -81,6 +102,11 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
 
   // Obtener valor final basado en la selección del usuario
   const obtenerValorFinal = (factura: Factura) => {
+    // Si los saldos ya fueron aplicados, usar el valor de la BD directamente
+    if (saldosAplicados && factura.valor_real_a_pagar !== null && factura.valor_real_a_pagar !== undefined) {
+      return factura.valor_real_a_pagar;
+    }
+
     // Si el usuario no ha seleccionado aún, usar el valor de la BD
     if (!usedProntoPago) {
       return obtenerValorRealDisponible(factura);
@@ -105,13 +131,146 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
     return obtenerValorRealDisponible(factura);
   };
 
-  // Actualizar automáticamente el monto pagado cuando cambie el pronto pago
+  // Cargar saldos a favor disponibles para el proveedor
+  useEffect(() => {
+    if (factura && isOpen) {
+      fetchSaldosDisponibles();
+    }
+  }, [factura, isOpen]);
+
+  const fetchSaldosDisponibles = async () => {
+    if (!factura) return;
+    setLoadingSaldos(true);
+    try {
+      const { data, error } = await supabase
+        .from('saldos_favor')
+        .select('*')
+        .eq('emisor_nit', factura.emisor_nit)
+        .eq('estado', 'activo')
+        .gt('saldo_disponible', 0)
+        .order('fecha_generacion', { ascending: true });
+
+      if (error) throw error;
+      setSaldosDisponibles(data || []);
+    } catch (error) {
+      console.error('Error al cargar saldos a favor:', error);
+    } finally {
+      setLoadingSaldos(false);
+    }
+  };
+
+  // Calcular total de saldos aplicados
+  const calcularTotalSaldosAplicados = (): number => {
+    return Object.values(saldosSeleccionados).reduce((sum, monto) => sum + monto, 0);
+  };
+
+  // Aplicar saldos a favor a la factura
+  const aplicarSaldosAFavor = async () => {
+    if (!factura) return;
+
+    const totalSaldos = calcularTotalSaldosAplicados();
+    if (totalSaldos === 0) {
+      toast({
+        title: "No hay saldos seleccionados",
+        description: "Selecciona al menos un saldo a favor para aplicar",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    const valorTotal = obtenerValorFinal(factura);
+    if (totalSaldos > valorTotal) {
+      toast({
+        title: "Saldos exceden el total",
+        description: `Los saldos aplicados (${formatCurrency(totalSaldos)}) no pueden ser mayores al total a pagar (${formatCurrency(valorTotal)})`,
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setAplicandoSaldos(true);
+    try {
+      // Aplicar cada saldo a favor usando la función de la base de datos
+      for (const [saldoId, montoAplicado] of Object.entries(saldosSeleccionados)) {
+        if (montoAplicado > 0) {
+          const { error: saldoError } = await supabase.rpc('aplicar_saldo_favor', {
+            p_saldo_favor_id: saldoId,
+            p_factura_destino_id: factura.id,
+            p_monto_aplicado: montoAplicado
+          });
+
+          if (saldoError) {
+            throw new Error(`Error al aplicar saldo a favor: ${saldoError.message}`);
+          }
+        }
+      }
+
+      // Actualizar valor_real_a_pagar en la factura
+      const nuevoValorReal = valorTotal - totalSaldos;
+      const { error: updateError } = await supabase
+        .from('facturas')
+        .update({
+          valor_real_a_pagar: nuevoValorReal
+        })
+        .eq('id', factura.id);
+
+      if (updateError) throw updateError;
+
+      setSaldosAplicados(true);
+
+      // Recargar los datos de la factura desde la BD para obtener el valor actualizado
+      const { data: facturaActualizada, error: fetchError } = await supabase
+        .from('facturas')
+        .select('*')
+        .eq('id', factura.id)
+        .single();
+
+      if (fetchError) {
+        console.error('Error al recargar factura:', fetchError);
+      } else if (facturaActualizada) {
+        // Actualizar el objeto factura en memoria con los nuevos datos
+        Object.assign(factura, facturaActualizada);
+      }
+
+      toast({
+        title: "✅ Saldos aplicados exitosamente",
+        description: `Se aplicaron ${formatCurrency(totalSaldos)} en saldos a favor. Nuevo valor real a pagar: ${formatCurrency(nuevoValorReal)}`,
+      });
+
+      // Recargar saldos disponibles
+      await fetchSaldosDisponibles();
+    } catch (error: any) {
+      console.error('Error al aplicar saldos:', error);
+      toast({
+        title: "Error al aplicar saldos",
+        description: error?.message || "No se pudieron aplicar los saldos a favor",
+        variant: "destructive"
+      });
+    } finally {
+      setAplicandoSaldos(false);
+    }
+  };
+
+  // Actualizar automáticamente el monto pagado cuando cambie el pronto pago o saldos
   useEffect(() => {
     if (factura) {
       const valorReal = obtenerValorFinal(factura);
-      setAmountPaid(new Intl.NumberFormat('es-CO').format(valorReal));
+
+      // Si los saldos ya fueron aplicados, el valorReal YA incluye la reducción de saldos
+      // Por lo tanto, NO debemos restar los saldos nuevamente
+      let montoAPagar;
+      if (saldosAplicados) {
+        // Los saldos ya están aplicados en la BD, usar el valor directamente
+        montoAPagar = valorReal;
+      } else {
+        // Los saldos NO están aplicados, restarlos del valor real
+        const totalSaldos = calcularTotalSaldosAplicados();
+        montoAPagar = Math.max(0, valorReal - totalSaldos);
+      }
+
+      setAmountPaid(new Intl.NumberFormat('es-CO').format(montoAPagar));
     }
-  }, [usedProntoPago, factura]);
+  }, [usedProntoPago, factura, saldosSeleccionados, saldosAplicados]);
 
   // Funciones para pagos partidos
   const agregarMetodoPago = () => {
@@ -196,6 +355,32 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
     const doc = new jsPDF();
     const pageWidth = doc.internal.pageSize.width;
     let currentY = 15;
+
+    // Si los saldos fueron aplicados, obtener las aplicaciones desde la BD
+    let saldosAplicadosDesdeDB: any[] = [];
+    if (saldosAplicados) {
+      try {
+        const { data: aplicaciones, error } = await supabase
+          .from('aplicaciones_saldo')
+          .select(`
+            *,
+            saldos_favor (
+              emisor_nombre,
+              emisor_nit,
+              numero_factura_origen,
+              motivo
+            )
+          `)
+          .eq('factura_destino_id', factura.id);
+
+        if (!error && aplicaciones) {
+          saldosAplicadosDesdeDB = aplicaciones;
+          console.log('Saldos aplicados desde BD:', saldosAplicadosDesdeDB);
+        }
+      } catch (error) {
+        console.error('Error al cargar saldos aplicados:', error);
+      }
+    }
 
     // Calcular valores
     const valorFinal = obtenerValorFinal(factura);
@@ -388,6 +573,77 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
 
     currentY = (doc as any).lastAutoTable.finalY + 10;
 
+    // ========== SALDOS A FAVOR APLICADOS ==========
+    // Calcular total de saldos aplicados (desde selección o desde BD)
+    let totalSaldosAplicados = 0;
+    const saldosData: any[] = [];
+
+    if (saldosAplicados && saldosAplicadosDesdeDB.length > 0) {
+      // Usar los saldos aplicados desde la base de datos
+      console.log('Usando saldos desde BD para PDF');
+
+      saldosAplicadosDesdeDB.forEach((aplicacion: any) => {
+        const saldo = aplicacion.saldos_favor;
+        if (saldo) {
+          const origen = saldo.numero_factura_origen
+            ? `Factura: ${saldo.numero_factura_origen}`
+            : `Motivo: ${saldo.motivo || 'Crédito'}`;
+          saldosData.push([origen, `-${formatCurrency(aplicacion.monto_aplicado)}`]);
+          totalSaldosAplicados += aplicacion.monto_aplicado;
+        }
+      });
+    } else {
+      // Usar los saldos seleccionados (antes de aplicar)
+      console.log('Usando saldos seleccionados para PDF');
+      totalSaldosAplicados = calcularTotalSaldosAplicados();
+
+      Object.entries(saldosSeleccionados).forEach(([saldoId, monto]) => {
+        const saldo = saldosDisponibles.find(s => s.id === saldoId);
+        if (saldo && monto > 0) {
+          const origen = saldo.numero_factura_origen
+            ? `Factura: ${saldo.numero_factura_origen}`
+            : `Motivo: ${saldo.motivo}`;
+          saldosData.push([origen, `-${formatCurrency(monto)}`]);
+        }
+      });
+    }
+
+    if (totalSaldosAplicados > 0 && saldosData.length > 0) {
+      doc.setFillColor(240, 253, 244); // Verde claro
+      doc.roundedRect(14, currentY, pageWidth - 28, 10, 2, 2, 'F');
+      doc.setFontSize(11);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(22, 163, 74); // Verde
+      doc.text('✓ SALDOS A FAVOR APLICADOS', 18, currentY + 7);
+      currentY += 15;
+
+      autoTable(doc, {
+        startY: currentY,
+        body: saldosData,
+        theme: 'plain',
+        styles: {
+          fontSize: 9,
+          cellPadding: 3,
+          textColor: [22, 163, 74]
+        },
+        columnStyles: {
+          0: { cellWidth: 140, fontStyle: 'bold' },
+          1: { cellWidth: 42, halign: 'right', fontStyle: 'bold' }
+        }
+      });
+
+      currentY = (doc as any).lastAutoTable.finalY + 5;
+
+      // Total de saldos aplicados
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(22, 163, 74);
+      doc.text('Total Saldos Aplicados:', pageWidth - 100, currentY);
+      doc.text(`-${formatCurrency(totalSaldosAplicados)}`, pageWidth - 14, currentY, { align: 'right' });
+
+      currentY += 15;
+    }
+
     // ========== DETALLES DEL PAGO ==========
     doc.setFillColor(245, 247, 250);
     doc.roundedRect(14, currentY, pageWidth - 28, 10, 2, 2, 'F');
@@ -397,12 +653,38 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
     doc.text('DETALLES DEL PAGO', 18, currentY + 7);
     currentY += 15;
 
-    // Ajustar altura si es pago partido
-    const detalleBoxHeight = usarPagoPartido ? 35 + (metodosPago.length * 8) : 25;
+    // Ajustar altura si es pago partido o si no hay método de pago (solo saldos)
+    const esPagadoConSoloSaldos = totalSaldosAplicados > 0 && obtenerValorFinal(factura) - totalSaldosAplicados < 1;
+    const detalleBoxHeight = esPagadoConSoloSaldos
+      ? 20
+      : usarPagoPartido ? 35 + (metodosPago.length * 8) : 25;
     doc.setDrawColor(229, 231, 235);
     doc.roundedRect(14, currentY, pageWidth - 28, detalleBoxHeight, 3, 3, 'S');
 
-    if (usarPagoPartido) {
+    if (esPagadoConSoloSaldos) {
+      // Pago cubierto completamente con saldos a favor
+      doc.setFontSize(9);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(107, 114, 128);
+      doc.text('Método de pago:', 20, currentY + 8);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(22, 163, 74);
+      doc.text('Pagado con Saldos a Favor', 60, currentY + 8);
+
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(107, 114, 128);
+      doc.text('Fecha de Pago:', 20, currentY + 14);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(0, 0, 0);
+      const [yearPdf, monthPdf, dayPdf] = paymentDate.split('-');
+      const fechaCorrecta = new Date(parseInt(yearPdf), parseInt(monthPdf) - 1, parseInt(dayPdf), 12, 0, 0);
+      doc.text(fechaCorrecta.toLocaleDateString('es-CO', {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+      }), 60, currentY + 14);
+    } else if (usarPagoPartido) {
       // Pago Partido
       doc.setFontSize(9);
       doc.setFont('helvetica', 'normal');
@@ -529,10 +811,27 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
       const [year, month, day] = paymentDate.split('-');
       const fechaPagoComprobante = new Date(parseInt(year), parseInt(month) - 1, parseInt(day), 12, 0, 0).toISOString();
 
+      // Preparar información de saldos aplicados
+      const saldosAplicadosInfo = Object.entries(saldosSeleccionados)
+        .filter(([_, monto]) => monto > 0)
+        .map(([saldoId, monto]) => {
+          const saldo = saldosDisponibles.find(s => s.id === saldoId);
+          return {
+            saldo_id: saldoId,
+            monto: monto,
+            origen: saldo?.numero_factura_origen || saldo?.motivo || 'N/A'
+          };
+        });
+
+      const totalSaldosInfo = calcularTotalSaldosAplicados();
+      const metodoPagoFinal = esPagadoConSoloSaldos
+        ? 'Saldos a Favor'
+        : usarPagoPartido ? 'Pago Partido' : selectedPaymentMethod;
+
       const comprobanteData = {
         user_id: userId,
         tipo_comprobante: 'pago_individual' as const,
-        metodo_pago: usarPagoPartido ? 'Pago Partido' : selectedPaymentMethod,
+        metodo_pago: metodoPagoFinal,
         fecha_pago: fechaPagoComprobante,
         total_pagado: valorFinal,
         cantidad_facturas: 1,
@@ -546,7 +845,9 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
           retencion: retencion,
           pronto_pago: prontoPago,
           descuentos_adicionales: totalDescuentosAdicionales,
-          pagos_partidos: usarPagoPartido ? metodosPago.filter(p => p.monto > 0) : null
+          pagos_partidos: usarPagoPartido ? metodosPago.filter(p => p.monto > 0) : null,
+          saldos_aplicados: saldosAplicadosInfo.length > 0 ? saldosAplicadosInfo : null,
+          total_saldos_aplicados: totalSaldosInfo
         }
       };
 
@@ -577,35 +878,42 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
     // Validaciones básicas
     if (!factura) return;
 
+    // Validar saldos seleccionados
+    const totalSaldos = calcularTotalSaldosAplicados();
+    const valorTotal = obtenerValorFinal(factura);
+
+    // Validar que los saldos no excedan el total
+    if (totalSaldos > valorTotal) {
+      toast({
+        title: "Saldos exceden el total",
+        description: `Los saldos aplicados (${formatCurrency(totalSaldos)}) no pueden ser mayores al total a pagar (${formatCurrency(valorTotal)})`,
+        variant: "destructive"
+      });
+      return;
+    }
+
+    // Si el pago se cubre completamente con saldos, no se requiere método de pago
+    const montoRestante = valorTotal - totalSaldos;
+    const esPagadoCompleto = montoRestante < 1;
+
     // Validar pago partido
-    if (usarPagoPartido) {
+    if (usarPagoPartido && !esPagadoCompleto) {
       if (!validarPagoPartido()) {
-        const totalReal = obtenerValorFinal(factura);
+        const totalReal = montoRestante;
         const totalMetodos = calcularTotalMetodosPago();
         toast({
           title: "Error en pago partido",
-          description: `La suma de los métodos (${formatCurrency(totalMetodos)}) debe ser igual al total a pagar (${formatCurrency(totalReal)})`,
+          description: `La suma de los métodos (${formatCurrency(totalMetodos)}) debe ser igual al monto restante (${formatCurrency(totalReal)})`,
           variant: "destructive"
         });
         return;
       }
-    } else {
-      // Validar pago normal
-      if (!selectedPaymentMethod || !usedProntoPago || !amountPaid) {
+    } else if (!esPagadoCompleto) {
+      // Validar pago normal solo si queda monto por pagar
+      if (!selectedPaymentMethod || !usedProntoPago) {
         toast({
           title: "Campos requeridos",
           description: "Por favor completa todos los campos requeridos",
-          variant: "destructive"
-        });
-        return;
-      }
-
-      const cleanAmount = amountPaid.replace(/,/g, '');
-      const amountNumber = parseFloat(cleanAmount);
-      if (isNaN(amountNumber) || amountNumber <= 0) {
-        toast({
-          title: "Monto inválido",
-          description: "Por favor ingresa un monto válido",
           variant: "destructive"
         });
         return;
@@ -893,29 +1201,150 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
 
           {/* Columna Derecha - Formulario de pago */}
           <div className="space-y-4">
-            {/* Toggle para Pago Partido */}
-            <div className="flex items-center space-x-2 p-3 bg-muted/50 rounded-lg">
-              <Checkbox
-                id="pago-partido-single"
-                checked={usarPagoPartido}
-                onCheckedChange={(checked) => {
-                  setUsarPagoPartido(checked as boolean);
-                  if (checked) {
-                    setSelectedPaymentMethod('');
-                    setMetodosPago([{ metodo: '', monto: 0 }]);
-                  }
-                }}
-              />
-              <label
-                htmlFor="pago-partido-single"
-                className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
-              >
-                Usar pago partido (dividir entre varios métodos)
-              </label>
-            </div>
+            {/* Saldos a Favor Disponibles */}
+            {saldosDisponibles.length > 0 && (
+              <Card className="border-green-300 bg-green-50 dark:bg-green-950/20">
+                <CardContent className="p-4 space-y-3">
+                  <div className="flex items-center gap-2">
+                    <DollarSign className="w-5 h-5 text-green-600" />
+                    <Label className="text-base font-medium text-green-700 dark:text-green-400">
+                      Saldos a Favor Disponibles
+                    </Label>
+                  </div>
 
-            {/* Método de pago (Solo si NO es pago partido) */}
-            {!usarPagoPartido && (
+                  {loadingSaldos ? (
+                    <p className="text-sm text-muted-foreground">Cargando saldos...</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {saldosDisponibles.map((saldo) => (
+                        <div key={saldo.id} className="flex items-center justify-between p-2 bg-white dark:bg-gray-800 rounded border">
+                          <div className="flex-1">
+                            <p className="text-sm font-medium">
+                              {formatCurrency(saldo.saldo_disponible)} disponible
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              {saldo.numero_factura_origen ? `Factura: ${saldo.numero_factura_origen}` : `Origen: ${saldo.motivo}`}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Input
+                              type="text"
+                              placeholder="0"
+                              value={saldosSeleccionados[saldo.id] ? new Intl.NumberFormat('es-CO').format(saldosSeleccionados[saldo.id]) : ''}
+                              onChange={(e) => {
+                                const value = e.target.value.replace(/[^0-9]/g, '');
+                                const montoNum = value ? parseInt(value) : 0;
+                                const montoMax = Math.min(saldo.saldo_disponible, obtenerValorFinal(factura) - calcularTotalSaldosAplicados() + (saldosSeleccionados[saldo.id] || 0));
+                                const montoFinal = Math.min(montoNum, montoMax);
+
+                                const nuevos = { ...saldosSeleccionados };
+                                if (montoFinal > 0) {
+                                  nuevos[saldo.id] = montoFinal;
+                                } else {
+                                  delete nuevos[saldo.id];
+                                }
+                                setSaldosSeleccionados(nuevos);
+                              }}
+                              disabled={saldosAplicados}
+                              className="w-32 text-sm"
+                            />
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                const montoMax = Math.min(
+                                  saldo.saldo_disponible,
+                                  obtenerValorFinal(factura) - calcularTotalSaldosAplicados() + (saldosSeleccionados[saldo.id] || 0)
+                                );
+                                setSaldosSeleccionados({
+                                  ...saldosSeleccionados,
+                                  [saldo.id]: montoMax
+                                });
+                              }}
+                              disabled={saldosAplicados}
+                            >
+                              Max
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+
+                      {!saldosAplicados && calcularTotalSaldosAplicados() > 0 && (
+                        <div className="space-y-2">
+                          <div className="p-2 bg-green-100 dark:bg-green-900/30 rounded border border-green-300 mt-2">
+                            <div className="flex justify-between items-center">
+                              <span className="text-sm font-medium text-green-700 dark:text-green-400">
+                                Total saldos seleccionados:
+                              </span>
+                              <span className="text-sm font-bold text-green-700 dark:text-green-400">
+                                {formatCurrency(calcularTotalSaldosAplicados())}
+                              </span>
+                            </div>
+                            <div className="flex justify-between items-center mt-1">
+                              <span className="text-xs text-green-600 dark:text-green-500">
+                                Monto restante a pagar:
+                              </span>
+                              <span className="text-sm font-bold text-green-600 dark:text-green-500">
+                                {formatCurrency(Math.max(0, obtenerValorFinal(factura) - calcularTotalSaldosAplicados()))}
+                              </span>
+                            </div>
+                          </div>
+
+                          {!saldosAplicados ? (
+                            <Button
+                              type="button"
+                              onClick={aplicarSaldosAFavor}
+                              disabled={aplicandoSaldos || calcularTotalSaldosAplicados() === 0}
+                              className="w-full bg-green-600 hover:bg-green-700 text-white"
+                            >
+                              <CheckCircle className="w-4 h-4 mr-2" />
+                              {aplicandoSaldos ? "Aplicando..." : "APLICAR SALDOS A FAVOR"}
+                            </Button>
+                          ) : (
+                            <div className="p-3 bg-green-50 dark:bg-green-900/20 rounded border border-green-300">
+                              <div className="flex items-center gap-2 text-green-700 dark:text-green-400">
+                                <CheckCircle className="w-5 h-5" />
+                                <span className="text-sm font-semibold">Saldos aplicados exitosamente</span>
+                              </div>
+                              <p className="text-xs text-green-600 dark:text-green-500 mt-1">
+                                El valor real a pagar se ha actualizado en la base de datos
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Toggle para Pago Partido */}
+            {obtenerValorFinal(factura) - calcularTotalSaldosAplicados() > 0 && (
+              <div className="flex items-center space-x-2 p-3 bg-muted/50 rounded-lg">
+                <Checkbox
+                  id="pago-partido-single"
+                  checked={usarPagoPartido}
+                  onCheckedChange={(checked) => {
+                    setUsarPagoPartido(checked as boolean);
+                    if (checked) {
+                      setSelectedPaymentMethod('');
+                      setMetodosPago([{ metodo: '', monto: 0 }]);
+                    }
+                  }}
+                />
+                <label
+                  htmlFor="pago-partido-single"
+                  className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                >
+                  Usar pago partido (dividir entre varios métodos)
+                </label>
+              </div>
+            )}
+
+            {/* Método de pago (Solo si NO es pago partido y queda saldo por pagar) */}
+            {!usarPagoPartido && obtenerValorFinal(factura) - calcularTotalSaldosAplicados() > 0 && (
               <div>
                 <Label className="text-base font-medium mb-3 block">Método de pago:</Label>
                 <RadioGroup value={selectedPaymentMethod} onValueChange={setSelectedPaymentMethod}>
@@ -1081,8 +1510,8 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
               </div>
             )}
 
-            {/* ¿Se aplicó pronto pago? */}
-            {!usarPagoPartido && (
+            {/* ¿Se aplicó pronto pago? - Solo si queda saldo por pagar */}
+            {!usarPagoPartido && obtenerValorFinal(factura) - calcularTotalSaldosAplicados() > 0 && (
               <div>
               <Label className="text-base font-medium mb-3 block">¿Se aplicó descuento por pronto pago?</Label>
               <RadioGroup value={usedProntoPago} onValueChange={setUsedProntoPago}>

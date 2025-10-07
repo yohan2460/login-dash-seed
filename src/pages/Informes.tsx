@@ -75,6 +75,9 @@ interface PagoPartido {
 interface FilterState {
   fechaInicio: string;
   fechaFin: string;
+  fechaPagoInicio: string;
+  fechaPagoFin: string;
+  tipoFecha: 'emision' | 'pago'; // Nuevo: tipo de fecha a filtrar
   proveedor: string;
   clasificacion: string;
   estadoPago: string;
@@ -116,6 +119,9 @@ export default function Informes() {
   const [filters, setFilters] = useState<FilterState>({
     fechaInicio: monthRange.inicio,
     fechaFin: monthRange.fin,
+    fechaPagoInicio: '',
+    fechaPagoFin: '',
+    tipoFecha: 'emision',
     proveedor: '',
     clasificacion: '',
     estadoPago: '',
@@ -231,27 +237,52 @@ export default function Informes() {
       );
     }
 
-    // Filtro por fechas (comparación segura sin problemas de zona horaria)
-    if (filters.fechaInicio) {
-      filtered = filtered.filter(f => {
-        const fechaFactura = f.fecha_emision || f.created_at;
-        if (!fechaFactura) return false;
+    // Filtro por fechas de emisión (solo si tipo de fecha es 'emision')
+    if (filters.tipoFecha === 'emision') {
+      if (filters.fechaInicio) {
+        filtered = filtered.filter(f => {
+          const fechaFactura = f.fecha_emision || f.created_at;
+          if (!fechaFactura) return false;
 
-        // Extraer solo la fecha (YYYY-MM-DD) para comparación
-        const fechaStr = fechaFactura.split('T')[0];
-        return fechaStr >= filters.fechaInicio;
-      });
+          // Extraer solo la fecha (YYYY-MM-DD) para comparación
+          const fechaStr = fechaFactura.split('T')[0];
+          return fechaStr >= filters.fechaInicio;
+        });
+      }
+
+      if (filters.fechaFin) {
+        filtered = filtered.filter(f => {
+          const fechaFactura = f.fecha_emision || f.created_at;
+          if (!fechaFactura) return false;
+
+          // Extraer solo la fecha (YYYY-MM-DD) para comparación
+          const fechaStr = fechaFactura.split('T')[0];
+          return fechaStr <= filters.fechaFin;
+        });
+      }
     }
 
-    if (filters.fechaFin) {
-      filtered = filtered.filter(f => {
-        const fechaFactura = f.fecha_emision || f.created_at;
-        if (!fechaFactura) return false;
+    // Filtro por fechas de pago (solo si tipo de fecha es 'pago')
+    if (filters.tipoFecha === 'pago') {
+      if (filters.fechaPagoInicio) {
+        filtered = filtered.filter(f => {
+          if (!f.fecha_pago) return false;
 
-        // Extraer solo la fecha (YYYY-MM-DD) para comparación
-        const fechaStr = fechaFactura.split('T')[0];
-        return fechaStr <= filters.fechaFin;
-      });
+          // Extraer solo la fecha (YYYY-MM-DD) para comparación
+          const fechaStr = f.fecha_pago.split('T')[0];
+          return fechaStr >= filters.fechaPagoInicio;
+        });
+      }
+
+      if (filters.fechaPagoFin) {
+        filtered = filtered.filter(f => {
+          if (!f.fecha_pago) return false;
+
+          // Extraer solo la fecha (YYYY-MM-DD) para comparación
+          const fechaStr = f.fecha_pago.split('T')[0];
+          return fechaStr <= filters.fechaPagoFin;
+        });
+      }
     }
 
     // Filtro por proveedor
@@ -325,6 +356,9 @@ export default function Informes() {
     setFilters({
       fechaInicio: '',
       fechaFin: '',
+      fechaPagoInicio: '',
+      fechaPagoFin: '',
+      tipoFecha: 'emision',
       proveedor: '',
       clasificacion: '',
       estadoPago: '',
@@ -1208,27 +1242,72 @@ export default function Informes() {
                 </div>
               </div>
 
-              {/* Fecha Inicio */}
+              {/* Tipo de Fecha */}
               <div>
-                <Label htmlFor="fechaInicio">Fecha Inicio</Label>
-                <Input
-                  id="fechaInicio"
-                  type="date"
-                  value={filters.fechaInicio}
-                  onChange={(e) => setFilters(prev => ({ ...prev, fechaInicio: e.target.value }))}
-                />
+                <Label htmlFor="tipoFecha">Filtrar por</Label>
+                <Select
+                  value={filters.tipoFecha}
+                  onValueChange={(value: 'emision' | 'pago') => setFilters(prev => ({ ...prev, tipoFecha: value }))}
+                >
+                  <SelectTrigger id="tipoFecha">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="emision">Fecha de Emisión</SelectItem>
+                    <SelectItem value="pago">Fecha de Pago</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
 
-              {/* Fecha Fin */}
-              <div>
-                <Label htmlFor="fechaFin">Fecha Fin</Label>
-                <Input
-                  id="fechaFin"
-                  type="date"
-                  value={filters.fechaFin}
-                  onChange={(e) => setFilters(prev => ({ ...prev, fechaFin: e.target.value }))}
-                />
-              </div>
+              {/* Fechas de Emisión - Solo si tipoFecha es 'emision' */}
+              {filters.tipoFecha === 'emision' && (
+                <>
+                  <div>
+                    <Label htmlFor="fechaInicio">Fecha Emisión Inicio</Label>
+                    <Input
+                      id="fechaInicio"
+                      type="date"
+                      value={filters.fechaInicio}
+                      onChange={(e) => setFilters(prev => ({ ...prev, fechaInicio: e.target.value }))}
+                    />
+                  </div>
+
+                  <div>
+                    <Label htmlFor="fechaFin">Fecha Emisión Fin</Label>
+                    <Input
+                      id="fechaFin"
+                      type="date"
+                      value={filters.fechaFin}
+                      onChange={(e) => setFilters(prev => ({ ...prev, fechaFin: e.target.value }))}
+                    />
+                  </div>
+                </>
+              )}
+
+              {/* Fechas de Pago - Solo si tipoFecha es 'pago' */}
+              {filters.tipoFecha === 'pago' && (
+                <>
+                  <div>
+                    <Label htmlFor="fechaPagoInicio">Fecha Pago Inicio</Label>
+                    <Input
+                      id="fechaPagoInicio"
+                      type="date"
+                      value={filters.fechaPagoInicio}
+                      onChange={(e) => setFilters(prev => ({ ...prev, fechaPagoInicio: e.target.value }))}
+                    />
+                  </div>
+
+                  <div>
+                    <Label htmlFor="fechaPagoFin">Fecha Pago Fin</Label>
+                    <Input
+                      id="fechaPagoFin"
+                      type="date"
+                      value={filters.fechaPagoFin}
+                      onChange={(e) => setFilters(prev => ({ ...prev, fechaPagoFin: e.target.value }))}
+                    />
+                  </div>
+                </>
+              )}
 
               {/* Proveedor */}
               <div>

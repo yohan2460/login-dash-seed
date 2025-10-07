@@ -14,6 +14,7 @@ import { GastosPagados } from "./pages/GastosPagados";
 import { Sistematizadas } from "./pages/Sistematizadas";
 import FacturasPorSerie from "./pages/FacturasPorSerie";
 import NotasCredito from "./pages/NotasCredito";
+import SaldosFavor from "./pages/SaldosFavor";
 import { DashboardProvider } from "./contexts/DashboardContext";
 
 function App() {
@@ -36,6 +37,7 @@ function App() {
         <Route path="/sistematizadas" element={<Sistematizadas />} />
         <Route path="/notas-credito" element={<NotasCredito />} />
         <Route path="/facturas-por-serie" element={<FacturasPorSerie />} />
+        <Route path="/saldos-favor" element={<SaldosFavor />} />
 
         <Route path="*" element={<NotFound />} />
       </Routes>

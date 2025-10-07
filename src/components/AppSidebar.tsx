@@ -11,7 +11,8 @@ import {
   Users,
   Hash,
   Minus,
-  Calendar
+  Calendar,
+  Wallet
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -52,6 +53,11 @@ const navigationItems = [
     title: "Pagos Próximos",
     url: "/pagos-proximos",
     icon: Calendar,
+  },
+  {
+    title: "Saldos a Favor",
+    url: "/saldos-favor",
+    icon: Wallet,
   },
   {
     title: "Usuarios",
