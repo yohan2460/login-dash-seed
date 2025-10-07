@@ -1629,7 +1629,7 @@ export function MultiplePaymentDialog({
               )}
 
               {/* Toggle para Pago Partido - Solo si queda saldo por pagar */}
-              {calcularTotalFinalAPagar() > 0 && (
+              {(!saldosAplicados || (saldosAplicados && calcularTotalReal() > 0)) && (
                 <div className="flex items-center space-x-2 p-3 bg-muted/50 rounded-lg">
                 <Checkbox
                   id="pago-partido"
@@ -1652,7 +1652,7 @@ export function MultiplePaymentDialog({
               )}
 
               {/* Método de Pago con Cards (Solo si NO es pago partido y queda saldo por pagar) */}
-              {!usarPagoPartido && calcularTotalFinalAPagar() > 0 && (
+              {!usarPagoPartido && (!saldosAplicados || (saldosAplicados && calcularTotalReal() > 0)) && (
                 <div className="space-y-2">
                   <Label>Método de pago:</Label>
                   <div className="grid grid-cols-3 gap-3">
@@ -1729,7 +1729,7 @@ export function MultiplePaymentDialog({
               )}
 
               {/* Interface para Pago Partido - Solo si queda saldo por pagar */}
-              {usarPagoPartido && calcularTotalFinalAPagar() > 0 && (
+              {usarPagoPartido && (!saldosAplicados || (saldosAplicados && calcularTotalReal() > 0)) && (
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
                     <Label>Métodos de Pago:</Label>
