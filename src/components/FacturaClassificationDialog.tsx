@@ -24,7 +24,18 @@ interface Factura {
   total_a_pagar: number;
   factura_iva?: number;
   clasificacion?: string | null;
+  notas?: string | null;
+  estado_nota_credito?: 'pendiente' | 'aplicada' | 'anulada' | null;
 }
+
+const parseNumeroSeguro = (valor: unknown): number | null => {
+  if (valor === null || valor === undefined) return null;
+  if (typeof valor === 'number') {
+    return Number.isFinite(valor) ? valor : null;
+  }
+  const numero = parseFloat(String(valor));
+  return Number.isFinite(numero) ? numero : null;
+};
 
 interface Descuento {
   id: string;
@@ -81,6 +92,11 @@ export function FacturaClassificationDialog({
     valor: '',
     tipo: 'valor_fijo'
   });
+  const [notaCreditoOriginal, setNotaCreditoOriginal] = useState<{
+    totalOriginal: number | null;
+    ivaOriginal: number | null;
+    totalSinIvaOriginal: number | null;
+  } | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);
   const [suggestionLoading, setSuggestionLoading] = useState(false);
   const [suggestedSerie, setSuggestedSerie] = useState<string | null>(null);
@@ -148,6 +164,7 @@ export function FacturaClassificationDialog({
       setSuggestedSerie(null);
       setSuggestionLoading(false);
       setAvailableSeries([]);
+      setNotaCreditoOriginal(null);
     }
   }, [isOpen]);
 
@@ -155,6 +172,22 @@ export function FacturaClassificationDialog({
   useEffect(() => {
     if (isOpen && factura) {
       setTotalAPagar(factura.total_a_pagar.toString());
+
+      if (factura.notas) {
+        try {
+          const data = JSON.parse(factura.notas);
+          setNotaCreditoOriginal({
+            totalOriginal: parseNumeroSeguro(data.total_original),
+            ivaOriginal: parseNumeroSeguro(data.iva_original),
+            totalSinIvaOriginal: parseNumeroSeguro(data.total_sin_iva_original)
+          });
+        } catch (error) {
+          console.error('Error parsing nota crédito original:', error);
+          setNotaCreditoOriginal(null);
+        }
+      } else {
+        setNotaCreditoOriginal(null);
+      }
     }
   }, [isOpen, factura]);
 
@@ -207,6 +240,13 @@ export function FacturaClassificationDialog({
     const total = parseFloat(totalAPagar) || 0;
     return total - calcularTotalDescuentos();
   };
+
+  const esNotaCredito = factura?.clasificacion === 'nota_credito';
+  const totalOriginalDisplay = factura
+    ? esNotaCredito && notaCreditoOriginal?.totalOriginal
+      ? notaCreditoOriginal.totalOriginal ?? factura.total_a_pagar
+      : factura.total_a_pagar
+    : 0;
 
 
   const handleSubmit = async () => {
@@ -407,7 +447,12 @@ export function FacturaClassificationDialog({
                   </div>
                   <div>
                     <p className="text-sm font-medium text-foreground">Total Original</p>
-                    <p className="text-sm font-semibold text-blue-600">{formatCurrency(factura.total_a_pagar)}</p>
+                    <p className="text-sm font-semibold text-blue-600">{formatCurrency(totalOriginalDisplay)}</p>
+                    {esNotaCredito && notaCreditoOriginal?.totalOriginal !== null && notaCreditoOriginal?.totalOriginal !== factura.total_a_pagar && (
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Valor actual de la nota: {formatCurrency(factura.total_a_pagar)}
+                      </p>
+                    )}
                   </div>
                 </div>
               </CardContent>
@@ -948,7 +993,12 @@ export function FacturaClassificationDialog({
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
                       <div className="text-center">
                         <p className="text-muted-foreground">Total Original</p>
-                        <p className="font-semibold text-lg">{formatCurrency(factura.total_a_pagar)}</p>
+                        <p className="font-semibold text-lg">{formatCurrency(totalOriginalDisplay)}</p>
+                        {esNotaCredito && notaCreditoOriginal?.totalOriginal !== null && notaCreditoOriginal?.totalOriginal !== factura.total_a_pagar && (
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Valor actual de la nota: {formatCurrency(factura.total_a_pagar)}
+                          </p>
+                        )}
                       </div>
                       {totalAPagar && parseFloat(totalAPagar) !== factura.total_a_pagar && (
                         <div className="text-center">

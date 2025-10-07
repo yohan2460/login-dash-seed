@@ -10,7 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
-import { CalendarIcon, Save, X } from 'lucide-react';
+import { CalendarIcon, Save, X, Plus, Trash2 } from 'lucide-react';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { format } from 'date-fns';
@@ -35,6 +35,7 @@ interface Factura {
   fecha_vencimiento?: string | null;
   metodo_pago?: string | null;
   uso_pronto_pago?: boolean | null;
+  descuentos_antes_iva?: string | null;
 }
 
 interface EditFacturaDialogProps {
@@ -60,6 +61,13 @@ interface FormData {
   fecha_vencimiento: Date | undefined;
 }
 
+interface Descuento {
+  id: string;
+  concepto: string;
+  valor: number;
+  tipo: 'porcentaje' | 'valor_fijo';
+}
+
 export function EditFacturaDialog({ isOpen, onClose, factura, onSave }: EditFacturaDialogProps) {
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
@@ -77,6 +85,12 @@ export function EditFacturaDialog({ isOpen, onClose, factura, onSave }: EditFact
     numero_serie: '',
     fecha_emision: undefined,
     fecha_vencimiento: undefined
+  });
+  const [descuentos, setDescuentos] = useState<Descuento[]>([]);
+  const [nuevoDescuento, setNuevoDescuento] = useState<{ concepto: string; valor: string; tipo: 'porcentaje' | 'valor_fijo' }>({
+    concepto: '',
+    valor: '',
+    tipo: 'valor_fijo'
   });
 
   useEffect(() => {
@@ -96,8 +110,36 @@ export function EditFacturaDialog({ isOpen, onClose, factura, onSave }: EditFact
         fecha_emision: factura.fecha_emision ? new Date(factura.fecha_emision) : undefined,
         fecha_vencimiento: factura.fecha_vencimiento ? new Date(factura.fecha_vencimiento) : undefined
       });
+
+      if (factura.descuentos_antes_iva) {
+        try {
+          const parsed = JSON.parse(factura.descuentos_antes_iva) as Array<Partial<Descuento>>;
+          const normalizados = parsed
+            .filter(Boolean)
+            .map((descuento, index) => ({
+              id: descuento?.id || `descuento-${index}-${Date.now()}`,
+              concepto: descuento?.concepto || `Descuento ${index + 1}`,
+              valor: typeof descuento?.valor === 'number' ? descuento.valor : parseFloat(String(descuento?.valor ?? 0)) || 0,
+              tipo: descuento?.tipo === 'porcentaje' ? 'porcentaje' : 'valor_fijo'
+            }));
+          setDescuentos(normalizados);
+        } catch (error) {
+          console.error('Error parsing descuentos_antes_iva:', error);
+          setDescuentos([]);
+        }
+      } else {
+        setDescuentos([]);
+      }
+      setNuevoDescuento({ concepto: '', valor: '', tipo: 'valor_fijo' });
     }
   }, [factura, isOpen]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      setDescuentos([]);
+      setNuevoDescuento({ concepto: '', valor: '', tipo: 'valor_fijo' });
+    }
+  }, [isOpen]);
 
   const handleInputChange = (field: keyof FormData, value: any) => {
     setFormData(prev => ({
@@ -106,12 +148,63 @@ export function EditFacturaDialog({ isOpen, onClose, factura, onSave }: EditFact
     }));
   };
 
+  const getBaseAntesDeIVA = () => {
+    const base = formData.total_a_pagar - (formData.factura_iva || 0);
+    return base > 0 ? base : formData.total_a_pagar;
+  };
+
+  const calcularTotalDescuentos = () => {
+    const base = getBaseAntesDeIVA();
+    return descuentos.reduce((suma, descuento) => {
+      if (descuento.tipo === 'porcentaje') {
+        return suma + (base * descuento.valor / 100);
+      }
+      return suma + descuento.valor;
+    }, 0);
+  };
+
+  const calcularTotalDespuesDescuentos = () => {
+    const base = getBaseAntesDeIVA();
+    const descuentosTotal = calcularTotalDescuentos();
+    return Math.max(0, base - descuentosTotal);
+  };
+
+  const agregarDescuento = () => {
+    if (!nuevoDescuento.concepto.trim() || !nuevoDescuento.valor.trim()) return;
+
+    const valorNumerico = parseFloat(nuevoDescuento.valor);
+    if (isNaN(valorNumerico) || valorNumerico <= 0) return;
+
+    const descuento: Descuento = {
+      id: `desc-${Date.now()}`,
+      concepto: nuevoDescuento.concepto.trim(),
+      valor: valorNumerico,
+      tipo: nuevoDescuento.tipo
+    };
+
+    setDescuentos(prev => [...prev, descuento]);
+    setNuevoDescuento({ concepto: '', valor: '', tipo: 'valor_fijo' });
+  };
+
+  const eliminarDescuento = (id: string) => {
+    setDescuentos(prev => prev.filter(descuento => descuento.id !== id));
+  };
+
   const handleSave = async () => {
     if (!factura) return;
 
     setIsLoading(true);
 
     try {
+      const descuentosData = descuentos.length > 0
+        ? JSON.stringify(descuentos.map(({ id, concepto, valor, tipo }) => ({
+            id,
+            concepto,
+            valor,
+            tipo
+          })))
+        : null;
+
       const updateData = {
         numero_factura: formData.numero_factura,
         emisor_nombre: formData.emisor_nombre,
@@ -126,6 +219,7 @@ export function EditFacturaDialog({ isOpen, onClose, factura, onSave }: EditFact
         numero_serie: formData.numero_serie || null,
         fecha_emision: formData.fecha_emision ? formData.fecha_emision.toISOString() : null,
         fecha_vencimiento: formData.fecha_vencimiento ? formData.fecha_vencimiento.toISOString() : null,
+        descuentos_antes_iva: descuentosData,
         updated_at: new Date().toISOString()
       };
 
@@ -362,6 +456,114 @@ export function EditFacturaDialog({ isOpen, onClose, factura, onSave }: EditFact
                     onChange={(e) => handleInputChange('factura_iva_porcentaje', parseFloat(e.target.value) || 0)}
                     placeholder="0"
                   />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Descuentos antes de IVA */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">Descuentos antes de IVA</CardTitle>
+              <p className="text-sm text-muted-foreground">
+                Registra descuentos aplicados antes del cálculo de IVA para mantener el valor real de la factura.
+              </p>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {descuentos.length > 0 ? (
+                <div className="space-y-3">
+                  {descuentos.map((descuento) => (
+                    <div
+                      key={descuento.id}
+                      className="flex items-center justify-between rounded-md border border-muted p-3"
+                    >
+                      <div>
+                        <p className="font-medium">{descuento.concepto}</p>
+                        <p className="text-sm text-muted-foreground">
+                          {descuento.tipo === 'porcentaje'
+                            ? `${descuento.valor}% del valor base`
+                            : formatCurrency(descuento.valor)}
+                        </p>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => eliminarDescuento(descuento.id)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                        <span className="sr-only">Eliminar descuento</span>
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="rounded-md border border-dashed border-muted p-4 text-sm text-muted-foreground">
+                  No se han registrado descuentos. Agrega descuentos para reflejar retenciones comerciales, bonificaciones
+                  o acuerdos especiales antes de IVA.
+                </div>
+              )}
+
+              <Separator />
+
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                <div className="space-y-2">
+                  <Label htmlFor="nuevo_descuento_concepto">Concepto</Label>
+                  <Input
+                    id="nuevo_descuento_concepto"
+                    value={nuevoDescuento.concepto}
+                    onChange={(e) => setNuevoDescuento(prev => ({ ...prev, concepto: e.target.value }))}
+                    placeholder="Ej: Descuento comercial"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="nuevo_descuento_tipo">Tipo</Label>
+                  <Select
+                    value={nuevoDescuento.tipo}
+                    onValueChange={(value: 'porcentaje' | 'valor_fijo') => setNuevoDescuento(prev => ({ ...prev, tipo: value }))}
+                  >
+                    <SelectTrigger id="nuevo_descuento_tipo">
+                      <SelectValue placeholder="Selecciona el tipo" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="valor_fijo">Valor Fijo</SelectItem>
+                      <SelectItem value="porcentaje">Porcentaje</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="nuevo_descuento_valor">Valor</Label>
+                  <Input
+                    id="nuevo_descuento_valor"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={nuevoDescuento.valor}
+                    onChange={(e) => setNuevoDescuento(prev => ({ ...prev, valor: e.target.value }))}
+                    placeholder={nuevoDescuento.tipo === 'porcentaje' ? '0%' : '$0'}
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-end">
+                <Button type="button" variant="outline" onClick={agregarDescuento}>
+                  <Plus className="mr-2 h-4 w-4" />
+                  Agregar descuento
+                </Button>
+              </div>
+
+              <div className="rounded-md bg-muted p-3 text-sm">
+                <div className="flex items-center justify-between">
+                  <span>Total descuentos aplicados</span>
+                  <span className="font-semibold text-green-600">
+                    -{formatCurrency(calcularTotalDescuentos())}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-muted-foreground">
+                  <span>Valor base después de descuentos</span>
+                  <span className="font-semibold">
+                    {formatCurrency(calcularTotalDespuesDescuentos())}
+                  </span>
                 </div>
               </div>
             </CardContent>
