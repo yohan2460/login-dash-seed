@@ -15,6 +15,7 @@ import { ModernStatsCard } from '@/components/ModernStatsCard';
 import { FacturasTable } from '@/components/FacturasTable';
 import { NotaCreditoDialog } from '@/components/NotaCreditoDialog';
 import { ModernLayout } from '@/components/ModernLayout';
+import { useSupabaseQuery } from '@/hooks/useSupabaseQuery';
 
 interface Factura {
   id: string;
@@ -45,9 +46,40 @@ interface PagoPartido {
 export function GastosPagados() {
   const { user, loading } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [facturas, setFacturas] = useState<Factura[]>([]);
-  const [pagosPartidos, setPagosPartidos] = useState<PagoPartido[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const {
+    data: queryData,
+    isLoading,
+    refetch
+  } = useSupabaseQuery<{
+    facturas: Factura[];
+    pagosPartidos: PagoPartido[];
+  }>(
+    ['facturas', 'gastos-pagados'],
+    async () => {
+      const { data, error } = await supabase
+        .from('facturas')
+        .select('*')
+        .eq('clasificacion', 'gasto')
+        .eq('estado_mercancia', 'pagada')
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+
+      const { data: pagosData, error: pagosError } = await supabase
+        .from('pagos_partidos')
+        .select('*');
+
+      if (pagosError) throw pagosError;
+
+      return {
+        facturas: data || [],
+        pagosPartidos: pagosData || []
+      };
+    },
+    { enabled: !!user }
+  );
+  const facturas = queryData?.facturas ?? [];
+  const pagosPartidos = queryData?.pagosPartidos ?? [];
   const [dateFrom, setDateFrom] = useState<Date | undefined>(undefined);
   const [dateTo, setDateTo] = useState<Date | undefined>(undefined);
   const [sortByDate, setSortByDate] = useState<'newest' | 'oldest'>('newest');
@@ -55,12 +87,6 @@ export function GastosPagados() {
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
   const [selectedFacturaForNotaCredito, setSelectedFacturaForNotaCredito] = useState<Factura | null>(null);
   const [isNotaCreditoDialogOpen, setIsNotaCreditoDialogOpen] = useState(false);
-
-  useEffect(() => {
-    if (user) {
-      fetchFacturas();
-    }
-  }, [user]);
 
   useEffect(() => {
     const highlightId = searchParams.get('highlight');
@@ -83,48 +109,13 @@ export function GastosPagados() {
     }
   }, [searchParams, setSearchParams]);
 
-  const fetchPagosPartidos = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('pagos_partidos')
-        .select('*');
-
-      if (error) throw error;
-      setPagosPartidos(data || []);
-    } catch (error) {
-      console.error('Error fetching pagos partidos:', error);
-    }
-  };
-
-  const fetchFacturas = async () => {
-    setIsLoading(true);
-    try {
-      const { data, error } = await supabase
-        .from('facturas')
-        .select('*')
-        .eq('clasificacion', 'gasto')
-        .eq('estado_mercancia', 'pagada')
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-      setFacturas(data || []);
-
-      // Cargar pagos partidos
-      await fetchPagosPartidos();
-    } catch (error) {
-      console.error('Error fetching facturas:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
   const handleNotaCredito = (factura: Factura) => {
     setSelectedFacturaForNotaCredito(factura);
     setIsNotaCreditoDialogOpen(true);
   };
 
   const handleNotaCreditoCreated = () => {
-    fetchFacturas();
+    refetch();
     setIsNotaCreditoDialogOpen(false);
     setSelectedFacturaForNotaCredito(null);
   };
@@ -349,7 +340,7 @@ export function GastosPagados() {
               <FacturasTable
                 facturas={filteredFacturas}
                 onClassifyClick={() => {}}
-                refreshData={fetchFacturas}
+                refreshData={refetch}
                 showActions={false}
                 showClassifyButton={false}
                 onNotaCreditoClick={handleNotaCredito}

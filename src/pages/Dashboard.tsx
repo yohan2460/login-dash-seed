@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Navigate } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -18,6 +18,8 @@ import { CalendarIcon, Filter, Search, TrendingUp, TrendingDown, Calendar as Cal
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
+import { useSupabaseQuery } from '@/hooks/useSupabaseQuery';
+import { useQueryClient } from '@tanstack/react-query';
 
 interface Factura {
   id: string;
@@ -49,9 +51,32 @@ interface Factura {
 export default function Dashboard() {
   const { user, loading, signOut } = useAuth();
   const { toast } = useToast();
-  
-  const [facturas, setFacturas] = useState<Factura[]>([]);
-  const [loadingFacturas, setLoadingFacturas] = useState(false);
+
+  const queryClient = useQueryClient();
+  const {
+    data: facturasData,
+    isLoading: loadingFacturas,
+    refetch
+  } = useSupabaseQuery<Factura[]>(
+    ['facturas', 'dashboard'],
+    async () => {
+      const { data, error } = await supabase
+        .from('facturas')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+
+      const validData = (data || []).filter(f => f && f.id && typeof f.id === 'string');
+      console.log('Dashboard: facturas cargadas:', validData.length);
+      return validData;
+    },
+    {
+      enabled: !!user
+    }
+  );
+  const facturas = facturasData ?? [];
+
   const [selectedFactura, setSelectedFactura] = useState<Factura | null>(null);
   const [isClassificationDialogOpen, setIsClassificationDialogOpen] = useState(false);
   const [isPaymentDialogOpen, setIsPaymentDialogOpen] = useState(false);
@@ -60,40 +85,13 @@ export default function Dashboard() {
   const [dateFrom, setDateFrom] = useState<Date | null>(null);
   const [dateTo, setDateTo] = useState<Date | null>(null);
 
-  useEffect(() => {
-    if (user) {
-      fetchFacturas();
-    }
-  }, [user]);
-
-  const fetchFacturas = async () => {
-    try {
-      setLoadingFacturas(true);
-      const { data, error } = await supabase
-        .from('facturas')
-        .select('*')
-        .order('created_at', { ascending: false });
-      
-      if (error) throw error;
-      
-      // Validar y filtrar datos válidos
-      const validData = (data || []).filter(f => f && f.id && typeof f.id === 'string');
-      console.log('Dashboard: facturas cargadas:', validData.length);
-      setFacturas(validData);
-    } catch (error) {
-      console.error('Error fetching facturas:', error);
-    } finally {
-      setLoadingFacturas(false);
-    }
-  };
-
   const handleDelete = (facturaId: string) => {
     console.log('Dashboard handleDelete called with ID:', facturaId);
     if (!facturaId) {
       console.error('Dashboard: ID de factura inválido');
       return;
     }
-    setFacturas(prev => {
+    queryClient.setQueryData<Factura[]>(['facturas', 'dashboard'], prev => {
       const validPrev = Array.isArray(prev) ? prev : [];
       return validPrev.filter(f => f && typeof f === 'object' && f.id && f.id !== facturaId);
     });
@@ -114,12 +112,12 @@ export default function Dashboard() {
   };
 
   const handleClassificationUpdated = async () => {
-    fetchFacturas();
+    await refetch();
     setIsClassificationDialogOpen(false);
   };
 
   const handlePaymentProcessed = () => {
-    fetchFacturas();
+    refetch();
     setIsPaymentDialogOpen(false);
   };
 

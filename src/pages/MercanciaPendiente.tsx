@@ -14,6 +14,8 @@ import { EditFacturaDialog } from '@/components/EditFacturaDialog';
 import { MultiplePaymentDialog } from '@/components/MultiplePaymentDialog';
 import { NotaCreditoDialog } from '@/components/NotaCreditoDialog';
 import { ModernLayout } from '@/components/ModernLayout';
+import { useSupabaseQuery } from '@/hooks/useSupabaseQuery';
+import { useQueryClient } from '@tanstack/react-query';
 
 interface Factura {
   id: string;
@@ -42,8 +44,27 @@ interface Factura {
 export function MercanciaPendiente() {
   const { user, loading } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [facturas, setFacturas] = useState<Factura[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const queryClient = useQueryClient();
+  const {
+    data: facturasData,
+    isLoading,
+    refetch
+  } = useSupabaseQuery<Factura[]>(
+    ['facturas', 'mercancia-pendiente'],
+    async () => {
+      const { data, error } = await supabase
+        .from('facturas')
+        .select('*, ingresado_sistema')
+        .eq('clasificacion', 'mercancia')
+        .neq('estado_mercancia', 'pagada')
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      return data || [];
+    },
+    { enabled: !!user }
+  );
+  const facturas = facturasData ?? [];
   const [selectedFactura, setSelectedFactura] = useState<Factura | null>(null);
   const [isPaymentDialogOpen, setIsPaymentDialogOpen] = useState(false);
   const [selectedFacturaForEdit, setSelectedFacturaForEdit] = useState<Factura | null>(null);
@@ -55,12 +76,6 @@ export function MercanciaPendiente() {
   const [isMultiplePaymentDialogOpen, setIsMultiplePaymentDialogOpen] = useState(false);
   const [selectedFacturaForNotaCredito, setSelectedFacturaForNotaCredito] = useState<Factura | null>(null);
   const [isNotaCreditoDialogOpen, setIsNotaCreditoDialogOpen] = useState(false);
-
-  useEffect(() => {
-    if (user) {
-      fetchFacturas();
-    }
-  }, [user]);
 
   useEffect(() => {
     const highlightId = searchParams.get('highlight');
@@ -82,25 +97,6 @@ export function MercanciaPendiente() {
       return () => clearTimeout(timeout);
     }
   }, [searchParams, setSearchParams]);
-
-  const fetchFacturas = async () => {
-    setIsLoading(true);
-    try {
-      const { data, error } = await supabase
-        .from('facturas')
-        .select('*, ingresado_sistema')
-        .eq('clasificacion', 'mercancia')
-        .neq('estado_mercancia', 'pagada')
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-      setFacturas(data || []);
-    } catch (error) {
-      console.error('Error fetching facturas:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
   const handlePay = (factura: Factura) => {
     setSelectedFactura(factura);
@@ -129,11 +125,14 @@ export function MercanciaPendiente() {
       if (error) throw error;
 
       // Actualizar localmente para feedback inmediato
-      setFacturas(prev => prev.map(f =>
-        f.id === factura.id
-          ? { ...f, ingresado_sistema: nuevoEstadoSistema }
-          : f
-      ));
+      queryClient.setQueryData<Factura[]>(['facturas', 'mercancia-pendiente'], prev => {
+        if (!Array.isArray(prev)) return prev;
+        return prev.map(f =>
+          f.id === factura.id
+            ? { ...f, ingresado_sistema: nuevoEstadoSistema }
+            : f
+        );
+      });
 
     } catch (error) {
       console.error('Error updating ingresado_sistema:', error);
@@ -146,7 +145,7 @@ export function MercanciaPendiente() {
   };
 
   const handleNotaCreditoCreated = () => {
-    fetchFacturas();
+    refetch();
     setIsNotaCreditoDialogOpen(false);
     setSelectedFacturaForNotaCredito(null);
   };
@@ -379,7 +378,7 @@ export function MercanciaPendiente() {
                 facturas={filteredFacturas}
                 onClassifyClick={() => {}}
                 onPayClick={handlePay}
-                refreshData={fetchFacturas}
+                refreshData={refetch}
                 showClassifyButton={false}
                 showValorRealAPagar={true}
                 showIngresoSistema={true}
@@ -403,7 +402,7 @@ export function MercanciaPendiente() {
             setIsPaymentDialogOpen(false);
             setSelectedFactura(null);
           }}
-          onPaymentProcessed={fetchFacturas}
+          onPaymentProcessed={refetch}
         />
 
         {/* Edit Factura Dialog */}
@@ -414,7 +413,7 @@ export function MercanciaPendiente() {
             setSelectedFacturaForEdit(null);
           }}
           factura={selectedFacturaForEdit}
-          onSave={fetchFacturas}
+          onSave={refetch}
         />
 
         {/* Multiple Payment Dialog */}
@@ -425,7 +424,7 @@ export function MercanciaPendiente() {
             setSelectedFacturasForPayment([]);
           }}
           facturas={selectedFacturasForPayment}
-          onPaymentProcessed={fetchFacturas}
+          onPaymentProcessed={refetch}
         />
 
         {/* Nota de Crédito Dialog */}

@@ -8,6 +8,7 @@ import { CheckCircle, Package, CreditCard, Filter, FileText } from 'lucide-react
 import { ModernStatsCard } from '@/components/ModernStatsCard';
 import { FacturasTable } from '@/components/FacturasTable';
 import { ModernLayout } from '@/components/ModernLayout';
+import { useSupabaseQuery } from '@/hooks/useSupabaseQuery';
 
 interface Factura {
   id: string;
@@ -28,16 +29,23 @@ interface Factura {
 export function Sistematizadas() {
   const { user, loading } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [facturas, setFacturas] = useState<Factura[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
   const [filtroTipo, setFiltroTipo] = useState<string>('all');
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
+  const { data: facturasData, isLoading, refetch } = useSupabaseQuery<Factura[]>(
+    ['facturas', 'sistematizadas'],
+    async () => {
+      const { data, error } = await supabase
+        .from('facturas')
+        .select('*')
+        .eq('clasificacion', 'sistematizada')
+        .order('created_at', { ascending: false });
 
-  useEffect(() => {
-    if (user) {
-      fetchFacturas();
-    }
-  }, [user]);
+      if (error) throw error;
+      return data || [];
+    },
+    { enabled: !!user }
+  );
+  const facturas = facturasData ?? [];
 
   useEffect(() => {
     const highlightId = searchParams.get('highlight');
@@ -59,24 +67,6 @@ export function Sistematizadas() {
       return () => clearTimeout(timeout);
     }
   }, [searchParams, setSearchParams]);
-
-  const fetchFacturas = async () => {
-    setIsLoading(true);
-    try {
-      const { data, error } = await supabase
-        .from('facturas')
-        .select('*')
-        .eq('clasificacion', 'sistematizada')
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-      setFacturas(data || []);
-    } catch (error) {
-      console.error('Error fetching facturas:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('es-CO', {
@@ -221,7 +211,7 @@ export function Sistematizadas() {
               <FacturasTable
                 facturas={filteredFacturas}
                 onClassifyClick={() => {}}
-                refreshData={fetchFacturas}
+                refreshData={refetch}
                 showActions={false}
                 showOriginalClassification={true}
                 showClassifyButton={false}

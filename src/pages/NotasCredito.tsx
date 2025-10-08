@@ -19,6 +19,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { useSupabaseQuery } from '@/hooks/useSupabaseQuery';
 
 interface Factura {
   id: string;
@@ -66,18 +67,100 @@ export default function NotasCredito() {
   const { user, loading } = useAuth();
   const { toast } = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [facturas, setFacturas] = useState<Factura[]>([]);
-  const [notasConFacturas, setNotasConFacturas] = useState<NotaCreditoConFactura[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const {
+    data: notasData,
+    isLoading,
+    refetch
+  } = useSupabaseQuery<{
+    notasCredito: Factura[];
+    notasConFacturas: NotaCreditoConFactura[];
+  }>(
+    ['facturas', 'notas-credito'],
+    async () => {
+      const { data, error } = await supabase
+        .from('facturas')
+        .select('*')
+        .eq('clasificacion', 'nota_credito')
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+
+      const notas = data || [];
+      const numerosFactura = new Set<string>();
+
+      for (const nota of notas) {
+        if (nota.notas) {
+          try {
+            const notasData = JSON.parse(nota.notas);
+            if (notasData.tipo === 'nota_credito' && notasData.numero_factura_aplicada) {
+              numerosFactura.add(notasData.numero_factura_aplicada);
+            }
+          } catch (parseError) {
+            console.error('Error parsing notas:', parseError);
+          }
+        }
+      }
+
+      let facturasMap: Record<string, Factura> = {};
+
+      if (numerosFactura.size > 0) {
+        const { data: facturasRelacionadas, error: facturasError } = await supabase
+          .from('facturas')
+          .select('*')
+          .in('numero_factura', Array.from(numerosFactura));
+
+        if (facturasError) throw facturasError;
+
+        facturasMap = (facturasRelacionadas || []).reduce<Record<string, Factura>>((acc, factura) => {
+          if (factura.numero_factura) {
+            acc[factura.numero_factura] = factura;
+          }
+          return acc;
+        }, {});
+      }
+
+      const notasConFacturas = notas.map(nota => {
+        let facturaAfectada: Factura | null = null;
+
+        if (nota.notas) {
+          try {
+            const notasData = JSON.parse(nota.notas);
+            if (notasData.tipo === 'nota_credito' && notasData.numero_factura_aplicada) {
+              facturaAfectada = facturasMap[notasData.numero_factura_aplicada] || null;
+            }
+          } catch (parseError) {
+            console.error('Error parsing notas:', parseError);
+          }
+        }
+
+        return {
+          notaCredito: nota,
+          facturaAfectada
+        };
+      });
+
+      return {
+        notasCredito: notas,
+        notasConFacturas
+      };
+    },
+    {
+      enabled: !!user,
+      onError: (error) => {
+        console.error('Error fetching notas de crédito:', error);
+        toast({
+          title: "Error",
+          description: "No se pudieron cargar las notas de crédito",
+          variant: "destructive"
+        });
+      }
+    }
+  );
+  const facturas = notasData?.notasCredito ?? [];
+  const notasConFacturas = notasData?.notasConFacturas ?? [];
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [notaToDelete, setNotaToDelete] = useState<Factura | null>(null);
-
-  useEffect(() => {
-    if (user) {
-      fetchNotasCredito();
-    }
-  }, [user]);
 
   useEffect(() => {
     const highlightId = searchParams.get('highlight');
@@ -129,8 +212,7 @@ export default function NotasCredito() {
         description: `La nota de crédito ${notaToDelete.numero_factura} ha sido eliminada correctamente`,
       });
 
-      // Refrescar la lista
-      fetchNotasCredito();
+      await refetch();
     } catch (error) {
       console.error('Error al eliminar nota:', error);
       toast({
@@ -143,61 +225,6 @@ export default function NotasCredito() {
       setNotaToDelete(null);
     }
   };
-
-  const fetchNotasCredito = async () => {
-    setIsLoading(true);
-    try {
-      const { data, error } = await supabase
-        .from('facturas')
-        .select('*')
-        .eq('clasificacion', 'nota_credito')
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-      setFacturas(data || []);
-
-      // Obtener las facturas afectadas para cada nota de crédito
-      const notasConFacturasTemp: NotaCreditoConFactura[] = [];
-
-      for (const nc of data || []) {
-        let facturaAfectada: Factura | null = null;
-
-        // Intentar obtener el número de factura original desde las notas
-        if (nc.notas) {
-          try {
-            const notasData = JSON.parse(nc.notas);
-            // El campo correcto es 'numero_factura_aplicada' (no 'numero_factura_original')
-            if (notasData.tipo === 'nota_credito' && notasData.numero_factura_aplicada) {
-              // Buscar la factura por número
-              const { data: facturaData, error: facturaError } = await supabase
-                .from('facturas')
-                .select('*')
-                .eq('numero_factura', notasData.numero_factura_aplicada)
-                .single();
-
-              if (!facturaError && facturaData) {
-                facturaAfectada = facturaData;
-              }
-            }
-          } catch (e) {
-            console.error('Error parsing notas:', e);
-          }
-        }
-
-        notasConFacturasTemp.push({
-          notaCredito: nc,
-          facturaAfectada
-        });
-      }
-
-      setNotasConFacturas(notasConFacturasTemp);
-    } catch (error) {
-      console.error('Error fetching notas de crédito:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
   if (!user && !loading) {
     return <Navigate to="/auth" replace />;
   }
@@ -298,7 +325,7 @@ export default function NotasCredito() {
                   <FacturasTable
                     facturas={[item.notaCredito]}
                     onClassifyClick={() => {}}
-                    refreshData={fetchNotasCredito}
+                    refreshData={refetch}
                     showActions={false}
                     showClassifyButton={false}
                     showOriginalValueForNC={true}
@@ -310,7 +337,7 @@ export default function NotasCredito() {
                       <FacturasTable
                         facturas={[item.facturaAfectada]}
                         onClassifyClick={() => {}}
-                        refreshData={fetchNotasCredito}
+                        refreshData={refetch}
                         showActions={false}
                         showClassifyButton={false}
                         highlightedId={highlightedId}
@@ -351,7 +378,7 @@ export default function NotasCredito() {
                   <FacturasTable
                     facturas={[item.notaCredito]}
                     onClassifyClick={() => {}}
-                    refreshData={fetchNotasCredito}
+                    refreshData={refetch}
                     showActions={false}
                     showClassifyButton={false}
                     showOriginalValueForNC={true}
@@ -363,7 +390,7 @@ export default function NotasCredito() {
                       <FacturasTable
                         facturas={[item.facturaAfectada]}
                         onClassifyClick={() => {}}
-                        refreshData={fetchNotasCredito}
+                        refreshData={refetch}
                         showActions={false}
                         showClassifyButton={false}
                         highlightedId={highlightedId}
@@ -404,7 +431,7 @@ export default function NotasCredito() {
                   <FacturasTable
                     facturas={[item.notaCredito]}
                     onClassifyClick={() => {}}
-                    refreshData={fetchNotasCredito}
+                    refreshData={refetch}
                     showActions={true}
                     showClassifyButton={false}
                     showOriginalValueForNC={true}
@@ -416,7 +443,7 @@ export default function NotasCredito() {
                       <FacturasTable
                         facturas={[item.facturaAfectada]}
                         onClassifyClick={() => {}}
-                        refreshData={fetchNotasCredito}
+                        refreshData={refetch}
                         showActions={false}
                         showClassifyButton={false}
                         highlightedId={highlightedId}

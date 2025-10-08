@@ -14,6 +14,7 @@ import { ModernLayout } from '@/components/ModernLayout';
 import { FacturasTable } from '@/components/FacturasTable';
 import { Hash, Package, Search, ArrowUpDown, Filter, ChevronDown, AlertTriangle, Calendar } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { useSupabaseQuery } from '@/hooks/useSupabaseQuery';
 
 interface Factura {
   id: string;
@@ -69,23 +70,45 @@ const STORAGE_KEY = 'facturas-por-serie-filtros';
 export default function FacturasPorSerie() {
   const { user, loading: authLoading } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [facturas, setFacturas] = useState<Factura[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { toast } = useToast();
+  const {
+    data: facturasData,
+    isLoading: loading,
+    refetch
+  } = useSupabaseQuery<Factura[]>(
+    ['facturas', 'por-serie'],
+    async () => {
+      const { data, error } = await supabase
+        .from('facturas')
+        .select('*')
+        .in('clasificacion', ['mercancia', 'sistematizada'])
+        .not('numero_serie', 'is', null)
+        .order('numero_serie', { ascending: true });
+
+      if (error) throw error;
+      return data || [];
+    },
+    {
+      enabled: !!user,
+      onError: (error) => {
+        console.error('Error fetching facturas:', error);
+        toast({
+          title: "Error",
+          description: "No se pudieron cargar las facturas",
+          variant: "destructive"
+        });
+      }
+    }
+  );
+  const facturas = facturasData ?? [];
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedEstados, setSelectedEstados] = useState<string[]>(['pagada', 'pendiente', 'sistematizada', 'sin_estado']);
   const [selectedMes, setSelectedMes] = useState<string>('');
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
-  const { toast } = useToast();
 
   useEffect(() => {
     loadFiltersFromStorage();
   }, []);
-
-  useEffect(() => {
-    if (user) {
-      fetchFacturas();
-    }
-  }, [user]);
 
   useEffect(() => {
     const highlightId = searchParams.get('highlight');
@@ -138,30 +161,6 @@ export default function FacturasPorSerie() {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(filters));
     } catch (error) {
       console.error('Error saving filters to localStorage:', error);
-    }
-  };
-
-  const fetchFacturas = async () => {
-    setLoading(true);
-    try {
-      const { data, error } = await supabase
-        .from('facturas')
-        .select('*')
-        .in('clasificacion', ['mercancia', 'sistematizada'])
-        .not('numero_serie', 'is', null)
-        .order('numero_serie', { ascending: true });
-
-      if (error) throw error;
-      setFacturas(data || []);
-    } catch (error) {
-      console.error('Error fetching facturas:', error);
-      toast({
-        title: "Error",
-        description: "No se pudieron cargar las facturas",
-        variant: "destructive"
-      });
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -507,7 +506,7 @@ export default function FacturasPorSerie() {
             <FacturasTable
               facturas={facturasFiltradas}
               onClassifyClick={() => {}}
-              refreshData={fetchFacturas}
+              refreshData={refetch}
               highlightedId={highlightedId}
             />
           </CardContent>

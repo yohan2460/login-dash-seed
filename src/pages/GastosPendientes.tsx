@@ -14,6 +14,7 @@ import { EditFacturaDialog } from '@/components/EditFacturaDialog';
 import { MultiplePaymentDialog } from '@/components/MultiplePaymentDialog';
 import { NotaCreditoDialog } from '@/components/NotaCreditoDialog';
 import { ModernLayout } from '@/components/ModernLayout';
+import { useSupabaseQuery } from '@/hooks/useSupabaseQuery';
 
 interface Factura {
   id: string;
@@ -41,8 +42,26 @@ interface Factura {
 export function GastosPendientes() {
   const { user, loading } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [facturas, setFacturas] = useState<Factura[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const {
+    data: facturasData,
+    isLoading,
+    refetch
+  } = useSupabaseQuery<Factura[]>(
+    ['facturas', 'gastos-pendientes'],
+    async () => {
+      const { data, error } = await supabase
+        .from('facturas')
+        .select('*')
+        .eq('clasificacion', 'gasto')
+        .or('estado_mercancia.is.null,estado_mercancia.neq.pagada')
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      return data || [];
+    },
+    { enabled: !!user }
+  );
+  const facturas = facturasData ?? [];
   const [selectedFactura, setSelectedFactura] = useState<Factura | null>(null);
   const [isPaymentDialogOpen, setIsPaymentDialogOpen] = useState(false);
   const [selectedFacturaForEdit, setSelectedFacturaForEdit] = useState<Factura | null>(null);
@@ -54,12 +73,6 @@ export function GastosPendientes() {
   const [isMultiplePaymentDialogOpen, setIsMultiplePaymentDialogOpen] = useState(false);
   const [selectedFacturaForNotaCredito, setSelectedFacturaForNotaCredito] = useState<Factura | null>(null);
   const [isNotaCreditoDialogOpen, setIsNotaCreditoDialogOpen] = useState(false);
-
-  useEffect(() => {
-    if (user) {
-      fetchFacturas();
-    }
-  }, [user]);
 
   useEffect(() => {
     const highlightId = searchParams.get('highlight');
@@ -82,25 +95,6 @@ export function GastosPendientes() {
     }
   }, [searchParams, setSearchParams]);
 
-  const fetchFacturas = async () => {
-    setIsLoading(true);
-    try {
-      const { data, error } = await supabase
-        .from('facturas')
-        .select('*')
-        .eq('clasificacion', 'gasto')
-        .or('estado_mercancia.is.null,estado_mercancia.neq.pagada')
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-      setFacturas(data || []);
-    } catch (error) {
-      console.error('Error fetching facturas:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
   const handlePay = (factura: Factura) => {
     setSelectedFactura(factura);
     setIsPaymentDialogOpen(true);
@@ -122,7 +116,7 @@ export function GastosPendientes() {
   };
 
   const handleNotaCreditoCreated = () => {
-    fetchFacturas();
+    refetch();
     setIsNotaCreditoDialogOpen(false);
     setSelectedFacturaForNotaCredito(null);
   };
@@ -347,7 +341,7 @@ export function GastosPendientes() {
                 facturas={getFilteredFacturas()}
                 onClassifyClick={() => {}}
                 onPayClick={handlePay}
-                refreshData={fetchFacturas}
+                refreshData={refetch}
                 showClassifyButton={false}
                 showValorRealAPagar={true}
                 showEditButton={true}
@@ -369,7 +363,7 @@ export function GastosPendientes() {
             setIsPaymentDialogOpen(false);
             setSelectedFactura(null);
           }}
-          onPaymentProcessed={fetchFacturas}
+          onPaymentProcessed={refetch}
         />
 
         {/* Edit Factura Dialog */}
@@ -380,7 +374,7 @@ export function GastosPendientes() {
             setSelectedFacturaForEdit(null);
           }}
           factura={selectedFacturaForEdit}
-          onSave={fetchFacturas}
+          onSave={refetch}
         />
 
         {/* Multiple Payment Dialog */}
@@ -391,7 +385,7 @@ export function GastosPendientes() {
             setSelectedFacturasForPayment([]);
           }}
           facturas={selectedFacturasForPayment}
-          onPaymentProcessed={fetchFacturas}
+          onPaymentProcessed={refetch}
         />
 
         {/* Nota de Crédito Dialog */}

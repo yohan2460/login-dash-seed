@@ -16,6 +16,7 @@ import { FacturasTable } from '@/components/FacturasTable';
 import { NotaCreditoDialog } from '@/components/NotaCreditoDialog';
 import { ModernLayout } from '@/components/ModernLayout';
 import { useToast } from '@/hooks/use-toast';
+import { useSupabaseQuery } from '@/hooks/useSupabaseQuery';
 
 interface Factura {
   id: string;
@@ -50,9 +51,6 @@ export function MercanciaPagada() {
   const { user, loading } = useAuth();
   const { toast } = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [facturas, setFacturas] = useState<Factura[]>([]);
-  const [pagosPartidos, setPagosPartidos] = useState<PagoPartido[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
   const [dateFrom, setDateFrom] = useState<Date | undefined>(undefined);
   const [dateTo, setDateTo] = useState<Date | undefined>(undefined);
   const [sortByDate, setSortByDate] = useState<'newest' | 'oldest'>('newest');
@@ -61,11 +59,36 @@ export function MercanciaPagada() {
   const [selectedFacturaForNotaCredito, setSelectedFacturaForNotaCredito] = useState<Factura | null>(null);
   const [isNotaCreditoDialogOpen, setIsNotaCreditoDialogOpen] = useState(false);
 
-  useEffect(() => {
-    if (user) {
-      fetchFacturas();
+  const { data: queryData, isLoading, refetch } = useSupabaseQuery(
+    ['facturas', 'mercancia', 'pagada'],
+    async () => {
+      const { data, error } = await supabase
+        .from('facturas')
+        .select('*, ingresado_sistema, valor_real_a_pagar')
+        .eq('clasificacion', 'mercancia')
+        .eq('estado_mercancia', 'pagada')
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+
+      const { data: pagosData, error: pagosError } = await supabase
+        .from('pagos_partidos')
+        .select('*');
+
+      if (pagosError) throw pagosError;
+
+      return {
+        facturas: data ?? [],
+        pagosPartidos: pagosData ?? []
+      };
+    },
+    {
+      enabled: !!user
     }
-  }, [user]);
+  );
+
+  const facturas = queryData?.facturas ?? [];
+  const pagosPartidos = queryData?.pagosPartidos ?? [];
 
   useEffect(() => {
     const highlightId = searchParams.get('highlight');
@@ -86,42 +109,7 @@ export function MercanciaPagada() {
       }, 5000);
       return () => clearTimeout(timeout);
     }
-  }, [searchParams, setSearchParams]);
-
-  const fetchPagosPartidos = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('pagos_partidos')
-        .select('*');
-
-      if (error) throw error;
-      setPagosPartidos(data || []);
-    } catch (error) {
-      console.error('Error fetching pagos partidos:', error);
-    }
-  };
-
-  const fetchFacturas = async () => {
-    setIsLoading(true);
-    try {
-      const { data, error } = await supabase
-        .from('facturas')
-        .select('*, ingresado_sistema, valor_real_a_pagar')
-        .eq('clasificacion', 'mercancia')
-        .eq('estado_mercancia', 'pagada')
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-      setFacturas(data || []);
-
-      // Cargar pagos partidos
-      await fetchPagosPartidos();
-    } catch (error) {
-      console.error('Error fetching facturas:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  }, [searchParams, setSearchParams, facturas]);
 
   const formatCurrency = (amount: number | null | undefined) => {
     if (amount == null || isNaN(Number(amount))) {
@@ -250,8 +238,7 @@ export function MercanciaPagada() {
         description: `La factura ${factura.numero_factura} ha sido marcada como sistematizada.`,
       });
 
-      // Refrescar datos para actualizar la vista
-      fetchFacturas();
+      await refetch();
     } catch (error) {
       console.error('Error sistematizando factura:', error);
       toast({
@@ -278,8 +265,7 @@ export function MercanciaPagada() {
         description: `La factura ${factura.numero_factura} ha sido actualizada.`,
       });
 
-      // Refrescar datos
-      fetchFacturas();
+      await refetch();
     } catch (error) {
       console.error('Error actualizando estado:', error);
       toast({
@@ -295,8 +281,8 @@ export function MercanciaPagada() {
     setIsNotaCreditoDialogOpen(true);
   };
 
-  const handleNotaCreditoCreated = () => {
-    fetchFacturas();
+  const handleNotaCreditoCreated = async () => {
+    await refetch();
     setIsNotaCreditoDialogOpen(false);
     setSelectedFacturaForNotaCredito(null);
   };
@@ -495,7 +481,7 @@ export function MercanciaPagada() {
                 facturas={filteredFacturas}
                 onClassifyClick={() => {}}
                 onSistematizarClick={handleSistematizar}
-                refreshData={fetchFacturas}
+                refreshData={refetch}
                 showActions={true}
                 showClassifyButton={false}
                 showSistematizarButton={true}

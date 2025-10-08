@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { Navigate, Link } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
@@ -12,6 +12,7 @@ import { PDFViewer } from '@/components/PDFViewer';
 import { useToast } from '@/hooks/use-toast';
 import { Calendar, AlertTriangle, Clock, DollarSign, TrendingUp, Eye, CheckCircle, Search } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils';
+import { useSupabaseQuery } from '@/hooks/useSupabaseQuery';
 
 interface Factura {
   id: string;
@@ -46,27 +47,67 @@ interface FacturaConUrgencia extends Factura {
   urgencia: UrgencyLevel;
 }
 
+const URGENCY_ORDER: Record<UrgencyLevel, number> = {
+  vencida: 0,
+  urgente: 1,
+  proximo: 2,
+  normal: 3
+};
+
+const getDaysToExpire = (fechaVencimiento: string | null): number => {
+  if (!fechaVencimiento) return 999;
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const [year, month, day] = fechaVencimiento.split('T')[0].split('-').map(Number);
+  const vencimiento = new Date(year, month - 1, day);
+  vencimiento.setHours(0, 0, 0, 0);
+
+  const diffTime = vencimiento.getTime() - today.getTime();
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+  return diffDays;
+};
+
+const getUrgencyLevel = (dias: number): UrgencyLevel => {
+  if (dias < 0) return 'vencida';
+  if (dias <= 3) return 'urgente';
+  if (dias <= 7) return 'proximo';
+  return 'normal';
+};
+
+const mapFacturasConUrgencia = (facturas: Factura[]): FacturaConUrgencia[] => {
+  const facturasConUrgencia = facturas.map(factura => {
+    const diasParaVencer = getDaysToExpire(factura.fecha_vencimiento);
+    const urgencia = getUrgencyLevel(diasParaVencer);
+
+    return {
+      ...factura,
+      diasParaVencer,
+      urgencia
+    };
+  });
+
+  facturasConUrgencia.sort((a, b) => {
+    if (URGENCY_ORDER[a.urgencia] !== URGENCY_ORDER[b.urgencia]) {
+      return URGENCY_ORDER[a.urgencia] - URGENCY_ORDER[b.urgencia];
+    }
+    return a.diasParaVencer - b.diasParaVencer;
+  });
+
+  return facturasConUrgencia;
+};
+
 export default function PagosProximos() {
   const { user, loading } = useAuth();
   const { toast } = useToast();
-  const [facturas, setFacturas] = useState<FacturaConUrgencia[]>([]);
-  const [facturasSinFecha, setFacturasSinFecha] = useState<Factura[]>([]);
-  const [loadingData, setLoadingData] = useState(true);
-  const [pdfDialogOpen, setPdfDialogOpen] = useState(false);
-  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
-  const [selectedFacturaForPDF, setSelectedFacturaForPDF] = useState<Factura | null>(null);
-  const [searchKeyword, setSearchKeyword] = useState('');
-
-  useEffect(() => {
-    if (user) {
-      fetchFacturasPendientes();
-    }
-  }, [user]);
-
-  const fetchFacturasPendientes = async () => {
-    setLoadingData(true);
-    try {
-      // Facturas CON fecha de vencimiento
+  const { data: queryData, isLoading: loadingData, refetch } = useSupabaseQuery<{
+    facturasConUrgencia: FacturaConUrgencia[];
+    facturasSinFecha: Factura[];
+  }>(
+    ['facturas', 'pagos-proximos'],
+    async () => {
       const { data, error } = await supabase
         .from('facturas')
         .select('*')
@@ -76,7 +117,6 @@ export default function PagosProximos() {
 
       if (error) throw error;
 
-      // Facturas SIN fecha de vencimiento (pendientes)
       const { data: sinFecha, error: errorSinFecha } = await supabase
         .from('facturas')
         .select('*')
@@ -85,64 +125,29 @@ export default function PagosProximos() {
 
       if (errorSinFecha) throw errorSinFecha;
 
-      setFacturasSinFecha(sinFecha || []);
-
-      // Calcular urgencia para cada factura
-      const facturasConUrgencia: FacturaConUrgencia[] = (data || []).map(factura => {
-        const diasParaVencer = getDaysToExpire(factura.fecha_vencimiento);
-        const urgencia = getUrgencyLevel(diasParaVencer);
-
-        return {
-          ...factura,
-          diasParaVencer,
-          urgencia
-        };
-      });
-
-      // Ordenar por urgencia: vencida, urgente, próximo, normal
-      const ordenUrgencia = { vencida: 0, urgente: 1, proximo: 2, normal: 3 };
-      facturasConUrgencia.sort((a, b) => {
-        if (ordenUrgencia[a.urgencia] !== ordenUrgencia[b.urgencia]) {
-          return ordenUrgencia[a.urgencia] - ordenUrgencia[b.urgencia];
-        }
-        return a.diasParaVencer - b.diasParaVencer;
-      });
-
-      setFacturas(facturasConUrgencia);
-    } catch (error) {
-      console.error('Error al cargar facturas:', error);
-      toast({
-        title: "Error",
-        description: "No se pudieron cargar las facturas pendientes",
-        variant: "destructive",
-      });
-    } finally {
-      setLoadingData(false);
+      return {
+        facturasConUrgencia: mapFacturasConUrgencia(data || []),
+        facturasSinFecha: sinFecha || []
+      };
+    },
+    {
+      enabled: !!user,
+      onError: (error) => {
+        console.error('Error al cargar facturas:', error);
+        toast({
+          title: "Error",
+          description: "No se pudieron cargar las facturas pendientes",
+          variant: "destructive"
+        });
+      }
     }
-  };
-
-  const getDaysToExpire = (fechaVencimiento: string | null): number => {
-    if (!fechaVencimiento) return 999;
-
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    const [year, month, day] = fechaVencimiento.split('T')[0].split('-').map(Number);
-    const vencimiento = new Date(year, month - 1, day);
-    vencimiento.setHours(0, 0, 0, 0);
-
-    const diffTime = vencimiento.getTime() - today.getTime();
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
-    return diffDays;
-  };
-
-  const getUrgencyLevel = (dias: number): UrgencyLevel => {
-    if (dias < 0) return 'vencida';
-    if (dias <= 3) return 'urgente';
-    if (dias <= 7) return 'proximo';
-    return 'normal';
-  };
+  );
+  const facturas = queryData?.facturasConUrgencia ?? [];
+  const facturasSinFecha = queryData?.facturasSinFecha ?? [];
+  const [pdfDialogOpen, setPdfDialogOpen] = useState(false);
+  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+  const [selectedFacturaForPDF, setSelectedFacturaForPDF] = useState<Factura | null>(null);
+  const [searchKeyword, setSearchKeyword] = useState('');
 
   const getUrgencyBadge = (urgencia: UrgencyLevel, dias: number) => {
     switch (urgencia) {
@@ -384,7 +389,7 @@ export default function PagosProximos() {
               Facturas pendientes organizadas por urgencia de pago
             </p>
           </div>
-          <Button onClick={fetchFacturasPendientes} variant="outline">
+          <Button onClick={() => refetch()} variant="outline">
             <TrendingUp className="w-4 h-4 mr-2" />
             Actualizar
           </Button>

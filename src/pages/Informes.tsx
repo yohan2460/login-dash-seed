@@ -13,6 +13,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { ModernLayout } from '@/components/ModernLayout';
 import { useToast } from '@/hooks/use-toast';
+import { useSupabaseQuery } from '@/hooks/useSupabaseQuery';
 import * as XLSX from 'xlsx';
 import { calcularMontoRetencionReal, calcularValorRealAPagar } from '@/utils/calcularValorReal';
 import {
@@ -91,10 +92,8 @@ interface FilterState {
 export default function Informes() {
   const { user, loading } = useAuth();
   const { toast } = useToast();
-  const [facturas, setFacturas] = useState<Factura[]>([]);
   const [filteredFacturas, setFilteredFacturas] = useState<Factura[]>([]);
   const [selectedFacturas, setSelectedFacturas] = useState<string[]>([]);
-  const [loadingData, setLoadingData] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
   const [pdfDialogOpen, setPdfDialogOpen] = useState(false);
@@ -102,7 +101,6 @@ export default function Informes() {
   const [loadingPdf, setLoadingPdf] = useState(false);
   const [editingSerieId, setEditingSerieId] = useState<string | null>(null);
   const [editingSerieValue, setEditingSerieValue] = useState<string>('');
-  const [pagosPartidos, setPagosPartidos] = useState<PagoPartido[]>([]);
   // Obtener el primer y último día del mes actual
   const getCurrentMonthRange = () => {
     const now = new Date();
@@ -132,35 +130,61 @@ export default function Informes() {
     ingresoSistema: ''
   });
 
-  useEffect(() => {
-    if (user) {
-      fetchFacturas();
+  const { data: queryData, isLoading: loadingData, refetch } = useSupabaseQuery(
+    ['facturas', 'informes'],
+    async () => {
+      const { data, error } = await supabase
+        .from('facturas')
+        .select(`
+          *,
+          ingresado_sistema
+        `)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+
+      const { data: pagosData, error: pagosError } = await supabase
+        .from('pagos_partidos')
+        .select('*');
+
+      if (pagosError) throw pagosError;
+
+      return {
+        facturas: data ?? [],
+        pagosPartidos: pagosData ?? []
+      };
+    },
+    {
+      enabled: !!user
     }
-  }, [user]);
+  );
+
+  const facturas = queryData?.facturas ?? [];
+  const pagosPartidos = queryData?.pagosPartidos ?? [];
 
   // Escuchar cambios en tiempo real de la base de datos
   useEffect(() => {
-    if (user) {
-      const channel = supabase
-        .channel('facturas-changes')
-        .on(
-          'postgres_changes',
-          {
-            event: '*',
-            schema: 'public',
-            table: 'facturas'
-          },
-          () => {
-            fetchFacturas();
-          }
-        )
-        .subscribe();
+    if (!user) return;
 
-      return () => {
-        supabase.removeChannel(channel);
-      };
-    }
-  }, [user]);
+    const channel = supabase
+      .channel('facturas-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'facturas'
+        },
+        () => {
+          refetch();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user, refetch]);
 
   // Refrescar datos cada 5 minutos para asegurar sincronización (solo si es necesario)
   // useEffect(() => {
@@ -180,51 +204,6 @@ export default function Informes() {
   if (!user && !loading) {
     return <Navigate to="/auth" replace />;
   }
-
-  const fetchPagosPartidos = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('pagos_partidos')
-        .select('*');
-
-      if (error) throw error;
-
-      console.log('📊 Pagos partidos cargados:', data?.length || 0, data);
-      setPagosPartidos(data || []);
-    } catch (error) {
-      console.error('Error en fetchPagosPartidos:', error);
-    }
-  };
-
-  const fetchFacturas = async () => {
-    setLoadingData(true);
-    try {
-      const { data, error } = await supabase
-        .from('facturas')
-        .select(`
-          *,
-          ingresado_sistema
-        `)
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-
-      setFacturas(data || []);
-
-      // Cargar pagos partidos
-      await fetchPagosPartidos();
-
-    } catch (error) {
-      console.error('Error en fetchFacturas:', error);
-      toast({
-        title: "Error",
-        description: "No se pudieron cargar las facturas",
-        variant: "destructive",
-      });
-    } finally {
-      setLoadingData(false);
-    }
-  };
 
   const applyFilters = () => {
     let filtered = [...facturas];
@@ -445,11 +424,18 @@ export default function Informes() {
     });
   };
 
-  const formatCurrency = (amount: number) => {
+  const toNumber = (value: number | string | null | undefined) => {
+    if (value === null || value === undefined) return 0;
+    if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
+    const parsed = parseFloat(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  };
+
+  const formatCurrency = (amount: number | string | null | undefined) => {
     return new Intl.NumberFormat('es-CO', {
       style: 'currency',
       currency: 'COP'
-    }).format(amount);
+    }).format(toNumber(amount));
   };
 
   // Función segura para formatear fechas (evita problemas de zona horaria)
@@ -861,8 +847,8 @@ export default function Informes() {
     const desgloseBancos = calcularDesglosePorMetodo('Pago Banco');
     const desgloseCaja = calcularDesglosePorMetodo('Caja');
 
-    const totalPagadoOficial = facturasPagadas.reduce((sum, f) => sum + (f.total_a_pagar || 0), 0);
-    const totalPagadoReal = facturasPagadas.reduce((sum, f) => sum + (f.valor_real_a_pagar || f.monto_pagado || 0), 0);
+    const totalPagadoOficial = facturasPagadas.reduce((sum, f) => sum + toNumber(f.total_a_pagar), 0);
+    const totalPagadoReal = facturasPagadas.reduce((sum, f) => sum + toNumber(f.valor_real_a_pagar || f.monto_pagado), 0);
 
     // Calcular pronto pago utilizado (facturas pagadas con uso_pronto_pago = true)
     const facturasProntoPagoUtilizado = filteredFacturas.filter(f =>
@@ -892,17 +878,21 @@ export default function Informes() {
     }, 0);
 
     const facturasPendientes = filteredFacturas.filter(f => f.estado_mercancia !== 'pagada');
-    const totalPendiente = facturasPendientes.reduce((sum, f) => sum + f.total_a_pagar, 0);
+    const totalPendiente = facturasPendientes.reduce((sum, f) => sum + toNumber(f.total_a_pagar), 0);
 
 
     return {
       totalFacturas: filteredFacturas.length,
-      totalMonto: filteredFacturas.reduce((sum, f) => sum + f.total_a_pagar, 0),
+      totalMonto: filteredFacturas.reduce((sum, f) => sum + toNumber(f.total_a_pagar), 0),
       totalPagadoOficial,
       totalPagadoReal,
       totalPendiente,
-      pagosMercancia: filteredFacturas.filter(f => f.clasificacion_original === 'Mercancía' && f.estado_mercancia === 'pagada').reduce((sum, f) => sum + (f.total_a_pagar || 0), 0),
-      pagosGastos: filteredFacturas.filter(f => f.clasificacion_original === 'Gastos' && f.estado_mercancia === 'pagada').reduce((sum, f) => sum + (f.total_a_pagar || 0), 0),
+      pagosMercancia: filteredFacturas
+        .filter(f => f.clasificacion_original === 'Mercancía' && f.estado_mercancia === 'pagada')
+        .reduce((sum, f) => sum + toNumber(f.total_a_pagar), 0),
+      pagosGastos: filteredFacturas
+        .filter(f => f.clasificacion_original === 'Gastos' && f.estado_mercancia === 'pagada')
+        .reduce((sum, f) => sum + toNumber(f.total_a_pagar), 0),
       pagosTobiasOficial,
       pagosTobiasReal,
       pagosBancosOficial,
@@ -912,9 +902,13 @@ export default function Informes() {
       desgloseTobias,
       desgloseBancos,
       desgloseCaja,
-      totalImpuestosPagados: filteredFacturas.filter(f => f.estado_mercancia === 'pagada').reduce((sum, f) => sum + (f.factura_iva || 0), 0),
-      totalImpuestos: filteredFacturas.reduce((sum, f) => sum + (f.factura_iva || 0), 0),
-      totalRetenciones: filteredFacturas.filter(f => f.tiene_retencion).reduce((sum, f) => sum + calcularMontoRetencionReal(f), 0),
+      totalImpuestosPagados: filteredFacturas
+        .filter(f => f.estado_mercancia === 'pagada')
+        .reduce((sum, f) => sum + toNumber(f.factura_iva), 0),
+      totalImpuestos: filteredFacturas.reduce((sum, f) => sum + toNumber(f.factura_iva), 0),
+      totalRetenciones: filteredFacturas
+        .filter(f => f.tiene_retencion)
+        .reduce((sum, f) => sum + calcularMontoRetencionReal(f), 0),
       facturasConRetencion: filteredFacturas.filter(f => f.tiene_retencion).length,
       prontoPagoUtilizado,
       prontoPagoNoUtilizado,
@@ -1445,7 +1439,7 @@ export default function Informes() {
                 <RefreshCw className="w-4 h-4 mr-2" />
                 Limpiar Filtros
               </Button>
-              <Button variant="outline" onClick={fetchFacturas}>
+              <Button variant="outline" onClick={() => refetch()}>
                 <RefreshCw className="w-4 h-4 mr-2" />
                 Actualizar Datos
               </Button>

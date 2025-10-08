@@ -14,6 +14,7 @@ import { ManualFacturaDialog } from '@/components/ManualFacturaDialog';
 import { NotaCreditoDialog } from '@/components/NotaCreditoDialog';
 import { PDFViewer } from '@/components/PDFViewer';
 import { ModernLayout } from '@/components/ModernLayout';
+import { useSupabaseQuery } from '@/hooks/useSupabaseQuery';
 
 interface Factura {
   id: string;
@@ -31,10 +32,27 @@ interface Factura {
 }
 
 export function SinClasificar() {
-  const { user, loading } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [facturas, setFacturas] = useState<Factura[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const {
+    data: facturasData,
+    isLoading: facturasLoading,
+    refetch
+  } = useSupabaseQuery<Factura[]>(
+    ['facturas', 'sin-clasificar'],
+    async () => {
+      const { data, error } = await supabase
+        .from('facturas')
+        .select('*')
+        .is('clasificacion', null)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      return data || [];
+    },
+    { enabled: !!user }
+  );
+  const facturas = facturasData ?? [];
   const [selectedFactura, setSelectedFactura] = useState<Factura | null>(null);
   const [isClassificationDialogOpen, setIsClassificationDialogOpen] = useState(false);
   const [isManualDialogOpen, setIsManualDialogOpen] = useState(false);
@@ -45,12 +63,6 @@ export function SinClasificar() {
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
   const [isPdfViewerOpen, setIsPdfViewerOpen] = useState(false);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (user) {
-      fetchFacturas();
-    }
-  }, [user]);
 
   useEffect(() => {
     const highlightId = searchParams.get('highlight');
@@ -72,24 +84,6 @@ export function SinClasificar() {
       return () => clearTimeout(timeout);
     }
   }, [searchParams, setSearchParams]);
-
-  const fetchFacturas = async () => {
-    setIsLoading(true);
-    try {
-      const { data, error } = await supabase
-        .from('facturas')
-        .select('*')
-        .is('clasificacion', null)
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-      setFacturas(data || []);
-    } catch (error) {
-      console.error('Error fetching facturas:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
   const handleClassify = async (factura: Factura) => {
     console.log('🔵 handleClassify llamado', { factura });
@@ -173,7 +167,7 @@ export function SinClasificar() {
     return filtered;
   };
 
-  if (loading) {
+  if (authLoading || facturasLoading) {
     return <div>Cargando...</div>;
   }
 
@@ -287,7 +281,7 @@ export function SinClasificar() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            {isLoading ? (
+            {facturasLoading ? (
               <div className="text-center py-8">
                 <p>Cargando facturas...</p>
               </div>
@@ -303,7 +297,7 @@ export function SinClasificar() {
                 facturas={getFilteredFacturas()}
                 onClassifyClick={handleClassify}
                 onNotaCreditoClick={handleNotaCredito}
-                refreshData={fetchFacturas}
+                refreshData={refetch}
                 highlightedId={highlightedId}
               />
             )}
@@ -321,7 +315,7 @@ export function SinClasificar() {
             setIsPdfViewerOpen(false);
             setPdfUrl(null);
           }}
-          onClassificationUpdated={fetchFacturas}
+          onClassificationUpdated={refetch}
           sideBySide={true}
         />
 
@@ -342,7 +336,7 @@ export function SinClasificar() {
         <ManualFacturaDialog
           isOpen={isManualDialogOpen}
           onClose={() => setIsManualDialogOpen(false)}
-          onFacturaCreated={fetchFacturas}
+          onFacturaCreated={refetch}
         />
 
         <NotaCreditoDialog
@@ -352,7 +346,7 @@ export function SinClasificar() {
             setIsNotaCreditoDialogOpen(false);
             setSelectedFacturaForNotaCredito(null);
           }}
-          onNotaCreditoCreated={fetchFacturas}
+          onNotaCreditoCreated={refetch}
         />
       </div>
     </ModernLayout>
