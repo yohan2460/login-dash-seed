@@ -33,7 +33,8 @@ import {
   Eye,
   X,
   Edit2,
-  Check
+  Check,
+  Paperclip
 } from 'lucide-react';
 
 interface Factura {
@@ -546,24 +547,27 @@ export default function Informes() {
     }
   };
 
+  const obtenerComprobantePago = async (facturaId: string) => {
+    const { data: comprobantes, error } = await supabase
+      .from('comprobantes_pago')
+      .select('*')
+      .filter('facturas_ids', 'cs', `{${facturaId}}`)
+      .order('created_at', { ascending: false })
+      .limit(1);
+
+    if (error) {
+      throw error;
+    }
+
+    return comprobantes?.[0] ?? null;
+  };
+
   // Función para descargar comprobante de pago
   const descargarComprobantePago = async (facturaId: string) => {
     try {
-      console.log('🔍 Buscando comprobante para factura:', facturaId);
+      const comprobante = await obtenerComprobantePago(facturaId);
 
-      // Buscar comprobante asociado a esta factura usando el operador @>
-      const { data: comprobantes, error } = await supabase
-        .from('comprobantes_pago')
-        .select('*')
-        .filter('facturas_ids', 'cs', `{${facturaId}}`)
-        .order('created_at', { ascending: false })
-        .limit(1);
-
-      console.log('📊 Resultado búsqueda:', { comprobantes, error });
-
-      if (error) throw error;
-
-      if (!comprobantes || comprobantes.length === 0) {
+      if (!comprobante) {
         toast({
           title: "Comprobante no encontrado",
           description: "No hay comprobante de pago asociado a esta factura. El comprobante se genera automáticamente al registrar el pago.",
@@ -572,9 +576,6 @@ export default function Informes() {
         return;
       }
 
-      const comprobante = comprobantes[0];
-
-      // Obtener URL firmada del PDF
       const { data: urlData, error: urlError } = await supabase.storage
         .from('facturas-pdf')
         .createSignedUrl(comprobante.pdf_file_path, 3600);
@@ -582,9 +583,7 @@ export default function Informes() {
       if (urlError) throw urlError;
 
       if (urlData?.signedUrl) {
-        // Abrir el PDF en una nueva pestaña
         window.open(urlData.signedUrl, '_blank');
-
         toast({
           title: "Comprobante abierto",
           description: "El comprobante de pago se abrió en una nueva pestaña"
@@ -595,6 +594,42 @@ export default function Informes() {
       toast({
         title: "Error al descargar",
         description: "Hubo un error al descargar el comprobante",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const descargarSoportePago = async (facturaId: string) => {
+    try {
+      const comprobante = await obtenerComprobantePago(facturaId);
+
+      if (!comprobante || !comprobante.soporte_pago_file_path) {
+        toast({
+          title: "Soporte no disponible",
+          description: "No se encontró un soporte de pago asociado a esta factura.",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      const { data: urlData, error: urlError } = await supabase.storage
+        .from('facturas-pdf')
+        .createSignedUrl(comprobante.soporte_pago_file_path, 3600);
+
+      if (urlError) throw urlError;
+
+      if (urlData?.signedUrl) {
+        window.open(urlData.signedUrl, '_blank');
+        toast({
+          title: "Soporte abierto",
+          description: "El soporte de pago se abrió en una nueva pestaña"
+        });
+      }
+    } catch (error) {
+      console.error('Error al descargar soporte:', error);
+      toast({
+        title: "Error al descargar",
+        description: "Hubo un error al descargar el soporte de pago",
         variant: "destructive"
       });
     }
@@ -1662,6 +1697,18 @@ export default function Informes() {
                                 title="Descargar Comprobante de Pago"
                               >
                                 <Receipt className="h-4 w-4 text-green-600" />
+                              </Button>
+                            )}
+
+                            {factura.estado_mercancia === 'pagada' && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-8 w-8 p-0"
+                                onClick={() => descargarSoportePago(factura.id)}
+                                title="Descargar Soporte del Pago"
+                              >
+                                <Paperclip className="h-4 w-4 text-amber-600" />
                               </Button>
                             )}
                           </div>

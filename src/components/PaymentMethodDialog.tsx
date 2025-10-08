@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import type { ChangeEvent } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Input } from '@/components/ui/input';
@@ -82,6 +83,8 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
   const [loadingSaldos, setLoadingSaldos] = useState(false);
   const [saldosAplicados, setSaldosAplicados] = useState(false);
   const [aplicandoSaldos, setAplicandoSaldos] = useState(false);
+  const [soporteFile, setSoporteFile] = useState<File | null>(null);
+  const soporteInputRef = useRef<HTMLInputElement | null>(null);
 
   const { toast } = useToast();
 
@@ -194,6 +197,15 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
     }
   }, [factura, isOpen]);
 
+  useEffect(() => {
+    if (!isOpen) {
+      setSoporteFile(null);
+      if (soporteInputRef.current) {
+        soporteInputRef.current.value = '';
+      }
+    }
+  }, [isOpen]);
+
   const fetchSaldosDisponibles = async () => {
     if (!factura) return;
     setLoadingSaldos(true);
@@ -218,6 +230,52 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
   // Calcular total de saldos aplicados
   const calcularTotalSaldosAplicados = (): number => {
     return Object.values(saldosSeleccionados).reduce((sum, monto) => sum + monto, 0);
+  };
+
+  const sanitizeFileName = (name: string) => {
+    return name
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-zA-Z0-9.-]+/g, '_')
+      .toLowerCase();
+  };
+
+  const formatFileSize = (bytes: number) => {
+    if (!bytes) return '0 B';
+    const units = ['B', 'KB', 'MB', 'GB'];
+    const exponent = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+    const value = bytes / Math.pow(1024, exponent);
+    return `${value.toFixed(exponent === 0 ? 0 : 2)} ${units[exponent]}`;
+  };
+
+  const handleSoporteChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) {
+      setSoporteFile(null);
+      return;
+    }
+
+    const maxSizeBytes = 10 * 1024 * 1024; // 10 MB
+    if (file.size > maxSizeBytes) {
+      toast({
+        title: 'Archivo demasiado grande',
+        description: 'El soporte no puede superar los 10 MB.',
+        variant: 'destructive'
+      });
+      if (soporteInputRef.current) {
+        soporteInputRef.current.value = '';
+      }
+      return;
+    }
+
+    setSoporteFile(file);
+  };
+
+  const handleRemoveSoporte = () => {
+    setSoporteFile(null);
+    if (soporteInputRef.current) {
+      soporteInputRef.current.value = '';
+    }
   };
 
   // Aplicar saldos a favor a la factura
@@ -414,6 +472,8 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
     const topMargin = 20;
     const bottomMargin = 30;
     let currentY = 15;
+    const timestamp = Date.now();
+    let soportePagoPath: string | null = null;
 
     const ensureSpace = (height: number) => {
       if (currentY + height > pageHeight - bottomMargin) {
@@ -890,7 +950,6 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
       .replace(/[^a-zA-Z0-9\s]/g, '')
       .replace(/\s+/g, '_')
       .substring(0, 40);
-    const timestamp = new Date().getTime();
     const fileName = `Pago_${nombreLimpio}_${factura.numero_factura}_${timestamp}.pdf`;
 
     // Descargar el PDF
@@ -899,6 +958,24 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
     // Guardar el PDF en Supabase Storage
     try {
       console.log('💾 Iniciando guardado de comprobante para factura:', factura.id);
+
+      if (soporteFile) {
+        const soporteFileName = sanitizeFileName(soporteFile.name);
+        const soporteStoragePath = `soportes-pago/${timestamp}_${soporteFileName}`;
+
+        const { data: soporteUploadData, error: soporteUploadError } = await supabase.storage
+          .from('facturas-pdf')
+          .upload(soporteStoragePath, soporteFile, {
+            contentType: soporteFile.type || 'application/octet-stream',
+            upsert: false
+          });
+
+        if (soporteUploadError) {
+          throw soporteUploadError;
+        }
+
+        soportePagoPath = soporteUploadData?.path || soporteStoragePath;
+      }
 
       const pdfBlob = doc.output('blob');
       const storagePath = `comprobantes-pago/${fileName}`;
@@ -955,6 +1032,7 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
         total_pagado: valorFinal,
         cantidad_facturas: 1,
         pdf_file_path: storagePath,
+        soporte_pago_file_path: soportePagoPath,
         facturas_ids: [factura.id],
         detalles: {
           factura_numero: factura.numero_factura,
@@ -968,6 +1046,12 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
           pagos_partidos: usarPagoPartido ? metodosPago.filter(p => p.monto > 0) : null,
           saldos_aplicados: saldosAplicadosInfo.length > 0 ? saldosAplicadosInfo : null,
           total_saldos_aplicados: totalSaldosInfo,
+          soporte_pago: soportePagoPath ? {
+            file_path: soportePagoPath,
+            nombre_original: soporteFile?.name || null,
+            tamano: soporteFile?.size || null,
+            tipo: soporteFile?.type || null
+          } : null,
           notas_credito: notasCredito.length > 0 ? notasCredito : null,
           total_notas_credito: totalNotasCredito
         }
@@ -987,6 +1071,13 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
       }
 
       console.log('✅ Comprobante guardado en BD:', insertData);
+
+      if (soporteFile) {
+        setSoporteFile(null);
+        if (soporteInputRef.current) {
+          soporteInputRef.current.value = '';
+        }
+      }
 
       return fileName;
     } catch (error: any) {
@@ -1441,6 +1532,38 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
                 </CardContent>
               </Card>
             )}
+
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base">Soporte del Pago</CardTitle>
+                <p className="text-sm text-muted-foreground">
+                  Adjunta un comprobante externo (recibo bancario, pantallazo, etc.) para futuras consultas.
+                </p>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <Input
+                  ref={soporteInputRef}
+                  type="file"
+                  accept="application/pdf,image/*"
+                  onChange={handleSoporteChange}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Se admite un solo archivo por pago. Formatos sugeridos: PDF o imagen (máx. 10&nbsp;MB).
+                </p>
+                {soporteFile && (
+                  <div className="flex items-center justify-between rounded-md border border-muted p-3 text-sm">
+                    <div className="flex flex-col">
+                      <span className="font-medium">{soporteFile.name}</span>
+                      <span className="text-xs text-muted-foreground">{formatFileSize(soporteFile.size)}</span>
+                    </div>
+                    <Button type="button" variant="ghost" size="sm" onClick={handleRemoveSoporte}>
+                      <Trash2 className="w-4 h-4 mr-2" />
+                      Quitar
+                    </Button>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
 
             {/* Toggle para Pago Partido */}
             {obtenerValorFinal(factura) - calcularTotalSaldosAplicados() > 0 && (

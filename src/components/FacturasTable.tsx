@@ -4,7 +4,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Eye, Tag, CreditCard, Calendar, Clock, AlertTriangle, CheckCircle, Trash2, FileCheck, Download, Minus, Archive, Edit, Percent } from 'lucide-react';
+import { Eye, Tag, CreditCard, Calendar, Clock, AlertTriangle, CheckCircle, Trash2, FileCheck, Download, Minus, Archive, Edit, Percent, Paperclip } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
@@ -144,23 +144,26 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
   };
 
   // Función para descargar comprobante de pago
+  const obtenerComprobantePago = async (facturaId: string) => {
+    const { data: comprobantes, error } = await supabase
+      .from('comprobantes_pago')
+      .select('*')
+      .filter('facturas_ids', 'cs', `{${facturaId}}`)
+      .order('created_at', { ascending: false })
+      .limit(1);
+
+    if (error) {
+      throw error;
+    }
+
+    return comprobantes?.[0] ?? null;
+  };
+
   const descargarComprobante = async (facturaId: string) => {
     try {
-      console.log('🔍 Buscando comprobante para factura:', facturaId);
+      const comprobante = await obtenerComprobantePago(facturaId);
 
-      // Buscar comprobante asociado a esta factura usando el operador @>
-      const { data: comprobantes, error } = await supabase
-        .from('comprobantes_pago')
-        .select('*')
-        .filter('facturas_ids', 'cs', `{${facturaId}}`)
-        .order('created_at', { ascending: false })
-        .limit(1);
-
-      console.log('📊 Resultado búsqueda:', { comprobantes, error });
-
-      if (error) throw error;
-
-      if (!comprobantes || comprobantes.length === 0) {
+      if (!comprobante) {
         toast({
           title: "Comprobante no encontrado",
           description: "No hay comprobante de pago asociado a esta factura. El comprobante se genera automáticamente al registrar el pago.",
@@ -169,9 +172,6 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
         return;
       }
 
-      const comprobante = comprobantes[0];
-
-      // Obtener URL firmada del PDF
       const { data: urlData, error: urlError } = await supabase.storage
         .from('facturas-pdf')
         .createSignedUrl(comprobante.pdf_file_path, 3600);
@@ -192,6 +192,42 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
       toast({
         title: "Error al descargar",
         description: "Hubo un error al descargar el comprobante",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const descargarSoportePago = async (facturaId: string) => {
+    try {
+      const comprobante = await obtenerComprobantePago(facturaId);
+
+      if (!comprobante || !comprobante.soporte_pago_file_path) {
+        toast({
+          title: "Soporte no disponible",
+          description: "No se encontró un soporte de pago asociado a esta factura.",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      const { data: urlData, error: urlError } = await supabase.storage
+        .from('facturas-pdf')
+        .createSignedUrl(comprobante.soporte_pago_file_path, 3600);
+
+      if (urlError) throw urlError;
+
+      if (urlData?.signedUrl) {
+        window.open(urlData.signedUrl, '_blank');
+        toast({
+          title: "Soporte abierto",
+          description: "El soporte de pago se abrió en una nueva pestaña"
+        });
+      }
+    } catch (error) {
+      console.error('Error al descargar soporte:', error);
+      toast({
+        title: "Error al descargar",
+        description: "Hubo un error al descargar el soporte de pago",
         variant: "destructive"
       });
     }
@@ -1313,6 +1349,18 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
                           title="Descargar Comprobante de Pago"
                         >
                           <Download className="w-3.5 h-3.5 text-green-600" />
+                        </Button>
+                      )}
+
+                      {factura.estado_mercancia === 'pagada' && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => descargarSoportePago(factura.id)}
+                          className="h-8 w-8 p-0 hover:bg-amber-50"
+                          title="Descargar Soporte del Pago"
+                        >
+                          <Paperclip className="w-3.5 h-3.5 text-amber-600" />
                         </Button>
                       )}
 

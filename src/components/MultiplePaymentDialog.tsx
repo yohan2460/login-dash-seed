@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import type { ChangeEvent } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -86,6 +87,8 @@ export function MultiplePaymentDialog({
   const [loadingSaldos, setLoadingSaldos] = useState(false);
   const [saldosAplicados, setSaldosAplicados] = useState(false);
   const [aplicandoSaldos, setAplicandoSaldos] = useState(false);
+  const [soporteFile, setSoporteFile] = useState<File | null>(null);
+  const soporteInputRef = useRef<HTMLInputElement | null>(null);
 
   const { toast } = useToast();
 
@@ -306,6 +309,15 @@ export function MultiplePaymentDialog({
       fetchSaldosDisponibles();
     }
   }, [isOpen, facturas]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      setSoporteFile(null);
+      if (soporteInputRef.current) {
+        soporteInputRef.current.value = '';
+      }
+    }
+  }, [isOpen]);
 
   const fetchSaldosDisponibles = async () => {
     setLoadingSaldos(true);
@@ -529,6 +541,51 @@ export function MultiplePaymentDialog({
     return todosCompletos && sumaCorrecta;
   };
 
+  const sanitizeFileName = (name: string) => {
+    return name
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-zA-Z0-9.-]+/g, '_')
+      .toLowerCase();
+  };
+
+  const formatFileSize = (bytes: number) => {
+    if (!bytes) return '0 B';
+    const units = ['B', 'KB', 'MB', 'GB'];
+    const exponent = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+    const value = bytes / Math.pow(1024, exponent);
+    return `${value.toFixed(exponent === 0 ? 0 : 2)} ${units[exponent]}`;
+  };
+
+  const handleSoporteChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) {
+      setSoporteFile(null);
+      return;
+    }
+
+    const maxSizeBytes = 10 * 1024 * 1024; // 10 MB
+    if (file.size > maxSizeBytes) {
+      toast({
+        title: 'Archivo demasiado grande',
+        description: 'El soporte no puede superar los 10 MB.',
+        variant: 'destructive'
+      });
+      if (soporteInputRef.current) {
+        soporteInputRef.current.value = '';
+      }
+    } else {
+      setSoporteFile(file);
+    }
+  };
+
+  const handleRemoveSoporte = () => {
+    setSoporteFile(null);
+    if (soporteInputRef.current) {
+      soporteInputRef.current.value = '';
+    }
+  };
+
   // Función auxiliar para generar y guardar el PDF del comprobante múltiple
   const generarYGuardarComprobantePDF = async () => {
     const doc = new jsPDF();
@@ -537,6 +594,8 @@ export function MultiplePaymentDialog({
     const topMargin = 20;
     const bottomMargin = 30;
     let currentY = 15;
+    const timestamp = Date.now();
+    let soportePagoPath: string | null = null;
 
     const ensureSpace = (height: number) => {
       if (currentY + height > pageHeight - bottomMargin) {
@@ -1138,7 +1197,6 @@ export function MultiplePaymentDialog({
     }
 
     // Descargar PDF con nombre basado en proveedor
-    const timestamp = new Date().getTime();
     let fileName: string;
     if (esProveedorUnico) {
       // Limpiar el nombre del proveedor para usar en archivo
@@ -1156,6 +1214,42 @@ export function MultiplePaymentDialog({
     // Guardar el PDF en Supabase Storage
     try {
       console.log('💾 Iniciando guardado de comprobante múltiple para', facturas.length, 'facturas');
+
+      if (soporteFile) {
+        const soporteFileName = sanitizeFileName(soporteFile.name);
+        const soporteStoragePath = `soportes-pago/${timestamp}_${soporteFileName}`;
+
+        const { data: soporteUploadData, error: soporteUploadError } = await supabase.storage
+          .from('facturas-pdf')
+          .upload(soporteStoragePath, soporteFile, {
+            contentType: soporteFile.type || 'application/octet-stream',
+            upsert: false
+          });
+
+        if (soporteUploadError) {
+          throw soporteUploadError;
+        }
+
+        soportePagoPath = soporteUploadData?.path || soporteStoragePath;
+      }
+
+      if (soporteFile) {
+        const soporteFileName = sanitizeFileName(soporteFile.name);
+        const soporteStoragePath = `soportes-pago/${timestamp}_${soporteFileName}`;
+
+        const { data: soporteUploadData, error: soporteUploadError } = await supabase.storage
+          .from('facturas-pdf')
+          .upload(soporteStoragePath, soporteFile, {
+            contentType: soporteFile.type || 'application/octet-stream',
+            upsert: false
+          });
+
+        if (soporteUploadError) {
+          throw soporteUploadError;
+        }
+
+        soportePagoPath = soporteUploadData?.path || soporteStoragePath;
+      }
 
       const pdfBlob = doc.output('blob');
       const storagePath = `comprobantes-pago/${fileName}`;
@@ -1227,6 +1321,7 @@ export function MultiplePaymentDialog({
         total_pagado: totalPagado,
         cantidad_facturas: facturas.length,
         pdf_file_path: storagePath,
+        soporte_pago_file_path: soportePagoPath,
         facturas_ids: facturasIds,
         detalles: {
           proveedor_unico: esProveedorUnico ? proveedoresUnicos[0] : null,
@@ -1235,6 +1330,12 @@ export function MultiplePaymentDialog({
           pagos_partidos: usarPagoPartido ? metodosPago.filter(p => p.monto > 0) : null,
           saldos_aplicados: saldosAplicadosInfo.length > 0 ? saldosAplicadosInfo : null,
           total_saldos_aplicados: totalSaldosInfo,
+          soporte_pago: soportePagoPath ? {
+            file_path: soportePagoPath,
+            nombre_original: soporteFile?.name || null,
+            tamano: soporteFile?.size || null,
+            tipo: soporteFile?.type || null
+          } : null,
           total_notas_credito: totalNotasCreditoAplicadas,
           facturas: facturas.map(f => {
             const detalles = calcularDetallesFactura(f);
@@ -1266,6 +1367,13 @@ export function MultiplePaymentDialog({
       }
 
       console.log('✅ Comprobante guardado en BD:', insertData);
+
+      if (soporteFile) {
+        setSoporteFile(null);
+        if (soporteInputRef.current) {
+          soporteInputRef.current.value = '';
+        }
+      }
 
       return fileName;
     } catch (error: any) {
@@ -1786,6 +1894,38 @@ export function MultiplePaymentDialog({
                   </CardContent>
                 </Card>
               )}
+
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base">Soporte del Pago</CardTitle>
+                  <p className="text-sm text-muted-foreground">
+                    Adjunta un único soporte para este pago múltiple; se asociará a todas las facturas seleccionadas.
+                  </p>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <Input
+                    ref={soporteInputRef}
+                    type="file"
+                    accept="application/pdf,image/*"
+                    onChange={handleSoporteChange}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Formatos soportados: PDF e imágenes. Tamaño máximo: 10&nbsp;MB.
+                  </p>
+                  {soporteFile && (
+                    <div className="flex items-center justify-between rounded-md border border-muted p-3 text-sm">
+                      <div className="flex flex-col">
+                        <span className="font-medium">{soporteFile.name}</span>
+                        <span className="text-xs text-muted-foreground">{formatFileSize(soporteFile.size)}</span>
+                      </div>
+                      <Button type="button" variant="ghost" size="sm" onClick={handleRemoveSoporte}>
+                        <Trash2 className="w-4 h-4 mr-2" />
+                        Quitar
+                      </Button>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
 
               {/* Toggle para Pago Partido - Solo si queda saldo por pagar */}
               {(!saldosAplicados || (saldosAplicados && calcularTotalReal() > 0)) && (
