@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
@@ -30,7 +30,10 @@ interface Factura {
   factura_iva?: number | null;
   factura_iva_porcentaje?: number | null;
   total_sin_iva?: number | null;
+  tiene_retencion?: boolean | null;
+  monto_retencion?: number | null;
 }
+
 
 interface NotaCreditoDialogProps {
   factura: Factura | null;
@@ -49,6 +52,78 @@ export function NotaCreditoDialog({ factura, isOpen, onClose, onNotaCreditoCreat
   const [valorNotaCredito, setValorNotaCredito] = useState<number>(0);
   const [tipoNota, setTipoNota] = useState<'parcial' | 'total'>('total');
   const [searchLoading, setSearchLoading] = useState(false);
+
+  const porcentajeRetencion = useMemo(() => {
+    if (!selectedFactura?.tiene_retencion || !selectedFactura.monto_retencion) {
+      return 0;
+    }
+    return selectedFactura.monto_retencion;
+  }, [selectedFactura]);
+
+  const porcentajeRetencionLabel = useMemo(() => {
+    if (!porcentajeRetencion) return null;
+    return new Intl.NumberFormat('es-CO', {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 2
+    }).format(porcentajeRetencion);
+  }, [porcentajeRetencion]);
+
+  const calcularRetencionDesdeBase = (baseSinIva: number) => {
+    if (baseSinIva <= 0) return 0;
+    if (!porcentajeRetencion || porcentajeRetencion <= 0) return 0;
+    return Math.max(0, baseSinIva * (porcentajeRetencion / 100));
+  };
+
+  const resumenCalculo = useMemo(() => {
+    if (!selectedFactura || !factura) {
+      return null;
+    }
+
+    const facturaOriginalNotas = selectedFactura.notas || '{}';
+    let notasOriginal;
+
+    try {
+      notasOriginal = JSON.parse(facturaOriginalNotas);
+    } catch {
+      notasOriginal = {};
+    }
+
+    const ivaOriginal = notasOriginal.iva_original ?? selectedFactura.factura_iva ?? 0;
+    const totalSinIvaOriginal =
+      notasOriginal.total_sin_iva_original ??
+      selectedFactura.total_sin_iva ??
+      (selectedFactura.total_a_pagar - (selectedFactura.factura_iva || 0));
+    const totalOriginal = notasOriginal.total_original ?? selectedFactura.total_a_pagar;
+
+    const notasPrevias = Array.isArray(notasOriginal.notas_credito) ? notasOriginal.notas_credito : [];
+    const totalPrevioNCs = notasPrevias.reduce((sum: number, nc: any) => sum + (nc.valor_descuento || 0), 0);
+    const totalPrevioNCsSinIVA = notasPrevias.reduce((sum: number, nc: any) => sum + (nc.descuento_sin_iva || 0), 0);
+    const totalPrevioNCsIVA = notasPrevias.reduce((sum: number, nc: any) => sum + (nc.iva_descuento || 0), 0);
+
+    const ncIVA = factura.factura_iva || 0;
+    const ncValorSinIVA = factura.total_sin_iva || (factura.total_a_pagar - ncIVA);
+
+    const totalNCsSinIVA = totalPrevioNCsSinIVA + ncValorSinIVA;
+    const totalNCsIVA = totalPrevioNCsIVA + ncIVA;
+
+    const nuevoTotalSinIVA = totalSinIvaOriginal - totalNCsSinIVA;
+    const nuevoIVA = ivaOriginal - totalNCsIVA;
+    const nuevoTotalAPagar = Math.max(0, nuevoTotalSinIVA + nuevoIVA);
+
+    const retencionOriginal = calcularRetencionDesdeBase(totalSinIvaOriginal);
+    const nuevaRetencion = calcularRetencionDesdeBase(Math.max(0, nuevoTotalSinIVA));
+    const nuevoValorReal = Math.max(0, nuevoTotalAPagar - nuevaRetencion);
+
+    return {
+      totalOriginal,
+      totalPrevioNCs,
+      valorNotaActual: valorNotaCredito,
+      retencionOriginal,
+      nuevaRetencion,
+      nuevoTotalAPagar,
+      nuevoValorReal
+    };
+  }, [selectedFactura, factura, valorNotaCredito, porcentajeRetencion]);
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('es-CO', {
@@ -233,21 +308,35 @@ export function NotaCreditoDialog({ factura, isOpen, onClose, onNotaCreditoCreat
       if (!notasOriginal.total_original) {
         const ivaOriginal = selectedFactura.factura_iva || 0;
         const totalSinIvaOriginal = selectedFactura.total_sin_iva || (selectedFactura.total_a_pagar - ivaOriginal);
+        const retencionOriginal = calcularRetencionDesdeBase(totalSinIvaOriginal);
 
         notasOriginal.total_original = selectedFactura.total_a_pagar;
         notasOriginal.iva_original = ivaOriginal;
         notasOriginal.total_sin_iva_original = totalSinIvaOriginal;
+        notasOriginal.retencion_original = retencionOriginal;
+        notasOriginal.retencion_porcentaje = porcentajeRetencion;
 
         console.log('📝 Guardando valores originales de la factura:', {
           total_original: notasOriginal.total_original,
           iva_original: notasOriginal.iva_original,
-          total_sin_iva_original: notasOriginal.total_sin_iva_original
+          total_sin_iva_original: notasOriginal.total_sin_iva_original,
+          retencion_original: notasOriginal.retencion_original,
+          retencion_porcentaje: notasOriginal.retencion_porcentaje
         });
       } else {
+        if (notasOriginal.retencion_porcentaje === undefined) {
+          notasOriginal.retencion_porcentaje = porcentajeRetencion;
+        }
+        if (notasOriginal.retencion_original === undefined && notasOriginal.total_sin_iva_original !== undefined) {
+          notasOriginal.retencion_original = calcularRetencionDesdeBase(notasOriginal.total_sin_iva_original);
+        }
+
         console.log('📝 Usando valores originales guardados previamente:', {
           total_original: notasOriginal.total_original,
           iva_original: notasOriginal.iva_original,
-          total_sin_iva_original: notasOriginal.total_sin_iva_original
+          total_sin_iva_original: notasOriginal.total_sin_iva_original,
+          retencion_original: notasOriginal.retencion_original,
+          retencion_porcentaje: notasOriginal.retencion_porcentaje
         });
       }
 
@@ -261,12 +350,16 @@ export function NotaCreditoDialog({ factura, isOpen, onClose, onNotaCreditoCreat
       const ncIVA = factura.factura_iva || 0;
       const ncValorSinIVA = factura.total_sin_iva || (factura.total_a_pagar - ncIVA);
 
+      const retencionReducida = calcularRetencionDesdeBase(ncValorSinIVA);
+
       console.log('💰 Valores de la Nota de Crédito:', {
         valorTotalNC: valorNotaCredito,
         total_a_pagar_nc: factura.total_a_pagar,
         ncValorSinIVA,
         ncIVA,
-        factura_iva_porcentaje: factura.factura_iva_porcentaje
+        factura_iva_porcentaje: factura.factura_iva_porcentaje,
+        retencion_reducida: retencionReducida,
+        retencion_porcentaje: porcentajeRetencion
       });
 
       notasOriginal.notas_credito.push({
@@ -275,7 +368,8 @@ export function NotaCreditoDialog({ factura, isOpen, onClose, onNotaCreditoCreat
         valor_descuento: valorNotaCredito,
         descuento_sin_iva: ncValorSinIVA,
         iva_descuento: ncIVA,
-        fecha_aplicacion: new Date().toISOString()
+        fecha_aplicacion: new Date().toISOString(),
+        retencion_reducida: retencionReducida
       });
 
       // CALCULAR NUEVOS TOTALES - RESTAR DIRECTAMENTE
@@ -292,13 +386,21 @@ export function NotaCreditoDialog({ factura, isOpen, onClose, onNotaCreditoCreat
       );
 
       // 3. Restar del valor sin IVA original
-      const nuevoTotalSinIVA = notasOriginal.total_sin_iva_original - totalNCsSinIVA;
+      const nuevoTotalSinIVA = Math.max(0, notasOriginal.total_sin_iva_original - totalNCsSinIVA);
 
       // 4. Restar del IVA original
-      const nuevoIVA = notasOriginal.iva_original - totalNCsIVA;
+      const nuevoIVA = Math.max(0, (notasOriginal.iva_original || 0) - totalNCsIVA);
 
       // 5. Nuevo total = nuevo valor sin IVA + nuevo IVA
-      const nuevoTotalAPagar = nuevoTotalSinIVA + nuevoIVA;
+      const nuevoTotalAPagar = Math.max(0, nuevoTotalSinIVA + nuevoIVA);
+
+      // 6. Recalcular retención sobre la nueva base sin IVA
+      const nuevaRetencion = calcularRetencionDesdeBase(nuevoTotalSinIVA);
+      const nuevoValorRealAPagar = Math.max(0, nuevoTotalAPagar - nuevaRetencion);
+
+      notasOriginal.retencion_actual = nuevaRetencion;
+      notasOriginal.retencion_porcentaje = porcentajeRetencion;
+      notasOriginal.valor_real_a_pagar = nuevoValorRealAPagar;
 
       console.log('📊 Nuevos totales calculados:', {
         total_original: notasOriginal.total_original,
@@ -308,7 +410,10 @@ export function NotaCreditoDialog({ factura, isOpen, onClose, onNotaCreditoCreat
         total_ncs_iva: totalNCsIVA,
         nuevo_total_sin_iva: nuevoTotalSinIVA,
         nuevo_iva: nuevoIVA,
-        nuevo_total_a_pagar: nuevoTotalAPagar
+        nuevo_total_a_pagar: nuevoTotalAPagar,
+        retencion_original: notasOriginal.retencion_original,
+        nueva_retencion: nuevaRetencion,
+        nuevo_valor_real_apagar: nuevoValorRealAPagar
       });
 
       // Determinar si la factura queda anulada (total <= 0)
@@ -321,7 +426,8 @@ export function NotaCreditoDialog({ factura, isOpen, onClose, onNotaCreditoCreat
         .update({
           total_a_pagar: Math.round(nuevoTotalAPagar),      // ✅ ACTUALIZAR total a pagar
           factura_iva: Math.round(nuevoIVA),                // ✅ ACTUALIZAR IVA
-          valor_real_a_pagar: Math.round(nuevoTotalAPagar), // ✅ GUARDAR valor real a pagar
+          valor_real_a_pagar: Math.round(nuevoValorRealAPagar), // ✅ GUARDAR valor real a pagar considerando retención
+          total_con_descuento: Math.round(nuevoTotalAPagar),
           notas: JSON.stringify(notasOriginal),
           estado_nota_credito: estadoNotaCredito,
           clasificacion: nuevaClasificacion                 // ✅ Cambiar a 'nota_credito' si queda en $0
@@ -336,6 +442,8 @@ export function NotaCreditoDialog({ factura, isOpen, onClose, onNotaCreditoCreat
       console.log('✅ Factura original actualizada:', {
         nuevo_total_a_pagar: Math.round(nuevoTotalAPagar),
         nuevo_iva: Math.round(nuevoIVA),
+        nueva_retencion: Math.round(notasOriginal.retencion_actual || 0),
+        valor_real_a_pagar: Math.round(nuevoValorRealAPagar),
         estado: estadoNotaCredito || 'activa'
       });
 
@@ -568,32 +676,74 @@ export function NotaCreditoDialog({ factura, isOpen, onClose, onNotaCreditoCreat
                       <Calculator className="w-4 h-4" />
                       Resumen del Cálculo
                     </h4>
-                    <div className="space-y-2 text-sm">
-                      <div className="flex justify-between">
-                        <span>Total Original:</span>
-                        <span className="font-medium">{formatCurrency(selectedFactura.total_a_pagar)}</span>
+                    {resumenCalculo ? (
+                      <div className="space-y-2 text-sm">
+                        <div className="flex justify-between">
+                          <span>Total Original:</span>
+                          <span className="font-medium">{formatCurrency(resumenCalculo.totalOriginal)}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Notas de crédito previas:</span>
+                          <span className="font-medium text-red-600">
+                            -{formatCurrency(resumenCalculo.totalPrevioNCs)}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="flex items-center gap-1">
+                            <Minus className="w-3 h-3" />
+                            Esta Nota de Crédito:
+                          </span>
+                          <span className="font-medium text-red-600">
+                            -{formatCurrency(resumenCalculo.valorNotaActual)}
+                          </span>
+                        </div>
+                        <Separator />
+                        <div className="flex justify-between">
+                          <span>Nuevo total bruto:</span>
+                          <span className="font-semibold">
+                            {formatCurrency(resumenCalculo.nuevoTotalAPagar)}
+                          </span>
+                        </div>
+                        {porcentajeRetencion > 0 ? (
+                          <>
+                            <div className="flex justify-between">
+                              <span>
+                                Retención original ({porcentajeRetencionLabel ?? porcentajeRetencion}%)
+                              </span>
+                              <span className="font-medium text-amber-600">
+                                {formatCurrency(resumenCalculo.retencionOriginal)}
+                              </span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span>
+                                Nueva retención ({porcentajeRetencionLabel ?? porcentajeRetencion}%)
+                              </span>
+                              <span className="font-medium text-amber-600">
+                                {formatCurrency(resumenCalculo.nuevaRetencion)}
+                              </span>
+                            </div>
+                            <Separator />
+                            <div className="flex justify-between font-semibold text-lg">
+                              <span>Valor real tras retención:</span>
+                              <span className="text-green-600">
+                                {formatCurrency(resumenCalculo.nuevoValorReal)}
+                              </span>
+                            </div>
+                          </>
+                        ) : (
+                          <div className="flex justify-between font-semibold text-lg">
+                            <span>Nuevo Total:</span>
+                            <span className="text-green-600">
+                              {formatCurrency(resumenCalculo.nuevoTotalAPagar)}
+                            </span>
+                          </div>
+                        )}
                       </div>
-                      <div className="flex justify-between">
-                        <span>Descuentos Previos:</span>
-                        <span className="font-medium">
-                          {formatCurrency(selectedFactura.total_a_pagar - (selectedFactura.total_con_descuento ?? selectedFactura.total_a_pagar))}
-                        </span>
+                    ) : (
+                      <div className="text-sm text-muted-foreground">
+                        Ingresa un valor para ver el impacto de la nota de crédito.
                       </div>
-                      <div className="flex justify-between">
-                        <span className="flex items-center gap-1">
-                          <Minus className="w-3 h-3" />
-                          Esta Nota de Crédito:
-                        </span>
-                        <span className="font-medium text-red-600">-{formatCurrency(valorNotaCredito)}</span>
-                      </div>
-                      <Separator />
-                      <div className="flex justify-between font-semibold text-lg">
-                        <span>Nuevo Total:</span>
-                        <span className="text-green-600">
-                          {formatCurrency((selectedFactura.total_con_descuento ?? selectedFactura.total_a_pagar) - valorNotaCredito)}
-                        </span>
-                      </div>
-                    </div>
+                    )}
                   </div>
                 </div>
               </CardContent>

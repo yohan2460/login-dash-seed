@@ -1,4 +1,4 @@
-interface FacturaData {
+export interface FacturaData {
   total_a_pagar: number;
   total_sin_iva?: number | null;
   tiene_retencion?: boolean | null;
@@ -19,6 +19,17 @@ interface FacturaData {
  * Si no existe, calcula restando el IVA del total
  */
 function calcularValorOriginalAntesIVA(factura: FacturaData): number {
+  if (factura.notas) {
+    try {
+      const notasData = JSON.parse(factura.notas);
+      if (notasData.total_sin_iva_original !== undefined && notasData.total_sin_iva_original !== null) {
+        return notasData.total_sin_iva_original;
+      }
+    } catch (error) {
+      console.error('Error parsing total_sin_iva_original desde notas:', error);
+    }
+  }
+
   // Si existe total_sin_iva, usarlo directamente (este es el valor ORIGINAL sin descuentos)
   if (factura.total_sin_iva !== null && factura.total_sin_iva !== undefined) {
     return factura.total_sin_iva;
@@ -131,7 +142,7 @@ export function calcularTotalReal(factura: FacturaData): number {
       const descuentos = JSON.parse(factura.descuentos_antes_iva);
       const totalDescuentos = descuentos.reduce((sum: number, desc: any) => {
         if (desc.tipo === 'porcentaje') {
-          const base = factura.total_sin_iva || (factura.total_a_pagar - (factura.factura_iva || 0));
+          const base = calcularValorOriginalAntesIVA(factura);
           return sum + (base * desc.valor / 100);
         }
         return sum + desc.valor;
@@ -143,4 +154,8 @@ export function calcularTotalReal(factura: FacturaData): number {
   }
 
   return totalReal;
+}
+
+export function obtenerBaseSinIVAOriginal(factura: FacturaData): number {
+  return calcularValorOriginalAntesIVA(factura);
 }

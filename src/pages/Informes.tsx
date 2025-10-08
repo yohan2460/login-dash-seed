@@ -15,7 +15,7 @@ import { ModernLayout } from '@/components/ModernLayout';
 import { useToast } from '@/hooks/use-toast';
 import { useSupabaseQuery } from '@/hooks/useSupabaseQuery';
 import * as XLSX from 'xlsx';
-import { calcularMontoRetencionReal, calcularValorRealAPagar } from '@/utils/calcularValorReal';
+import { calcularMontoRetencionReal, calcularValorRealAPagar, obtenerBaseSinIVAOriginal } from '@/utils/calcularValorReal';
 import {
   Filter,
   Download,
@@ -776,7 +776,7 @@ export default function Informes() {
             // Ahora desglosar ese descuento en sus componentes (proporcional)
             // Pronto pago (proporcional)
             if (factura.porcentaje_pronto_pago && factura.porcentaje_pronto_pago > 0) {
-              const baseParaDescuento = factura.total_sin_iva || (factura.total_a_pagar - (factura.factura_iva || 0));
+              const baseParaDescuento = obtenerBaseSinIVAOriginal(factura);
               totalProntoPago += (baseParaDescuento * (factura.porcentaje_pronto_pago / 100)) * proporcionOficial;
             }
 
@@ -791,7 +791,7 @@ export default function Informes() {
                 const descuentos = JSON.parse(factura.descuentos_antes_iva);
                 const totalDescuentos = descuentos.reduce((sum: number, desc: any) => {
                   if (desc.tipo === 'porcentaje') {
-                    const base = factura.total_sin_iva || (factura.total_a_pagar - (factura.factura_iva || 0));
+                    const base = obtenerBaseSinIVAOriginal(factura);
                     return sum + (base * desc.valor / 100);
                   }
                   return sum + desc.valor;
@@ -807,7 +807,7 @@ export default function Informes() {
           if (factura.metodo_pago === metodoPago) {
             // Pronto pago (100% del descuento)
             if (factura.porcentaje_pronto_pago && factura.porcentaje_pronto_pago > 0) {
-              const baseParaDescuento = factura.total_sin_iva || (factura.total_a_pagar - (factura.factura_iva || 0));
+              const baseParaDescuento = obtenerBaseSinIVAOriginal(factura);
               totalProntoPago += baseParaDescuento * (factura.porcentaje_pronto_pago / 100);
             }
 
@@ -822,7 +822,7 @@ export default function Informes() {
                 const descuentos = JSON.parse(factura.descuentos_antes_iva);
                 const totalDescuentos = descuentos.reduce((sum: number, desc: any) => {
                   if (desc.tipo === 'porcentaje') {
-                    const base = factura.total_sin_iva || (factura.total_a_pagar - (factura.factura_iva || 0));
+                    const base = obtenerBaseSinIVAOriginal(factura);
                     return sum + (base * desc.valor / 100);
                   }
                   return sum + desc.valor;
@@ -859,7 +859,7 @@ export default function Informes() {
     );
 
     const prontoPagoUtilizado = facturasProntoPagoUtilizado.reduce((sum, f) => {
-      const baseParaDescuento = f.total_sin_iva || (f.total_a_pagar - (f.factura_iva || 0));
+      const baseParaDescuento = obtenerBaseSinIVAOriginal(f);
       const descuento = baseParaDescuento * ((f.porcentaje_pronto_pago || 0) / 100);
       return sum + descuento;
     }, 0);
@@ -872,7 +872,7 @@ export default function Informes() {
     );
 
     const prontoPagoNoUtilizado = facturasProntoPagoNoUtilizado.reduce((sum, f) => {
-      const baseParaDescuento = f.total_sin_iva || (f.total_a_pagar - (f.factura_iva || 0));
+      const baseParaDescuento = obtenerBaseSinIVAOriginal(f);
       const descuento = baseParaDescuento * ((f.porcentaje_pronto_pago || 0) / 100);
       return sum + descuento;
     }, 0);

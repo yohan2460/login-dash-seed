@@ -10,7 +10,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 import * as XLSX from 'xlsx';
 import { useState } from 'react';
-import { calcularValorRealAPagar, calcularMontoRetencionReal, calcularTotalReal } from '@/utils/calcularValorReal';
+import { calcularValorRealAPagar, calcularMontoRetencionReal, calcularTotalReal, obtenerBaseSinIVAOriginal } from '@/utils/calcularValorReal';
 import { PDFViewer } from '@/components/PDFViewer';
 
 interface Factura {
@@ -119,8 +119,6 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
       maximumFractionDigits: 0
     }).format(Math.round(amount));
   };
-
-
 
   // Función para obtener el valor original de una nota de crédito
   const getValorOriginalNotaCredito = (factura: Factura) => {
@@ -347,8 +345,7 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
           ).join('; ');
           totalDescuentos = descuentos.reduce((sum: number, desc: any) => {
             if (desc.tipo === 'porcentaje') {
-              const base = factura.total_sin_iva || (factura.total_a_pagar - (factura.factura_iva || 0));
-              return sum + (base * desc.valor / 100);
+              return sum + (obtenerBaseSinIVAOriginal(factura) * desc.valor / 100);
             }
             return sum + desc.valor;
           }, 0);
@@ -974,7 +971,7 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
                     )}
                     {factura.porcentaje_pronto_pago && factura.porcentaje_pronto_pago > 0 && (
                       <Badge variant="outline" className="text-xs bg-green-50 text-green-700 border-green-200 font-mono">
-                        Pronto Pago -{formatCompactCurrency(((factura.total_sin_iva || (factura.total_a_pagar - (factura.factura_iva || 0))) * factura.porcentaje_pronto_pago) / 100)}
+                        Pronto Pago -{formatCompactCurrency((obtenerBaseSinIVAOriginal(factura) * (factura.porcentaje_pronto_pago || 0)) / 100)}
                       </Badge>
                     )}
                     {factura.factura_iva && factura.factura_iva > 0 && (
@@ -1366,7 +1363,7 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
                           <div>
                             <div className="uppercase tracking-wide text-[10px]">Pronto pago</div>
                             <div className="font-medium text-foreground">
-                              -{formatCurrency(((factura.total_sin_iva || (factura.total_a_pagar - (factura.factura_iva || 0))) * factura.porcentaje_pronto_pago) / 100)}
+                              -{formatCurrency((obtenerBaseSinIVAOriginal(factura) * (factura.porcentaje_pronto_pago || 0)) / 100)}
                             </div>
                           </div>
                         )}
@@ -1375,8 +1372,7 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
                             const descuentos = JSON.parse(factura.descuentos_antes_iva);
                             const totalDescuentos = descuentos.reduce((sum: number, desc: any) => {
                               if (desc.tipo === 'porcentaje') {
-                                const base = factura.total_sin_iva || (factura.total_a_pagar - (factura.factura_iva || 0));
-                                return sum + (base * desc.valor / 100);
+                                return sum + (obtenerBaseSinIVAOriginal(factura) * desc.valor / 100);
                               }
                               return sum + desc.valor;
                             }, 0);

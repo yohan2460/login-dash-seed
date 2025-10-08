@@ -183,7 +183,10 @@ export function MultiplePaymentDialog({
       // Solo sumar si la factura está marcada para usar pronto pago
       if (!facturasConProntoPago.has(factura.id)) return total;
       if (!factura.porcentaje_pronto_pago || factura.porcentaje_pronto_pago === 0) return total;
-      const baseParaDescuento = factura.total_sin_iva || (factura.total_a_pagar - (factura.factura_iva || 0));
+      const originales = obtenerValoresOriginales(factura);
+      const baseParaDescuento = originales.totalSinIvaOriginal
+        ?? factura.total_sin_iva
+        ?? (factura.total_a_pagar - (factura.factura_iva || 0));
       const descuento = baseParaDescuento * (factura.porcentaje_pronto_pago / 100);
       return total + descuento;
     }, 0);
@@ -363,11 +366,13 @@ export function MultiplePaymentDialog({
       const { notasCredito, totalNotasCredito } = extraerNotasCredito(factura);
       const originales = obtenerValoresOriginales(factura);
       const totalOriginal = originales.totalOriginal ?? factura.total_a_pagar;
-      const baseSinIva = factura.total_sin_iva || (factura.total_a_pagar - (factura.factura_iva || 0));
+      const baseSinIva = originales.totalSinIvaOriginal
+        ?? factura.total_sin_iva
+        ?? (factura.total_a_pagar - (factura.factura_iva || 0));
 
       // Calcular retención
       const retencion = factura.tiene_retencion && factura.monto_retencion
-        ? calcularMontoRetencionReal(factura)
+        ? baseSinIva * (factura.monto_retencion / 100)
         : 0;
 
       // Calcular pronto pago SOLO si está habilitado para esta factura
@@ -418,11 +423,13 @@ export function MultiplePaymentDialog({
     const { notasCredito, totalNotasCredito } = extraerNotasCredito(factura);
     const originales = obtenerValoresOriginales(factura);
     const totalOriginal = originales.totalOriginal ?? factura.total_a_pagar;
-    const baseSinIva = factura.total_sin_iva || (factura.total_a_pagar - (factura.factura_iva || 0));
+    const baseSinIva = originales.totalSinIvaOriginal
+      ?? factura.total_sin_iva
+      ?? (factura.total_a_pagar - (factura.factura_iva || 0));
 
     // Calcular retención
     const retencion = factura.tiene_retencion && factura.monto_retencion
-      ? calcularMontoRetencionReal(factura)
+      ? baseSinIva * (factura.monto_retencion / 100)
       : 0;
 
     // Calcular pronto pago SOLO si está habilitado para esta factura
@@ -824,7 +831,7 @@ export function MultiplePaymentDialog({
       if (detalles.descuentosAdicionales && detalles.descuentosAdicionales.length > 0) {
         const descuentosTexto = detalles.descuentosAdicionales.map((desc: any) => {
           const valorDesc = desc.tipo === 'porcentaje'
-            ? (factura.total_sin_iva || (factura.total_a_pagar - (factura.factura_iva || 0))) * (desc.valor / 100)
+            ? detalles.baseSinIva * (desc.valor / 100)
             : desc.valor;
           return `${desc.concepto} (${desc.tipo === 'porcentaje' ? desc.valor + '%' : formatCurrency(desc.valor)}): -${formatCurrency(valorDesc)}`;
         }).join('  |  ');
@@ -1690,7 +1697,7 @@ export function MultiplePaymentDialog({
                               <p className="text-xs font-semibold text-purple-700 dark:text-purple-400">Descuentos adicionales:</p>
                               {detalles.descuentosAdicionales.map((desc: any, idx: number) => {
                                 const valorDesc = desc.tipo === 'porcentaje'
-                                  ? (factura.total_sin_iva || (factura.total_a_pagar - (factura.factura_iva || 0))) * (desc.valor / 100)
+                                  ? detalles.baseSinIva * (desc.valor / 100)
                                   : desc.valor;
                                 return (
                                   <div key={idx} className="flex items-center justify-between text-xs ml-2">

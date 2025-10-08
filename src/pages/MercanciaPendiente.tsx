@@ -16,6 +16,7 @@ import { NotaCreditoDialog } from '@/components/NotaCreditoDialog';
 import { ModernLayout } from '@/components/ModernLayout';
 import { useSupabaseQuery } from '@/hooks/useSupabaseQuery';
 import { useQueryClient } from '@tanstack/react-query';
+import { calcularValorRealAPagar, calcularMontoRetencionReal, obtenerBaseSinIVAOriginal } from '@/utils/calcularValorReal';
 
 interface Factura {
   id: string;
@@ -39,6 +40,9 @@ interface Factura {
   fecha_vencimiento?: string | null;
   valor_real_a_pagar?: number | null;
   ingresado_sistema?: boolean | null;
+  total_sin_iva?: number | null;
+  notas?: string | null;
+  descuentos_antes_iva?: string | null;
 }
 
 export function MercanciaPendiente() {
@@ -157,31 +161,6 @@ export function MercanciaPendiente() {
     }).format(amount);
   };
 
-  const calcularMontoRetencionReal = (factura: Factura) => {
-    if (!factura.tiene_retencion || !factura.monto_retencion) return 0;
-    const baseParaRetencion = factura.total_sin_iva || (factura.total_a_pagar - (factura.factura_iva || 0));
-    return (baseParaRetencion * factura.monto_retencion) / 100;
-  };
-
-  const calcularValorRealAPagar = (factura: Factura) => {
-    let valorReal = factura.total_a_pagar;
-
-    // Restar retención si aplica
-    if (factura.tiene_retencion && factura.monto_retencion) {
-      const retencion = calcularMontoRetencionReal(factura);
-      valorReal -= retencion;
-    }
-
-    // Restar descuento por pronto pago si está disponible
-    if (factura.porcentaje_pronto_pago && factura.porcentaje_pronto_pago > 0) {
-      const montoBase = factura.total_a_pagar - (factura.factura_iva || 0);
-      const descuento = montoBase * (factura.porcentaje_pronto_pago / 100);
-      valorReal -= descuento;
-    }
-
-    return valorReal;
-  };
-
   // Memorizar las facturas filtradas
   const filteredFacturas = useMemo(() => {
     let filtered = facturas;
@@ -223,7 +202,7 @@ export function MercanciaPendiente() {
     const totalProntoPago = filteredFacturas
       .filter(f => f.porcentaje_pronto_pago && f.porcentaje_pronto_pago > 0)
       .reduce((total, factura) => {
-        const montoBase = factura.total_a_pagar - (factura.factura_iva || 0);
+        const montoBase = obtenerBaseSinIVAOriginal(factura);
         const descuento = montoBase * ((factura.porcentaje_pronto_pago || 0) / 100);
         return total + descuento;
       }, 0);

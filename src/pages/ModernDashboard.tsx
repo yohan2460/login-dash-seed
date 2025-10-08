@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn, formatCurrency } from '@/lib/utils';
+import { calcularMontoRetencionReal, obtenerBaseSinIVAOriginal } from '@/utils/calcularValorReal';
 import { format } from 'date-fns';
 import { 
   FileText, Package, CreditCard, TrendingUp, Receipt, 
@@ -92,6 +93,13 @@ export default function ModernDashboard() {
   if (!user && !loading) {
     return <Navigate to="/auth" replace />;
   }
+
+  const getValorProntoPago = (factura: Factura) => {
+    if (!factura.porcentaje_pronto_pago || factura.porcentaje_pronto_pago <= 0) {
+      return 0;
+    }
+    return obtenerBaseSinIVAOriginal(factura) * (factura.porcentaje_pronto_pago / 100);
+  };
 
   const fetchPagosPartidos = async () => {
     try {
@@ -194,12 +202,6 @@ export default function ModernDashboard() {
     return gastoFacturas.filter(f => f.estado_mercancia === estado);
   };
 
-
-  const calcularMontoRetencionReal = (factura: Factura) => {
-    if (!factura.monto_retencion || factura.monto_retencion === 0) return 0;
-    const baseParaRetencion = factura.total_sin_iva || (factura.total_a_pagar - (factura.factura_iva || 0));
-    return baseParaRetencion * (factura.monto_retencion / 100);
-  };
 
   // Helper: Calcular monto por método de pago desde pagos_partidos
   const calcularMontoPorMetodo = (facturas: Factura[], metodoPago: string): number => {
@@ -782,7 +784,7 @@ export default function ModernDashboard() {
                   title="Ahorro Pronto Pago"
                   value={formatCurrency(getFilteredPaidFacturas().reduce((total, factura) => {
                     if (factura.uso_pronto_pago && factura.porcentaje_pronto_pago) {
-                      return total + ((factura.total_sin_iva || (factura.total_a_pagar - (factura.factura_iva || 0))) * factura.porcentaje_pronto_pago / 100);
+                      return total + getValorProntoPago(factura);
                     }
                     return total;
                   }, 0))}
@@ -843,7 +845,7 @@ export default function ModernDashboard() {
                   title="Ahorro Pronto Pago"
                   value={formatCurrency(filterFacturasByGastoState(null).reduce((total, factura) => {
                     if (factura.porcentaje_pronto_pago) {
-                      return total + ((factura.total_sin_iva || (factura.total_a_pagar - (factura.factura_iva || 0))) * factura.porcentaje_pronto_pago / 100);
+                      return total + getValorProntoPago(factura);
                     }
                     return total;
                   }, 0))}
@@ -974,7 +976,7 @@ export default function ModernDashboard() {
                   title="Ahorro Pronto Pago"
                   value={formatCurrency(getFilteredPaidGastos().reduce((total, factura) => {
                     if (factura.uso_pronto_pago && factura.porcentaje_pronto_pago) {
-                      return total + ((factura.total_sin_iva || (factura.total_a_pagar - (factura.factura_iva || 0))) * factura.porcentaje_pronto_pago / 100);
+                      return total + getValorProntoPago(factura);
                     }
                     return total;
                   }, 0))}
