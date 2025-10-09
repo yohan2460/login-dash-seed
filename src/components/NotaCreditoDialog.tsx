@@ -420,6 +420,15 @@ export function NotaCreditoDialog({ factura, isOpen, onClose, onNotaCreditoCreat
       const estadoNotaCredito = nuevoTotalAPagar <= 0 ? 'anulada' : null;
       const nuevaClasificacion = nuevoTotalAPagar <= 0 ? 'nota_credito' : selectedFactura.clasificacion;
 
+      // LOG: Verificar estructura de notasOriginal antes de guardar
+      console.log('🔍 notasOriginal antes de stringify:', notasOriginal);
+      console.log('🔍 notasOriginal.notas_credito:', notasOriginal.notas_credito);
+      console.log('🔍 Cantidad de NCs:', notasOriginal.notas_credito?.length);
+
+      const notasStringified = JSON.stringify(notasOriginal);
+      console.log('🔍 notas stringificadas (primeros 200 chars):', notasStringified.substring(0, 200));
+      console.log('🔍 Longitud del string:', notasStringified.length);
+
       // ACTUALIZAR FACTURA ORIGINAL en la base de datos
       const { error: updateOriginalError } = await supabase
         .from('facturas')
@@ -428,7 +437,7 @@ export function NotaCreditoDialog({ factura, isOpen, onClose, onNotaCreditoCreat
           factura_iva: Math.round(nuevoIVA),                // ✅ ACTUALIZAR IVA
           valor_real_a_pagar: Math.round(nuevoValorRealAPagar), // ✅ GUARDAR valor real a pagar considerando retención
           total_con_descuento: Math.round(nuevoTotalAPagar),
-          notas: JSON.stringify(notasOriginal),
+          notas: notasStringified,
           estado_nota_credito: estadoNotaCredito,
           clasificacion: nuevaClasificacion                 // ✅ Cambiar a 'nota_credito' si queda en $0
         })
@@ -446,6 +455,30 @@ export function NotaCreditoDialog({ factura, isOpen, onClose, onNotaCreditoCreat
         valor_real_a_pagar: Math.round(nuevoValorRealAPagar),
         estado: estadoNotaCredito || 'activa'
       });
+
+      // Verificar que se guardó correctamente
+      const { data: facturaVerificacion, error: errorVerificacion } = await supabase
+        .from('facturas')
+        .select('notas')
+        .eq('id', selectedFactura.id)
+        .single();
+
+      if (errorVerificacion) {
+        console.error('⚠️ Error verificando guardado:', errorVerificacion);
+      } else {
+        console.log('🔍 Verificación: Campo notas en BD:', facturaVerificacion?.notas);
+        if (facturaVerificacion?.notas) {
+          try {
+            const notasGuardadas = JSON.parse(facturaVerificacion.notas);
+            console.log('🔍 Notas guardadas parseadas:', notasGuardadas);
+            console.log('🔍 NCs en BD:', notasGuardadas.notas_credito);
+          } catch (e) {
+            console.error('❌ Error parseando notas guardadas:', e);
+          }
+        } else {
+          console.error('❌ ¡PROBLEMA! El campo notas está null/vacío en la BD después de guardar');
+        }
+      }
 
       // Si la factura queda anulada, también marcar la NC como anulada
       if (estadoNotaCredito === 'anulada') {

@@ -94,12 +94,19 @@ export function MultiplePaymentDialog({
 
   const extraerNotasCredito = (factura: Factura) => {
     if (!factura.notas) {
+      console.log('📝 [MultiPago] No hay campo notas en factura', factura.numero_factura);
       return { notasCredito: [] as { numero: string; valor: number; fecha?: string | null }[], totalNotasCredito: 0 };
     }
 
     try {
       const notasData = JSON.parse(factura.notas);
-      if (Array.isArray(notasData?.notas_credito)) {
+      console.log('📝 [MultiPago] Datos de notas en factura', factura.numero_factura, ':', notasData);
+      console.log('📝 [MultiPago] Keys:', Object.keys(notasData));
+      console.log('📝 [MultiPago] notas_credito value:', notasData?.notas_credito);
+      console.log('📝 [MultiPago] ¿Es array?:', Array.isArray(notasData?.notas_credito));
+
+      if (Array.isArray(notasData?.notas_credito) && notasData.notas_credito.length > 0) {
+        console.log('✅ [MultiPago] Encontradas notas de crédito en factura', factura.numero_factura, ':', notasData.notas_credito);
         const notasCredito = notasData.notas_credito
           .filter((nc: any) => nc)
           .map((nc: any) => ({
@@ -109,10 +116,13 @@ export function MultiplePaymentDialog({
           }));
 
         const totalNotasCredito = notasCredito.reduce((sum, nc) => sum + (nc.valor || 0), 0);
+        console.log('✅ [MultiPago] Notas procesadas:', notasCredito, 'Total:', totalNotasCredito);
         return { notasCredito, totalNotasCredito };
+      } else {
+        console.log('⚠️ [MultiPago] No se encontró array notas_credito o está vacío en factura', factura.numero_factura);
       }
     } catch (error) {
-      console.error('Error parsing notas de crédito:', error);
+      console.error('❌ [MultiPago] Error parsing notas de crédito en factura', factura.numero_factura, ':', error);
     }
 
     return { notasCredito: [] as { numero: string; valor: number; fecha?: string | null }[], totalNotasCredito: 0 };

@@ -97,12 +97,19 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
 
   const obtenerNotasCreditoAplicadas = (facturaActual: Factura | null) => {
     if (!facturaActual?.notas) {
+      console.log('📝 No hay campo notas en la factura');
       return { notasCredito: [] as { numero: string; valor: number; fecha?: string | null }[], totalNotasCredito: 0 };
     }
 
     try {
       const notasData = JSON.parse(facturaActual.notas);
-      if (Array.isArray(notasData?.notas_credito)) {
+      console.log('📝 Datos de notas parseados:', notasData);
+      console.log('📝 Keys:', Object.keys(notasData));
+      console.log('📝 notas_credito value:', notasData?.notas_credito);
+      console.log('📝 ¿Es array?:', Array.isArray(notasData?.notas_credito));
+
+      if (Array.isArray(notasData?.notas_credito) && notasData.notas_credito.length > 0) {
+        console.log('✅ Encontradas notas de crédito:', notasData.notas_credito);
         const notasCredito = notasData.notas_credito
           .filter((nc: any) => nc)
           .map((nc: any) => ({
@@ -111,10 +118,13 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
             fecha: nc.fecha_aplicacion || notasData.fecha_aplicacion || null
           }));
         const totalNotasCredito = notasCredito.reduce((sum, nc) => sum + (nc.valor || 0), 0);
+        console.log('✅ Notas de crédito procesadas:', notasCredito, 'Total:', totalNotasCredito);
         return { notasCredito, totalNotasCredito };
+      } else {
+        console.log('⚠️ No se encontró array notas_credito o está vacío');
       }
     } catch (error) {
-      console.error('Error parsing notas de crédito:', error);
+      console.error('❌ Error parsing notas de crédito:', error);
     }
 
     return { notasCredito: [] as { numero: string; valor: number; fecha?: string | null }[], totalNotasCredito: 0 };

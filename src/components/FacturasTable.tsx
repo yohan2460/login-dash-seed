@@ -175,6 +175,8 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
 
   // Función para descargar comprobante de pago
   const obtenerComprobantePago = async (facturaId: string) => {
+    console.log('🔍 Buscando comprobante para factura ID:', facturaId);
+
     const { data: comprobantes, error } = await supabase
       .from('comprobantes_pago')
       .select('*')
@@ -183,17 +185,23 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
       .limit(1);
 
     if (error) {
+      console.error('❌ Error en query de comprobantes:', error);
       throw error;
     }
+
+    console.log('📄 Comprobantes encontrados:', comprobantes);
+    console.log('📄 Primer comprobante:', comprobantes?.[0]);
 
     return comprobantes?.[0] ?? null;
   };
 
   const descargarComprobante = async (facturaId: string) => {
     try {
+      console.log('📥 Iniciando descarga de comprobante para factura:', facturaId);
       const comprobante = await obtenerComprobantePago(facturaId);
 
       if (!comprobante) {
+        console.warn('⚠️ No se encontró comprobante');
         toast({
           title: "Comprobante no encontrado",
           description: "No hay comprobante de pago asociado a esta factura. El comprobante se genera automáticamente al registrar el pago.",
@@ -202,11 +210,30 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
         return;
       }
 
+      console.log('✅ Comprobante encontrado:', comprobante);
+      console.log('📂 pdf_file_path:', comprobante.pdf_file_path);
+
+      if (!comprobante.pdf_file_path) {
+        console.error('❌ El comprobante no tiene pdf_file_path');
+        toast({
+          title: "Error en comprobante",
+          description: "El comprobante existe pero no tiene archivo PDF asociado",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      console.log('🔗 Creando URL firmada para:', comprobante.pdf_file_path);
       const { data: urlData, error: urlError } = await supabase.storage
         .from('facturas-pdf')
         .createSignedUrl(comprobante.pdf_file_path, 3600);
 
-      if (urlError) throw urlError;
+      if (urlError) {
+        console.error('❌ Error creando URL firmada:', urlError);
+        throw urlError;
+      }
+
+      console.log('✅ URL firmada creada:', urlData?.signedUrl);
 
       if (urlData?.signedUrl) {
         // Abrir el PDF en una nueva pestaña
@@ -216,12 +243,19 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
           title: "Comprobante abierto",
           description: "El comprobante de pago se abrió en una nueva pestaña"
         });
+      } else {
+        console.error('❌ No se pudo generar la URL firmada');
+        toast({
+          title: "Error",
+          description: "No se pudo generar la URL del comprobante",
+          variant: "destructive"
+        });
       }
     } catch (error) {
-      console.error('Error al descargar comprobante:', error);
+      console.error('❌ Error al descargar comprobante:', error);
       toast({
         title: "Error al descargar",
-        description: "Hubo un error al descargar el comprobante",
+        description: `Error: ${error instanceof Error ? error.message : 'Desconocido'}`,
         variant: "destructive"
       });
     }
@@ -1313,6 +1347,16 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
                             -Desc {formatCompactCurrency(totalDescuentos)}
                           </div>
                         ) : null;
+                      })()}
+                      {/* Mostrar Notas de Crédito Aplicadas */}
+                      {getNotasCreditoInfo(factura) && (() => {
+                        const notasCredito = getNotasCreditoInfo(factura);
+                        const totalNC = notasCredito?.reduce((sum: number, nc: any) => sum + (nc.valor_descuento || 0), 0) || 0;
+                        return (
+                          <div className="text-[9px] text-green-700 font-semibold bg-green-50 px-1 py-0.5 rounded" title={notasCredito?.map((nc: any) => `NC #${nc.numero_factura}: ${formatCompactCurrency(nc.valor_descuento)}`).join(', ')}>
+                            -{notasCredito?.length} NC: {formatCompactCurrency(totalNC)}
+                          </div>
+                        );
                       })()}
                     </div>
                   </TableCell>
