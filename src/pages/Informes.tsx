@@ -659,7 +659,13 @@ export default function Informes() {
     try {
       const comprobante = await obtenerComprobantePago(facturaId);
 
-      if (!comprobante || !comprobante.soporte_pago_file_path) {
+      const soportePath =
+        comprobante?.soporte_pago_file_path ||
+        (comprobante?.detalles &&
+          typeof comprobante.detalles === 'object' &&
+          (comprobante.detalles as any)?.soporte_pago?.file_path);
+
+      if (!comprobante || !soportePath) {
         toast({
           title: "Soporte no disponible",
           description: "No se encontró un soporte de pago asociado a esta factura.",
@@ -670,7 +676,7 @@ export default function Informes() {
 
       const { data: urlData, error: urlError } = await supabase.storage
         .from('facturas-pdf')
-        .createSignedUrl(comprobante.soporte_pago_file_path, 3600);
+        .createSignedUrl(soportePath, 3600);
 
       if (urlError) throw urlError;
 
