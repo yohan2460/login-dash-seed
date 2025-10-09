@@ -36,6 +36,8 @@ interface Factura {
   metodo_pago?: string | null;
   uso_pronto_pago?: boolean | null;
   descuentos_antes_iva?: string | null;
+  total_sin_iva?: number | null;
+  notas?: string | null;
 }
 
 interface EditFacturaDialogProps {
@@ -148,9 +150,33 @@ export function EditFacturaDialog({ isOpen, onClose, factura, onSave }: EditFact
     }));
   };
 
-  const getBaseAntesDeIVA = () => {
+  // Función para obtener el valor ORIGINAL sin IVA (sin descuentos)
+  // Esto se usa para calcular retención y pronto pago correctamente
+  const getValorOriginalSinIVA = () => {
+    // Prioridad 1: Buscar en notas el valor original
+    if (factura?.notas) {
+      try {
+        const notasData = JSON.parse(factura.notas);
+        if (notasData.total_sin_iva_original !== undefined && notasData.total_sin_iva_original !== null) {
+          return notasData.total_sin_iva_original;
+        }
+      } catch (error) {
+        // Continuar con otras opciones
+      }
+    }
+
+    // Prioridad 2: Usar campo total_sin_iva si existe
+    if (factura?.total_sin_iva !== null && factura?.total_sin_iva !== undefined) {
+      return factura.total_sin_iva;
+    }
+
+    // Fallback: Calcular restando IVA del total_a_pagar
     const base = formData.total_a_pagar - (formData.factura_iva || 0);
     return base > 0 ? base : formData.total_a_pagar;
+  };
+
+  const getBaseAntesDeIVA = () => {
+    return getValorOriginalSinIVA();
   };
 
   const calcularTotalDescuentos = () => {
@@ -597,8 +623,11 @@ export function EditFacturaDialog({ isOpen, onClose, factura, onSave }: EditFact
                     onChange={(e) => handleInputChange('monto_retencion', parseFloat(e.target.value) || 0)}
                     placeholder="0"
                   />
-                  <div className="text-xs text-muted-foreground">
-                    Valor retención: {formatCurrency((formData.total_a_pagar * formData.monto_retencion) / 100)}
+                  <div className="text-xs text-muted-foreground space-y-1">
+                    <div>Base para retención (sin IVA original): {formatCurrency(getValorOriginalSinIVA())}</div>
+                    <div className="font-semibold text-foreground">
+                      Valor retención: {formatCurrency((getValorOriginalSinIVA() * formData.monto_retencion) / 100)}
+                    </div>
                   </div>
                 </div>
               )}

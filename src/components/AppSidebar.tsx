@@ -383,7 +383,9 @@ export function AppSidebar() {
             </SidebarMenuButton>
           </CollapsibleTrigger>
           <CollapsibleContent className="mt-1 space-y-1 border-l border-border/40 pl-3 ml-4">
-            {group.items.map(child => renderNavLink(child, { isChild: true }))}
+            <SidebarMenu className="space-y-1">
+              {group.items.map(child => renderNavLink(child, { isChild: true }))}
+            </SidebarMenu>
           </CollapsibleContent>
         </Collapsible>
       </SidebarMenuItem>
