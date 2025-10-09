@@ -104,13 +104,71 @@ export default function Informes() {
   const [editingSerieId, setEditingSerieId] = useState<string | null>(null);
   const [editingSerieValue, setEditingSerieValue] = useState<string>('');
   const tableContainerRef = useRef<HTMLDivElement | null>(null);
+  const [scrollButtonsLayout, setScrollButtonsLayout] = useState({
+    left: 16,
+    right: 16,
+    top: 200,
+    visible: false
+  });
+
+  const updateScrollButtonsLayout = useCallback(() => {
+    const scrollContainer = tableContainerRef.current;
+    if (!scrollContainer) {
+      setScrollButtonsLayout(prev =>
+        prev.visible ? { ...prev, visible: false } : prev
+      );
+      return;
+    }
+
+    const rect = scrollContainer.getBoundingClientRect();
+    const viewportWidth = window.innerWidth || document.documentElement.clientWidth;
+    const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
+
+    const left = Math.max(rect.left + 16, 16);
+    const right = Math.max(viewportWidth - rect.right + 16, 16);
+    const tableCenter = rect.top + rect.height / 2;
+    const clampedCenter = Math.min(
+      Math.max(tableCenter, 120),
+      viewportHeight - 120
+    );
+    const visible = rect.bottom > 80 && rect.top < viewportHeight - 80;
+
+    setScrollButtonsLayout(prev => {
+      if (
+        prev.left === left &&
+        prev.right === right &&
+        prev.top === clampedCenter &&
+        prev.visible === visible
+      ) {
+        return prev;
+      }
+      return { left, right, top: clampedCenter, visible };
+    });
+  }, []);
+
   const setTableRef = useCallback((node: HTMLTableElement | null) => {
     if (node && node.parentElement instanceof HTMLDivElement) {
       tableContainerRef.current = node.parentElement;
     } else {
       tableContainerRef.current = null;
     }
-  }, []);
+    updateScrollButtonsLayout();
+  }, [updateScrollButtonsLayout]);
+
+  useEffect(() => {
+    updateScrollButtonsLayout();
+    window.addEventListener('scroll', updateScrollButtonsLayout, { passive: true });
+    window.addEventListener('resize', updateScrollButtonsLayout);
+
+    return () => {
+      window.removeEventListener('scroll', updateScrollButtonsLayout);
+      window.removeEventListener('resize', updateScrollButtonsLayout);
+    };
+  }, [updateScrollButtonsLayout]);
+
+  useEffect(() => {
+    updateScrollButtonsLayout();
+  }, [filteredFacturas.length, updateScrollButtonsLayout]);
 
   // Obtener el primer y último día del mes actual
   const getCurrentMonthRange = () => {
@@ -810,10 +868,10 @@ export default function Informes() {
             if (factura.descuentos_antes_iva) {
               try {
                 const descuentos = JSON.parse(factura.descuentos_antes_iva);
+                const baseCalculada = obtenerBaseSinIVAOriginal(factura);
                 const totalDescuentos = descuentos.reduce((sum: number, desc: any) => {
                   if (desc.tipo === 'porcentaje') {
-                    const base = obtenerBaseSinIVAOriginal(factura);
-                    return sum + (base * desc.valor / 100);
+                    return sum + (baseCalculada * desc.valor / 100);
                   }
                   return sum + desc.valor;
                 }, 0);
@@ -841,10 +899,10 @@ export default function Informes() {
             if (factura.descuentos_antes_iva) {
               try {
                 const descuentos = JSON.parse(factura.descuentos_antes_iva);
+                const baseCalculada = obtenerBaseSinIVAOriginal(factura);
                 const totalDescuentos = descuentos.reduce((sum: number, desc: any) => {
                   if (desc.tipo === 'porcentaje') {
-                    const base = obtenerBaseSinIVAOriginal(factura);
-                    return sum + (base * desc.valor / 100);
+                    return sum + (baseCalculada * desc.valor / 100);
                   }
                   return sum + desc.valor;
                 }, 0);
@@ -1494,27 +1552,47 @@ export default function Informes() {
               </div>
             </div>
           </CardHeader>
-          <CardContent className="p-0">
-            <div className="sticky top-24 z-40 flex justify-between px-4 pointer-events-none">
-              <Button
-                variant="outline"
-                size="icon"
-                className="h-10 w-10 rounded-full shadow-lg bg-white/90 hover:bg-white border-2 pointer-events-auto"
-                onClick={() => scrollTable('left')}
-                type="button"
-              >
-                <ChevronLeft className="h-5 w-5" />
-              </Button>
-              <Button
-                variant="outline"
-                size="icon"
-                className="h-10 w-10 rounded-full shadow-lg bg-white/90 hover:bg-white border-2 pointer-events-auto"
-                onClick={() => scrollTable('right')}
-                type="button"
-              >
-                <ChevronRight className="h-5 w-5" />
-              </Button>
-            </div>
+          <CardContent className="p-0 relative">
+            {scrollButtonsLayout.visible && (
+              <>
+                <div
+                  className="pointer-events-none fixed z-40"
+                  style={{
+                    top: `${scrollButtonsLayout.top}px`,
+                    left: `${scrollButtonsLayout.left}px`,
+                    transform: 'translateY(-50%)'
+                  }}
+                >
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="h-10 w-10 rounded-full shadow-lg bg-white/90 hover:bg-white border-2 pointer-events-auto"
+                    onClick={() => scrollTable('left')}
+                    type="button"
+                  >
+                    <ChevronLeft className="h-5 w-5" />
+                  </Button>
+                </div>
+                <div
+                  className="pointer-events-none fixed z-40"
+                  style={{
+                    top: `${scrollButtonsLayout.top}px`,
+                    right: `${scrollButtonsLayout.right}px`,
+                    transform: 'translateY(-50%)'
+                  }}
+                >
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="h-10 w-10 rounded-full shadow-lg bg-white/90 hover:bg-white border-2 pointer-events-auto"
+                    onClick={() => scrollTable('right')}
+                    type="button"
+                  >
+                    <ChevronRight className="h-5 w-5" />
+                  </Button>
+                </div>
+              </>
+            )}
 
             <div className="overflow-x-auto pt-4">
               <Table ref={setTableRef}>

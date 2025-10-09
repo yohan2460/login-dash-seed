@@ -12,7 +12,7 @@ import { Separator } from '@/components/ui/separator';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { CreditCard, Package, Calculator, X, CheckCircle, TrendingDown, Percent, CalendarIcon, Building2, User, Wallet, Download, Plus, Trash2, DollarSign } from 'lucide-react';
-import { calcularValorRealAPagar, calcularMontoRetencionReal } from '@/utils/calcularValorReal';
+import { calcularValorRealAPagar, calcularMontoRetencionReal, obtenerBaseSinIVADespuesNotasCredito, obtenerBaseSinIVAOriginal } from '@/utils/calcularValorReal';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
@@ -376,11 +376,10 @@ export function MultiplePaymentDialog({
       const { notasCredito, totalNotasCredito } = extraerNotasCredito(factura);
       const originales = obtenerValoresOriginales(factura);
       const totalOriginal = originales.totalOriginal ?? factura.total_a_pagar;
-      const baseSinIva = originales.totalSinIvaOriginal
-        ?? factura.total_sin_iva
-        ?? (factura.total_a_pagar - (factura.factura_iva || 0));
+      const baseSinIvaOriginal = originales.totalSinIvaOriginal ?? obtenerBaseSinIVAOriginal(factura);
+      const baseSinIva = obtenerBaseSinIVADespuesNotasCredito(factura);
 
-      // Calcular retención
+      // Calcular retención sobre la base ajustada
       const retencion = factura.tiene_retencion && factura.monto_retencion
         ? baseSinIva * (factura.monto_retencion / 100)
         : 0;
@@ -389,7 +388,7 @@ export function MultiplePaymentDialog({
       const aplicarProntoPago = facturasConProntoPago.has(factura.id);
       const prontoPago = aplicarProntoPago && factura.porcentaje_pronto_pago && factura.porcentaje_pronto_pago > 0
         ? (() => {
-            return baseSinIva * (factura.porcentaje_pronto_pago / 100);
+            return baseSinIvaOriginal * (factura.porcentaje_pronto_pago / 100);
           })()
         : 0;
 
@@ -401,7 +400,7 @@ export function MultiplePaymentDialog({
           descuentosAdicionales = JSON.parse(factura.descuentos_antes_iva);
           totalDescuentosAdicionales = descuentosAdicionales.reduce((sum, desc) => {
             if (desc.tipo === 'porcentaje') {
-              return sum + (baseSinIva * desc.valor / 100);
+              return sum + (baseSinIvaOriginal * desc.valor / 100);
             }
             return sum + desc.valor;
           }, 0);
@@ -423,6 +422,7 @@ export function MultiplePaymentDialog({
         descuentosAdicionales,
         totalDescuentosAdicionales,
         totalOriginal,
+        baseSinIvaOriginal,
         baseSinIva,
         notasCredito,
         totalNotasCredito
@@ -433,9 +433,8 @@ export function MultiplePaymentDialog({
     const { notasCredito, totalNotasCredito } = extraerNotasCredito(factura);
     const originales = obtenerValoresOriginales(factura);
     const totalOriginal = originales.totalOriginal ?? factura.total_a_pagar;
-    const baseSinIva = originales.totalSinIvaOriginal
-      ?? factura.total_sin_iva
-      ?? (factura.total_a_pagar - (factura.factura_iva || 0));
+    const baseSinIvaOriginal = originales.totalSinIvaOriginal ?? obtenerBaseSinIVAOriginal(factura);
+    const baseSinIva = obtenerBaseSinIVADespuesNotasCredito(factura);
 
     // Calcular retención
     const retencion = factura.tiene_retencion && factura.monto_retencion
@@ -446,7 +445,7 @@ export function MultiplePaymentDialog({
     const aplicarProntoPago = facturasConProntoPago.has(factura.id);
     const prontoPago = aplicarProntoPago && factura.porcentaje_pronto_pago && factura.porcentaje_pronto_pago > 0
       ? (() => {
-          return baseSinIva * (factura.porcentaje_pronto_pago / 100);
+          return baseSinIvaOriginal * (factura.porcentaje_pronto_pago / 100);
         })()
       : 0;
 
@@ -458,7 +457,7 @@ export function MultiplePaymentDialog({
         descuentosAdicionales = JSON.parse(factura.descuentos_antes_iva);
         totalDescuentosAdicionales = descuentosAdicionales.reduce((sum, desc) => {
           if (desc.tipo === 'porcentaje') {
-            return sum + (baseSinIva * desc.valor / 100);
+            return sum + (baseSinIvaOriginal * desc.valor / 100);
           }
           return sum + desc.valor;
         }, 0);
@@ -497,6 +496,7 @@ export function MultiplePaymentDialog({
       descuentosAdicionales,
       totalDescuentosAdicionales,
       totalOriginal,
+      baseSinIvaOriginal,
       baseSinIva,
       notasCredito,
       totalNotasCredito

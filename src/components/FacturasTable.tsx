@@ -397,9 +397,10 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
           descuentosTexto = descuentos.map((d: any) =>
             `${d.concepto}: ${d.tipo === 'porcentaje' ? d.valor + '%' : '$' + d.valor.toLocaleString('es-CO')}`
           ).join('; ');
+          const baseCalculada = obtenerBaseSinIVAOriginal(factura);
           totalDescuentos = descuentos.reduce((sum: number, desc: any) => {
             if (desc.tipo === 'porcentaje') {
-              return sum + (obtenerBaseSinIVAOriginal(factura) * desc.valor / 100);
+              return sum + (baseCalculada * desc.valor / 100);
             }
             return sum + desc.valor;
           }, 0);
@@ -1335,9 +1336,10 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
                         const descuentos = descuentosCache.get(factura.id);
                         if (!descuentos) return null;
 
+                        const baseCalculada = obtenerBaseSinIVAOriginal(factura);
                         const totalDescuentos = descuentos.reduce((sum: number, desc: any) => {
                           if (desc.tipo === 'porcentaje') {
-                            return sum + (obtenerBaseSinIVAOriginal(factura) * desc.valor / 100);
+                            return sum + (baseCalculada * desc.valor / 100);
                           }
                           return sum + desc.valor;
                         }, 0);

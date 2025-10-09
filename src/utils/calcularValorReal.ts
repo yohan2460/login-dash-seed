@@ -11,6 +11,17 @@ export interface FacturaData {
   estado_nota_credito?: 'pendiente' | 'aplicada' | 'anulada' | null;
 }
 
+interface NotasCreditoTotales {
+  totalNotasCredito: number;
+  totalNotasCreditoSinIVA: number;
+  totalNotasCreditoIVA: number;
+  retencionActual: number | null;
+  totalSinIvaOriginal: number | null;
+  totalOriginal: number | null;
+  ivaOriginal: number | null;
+  retencionPorcentaje: number | null;
+}
+
 /**
  * Calcula el valor antes de IVA SIN considerar descuentos
  * Para retención y pronto pago se debe calcular sobre el valor base ANTES de aplicar descuentos
@@ -40,10 +51,78 @@ function calcularValorOriginalAntesIVA(factura: FacturaData): number {
   return factura.total_a_pagar - (factura.factura_iva || 0);
 }
 
+function obtenerTotalesNotasCredito(factura: FacturaData): NotasCreditoTotales {
+  if (!factura.notas) {
+    return {
+      totalNotasCredito: 0,
+      totalNotasCreditoSinIVA: 0,
+      totalNotasCreditoIVA: 0,
+      retencionActual: null,
+      totalSinIvaOriginal: null,
+      totalOriginal: null,
+      ivaOriginal: null,
+      retencionPorcentaje: null
+    };
+  }
+
+  try {
+    const notasData = JSON.parse(factura.notas);
+    const notasCredito = Array.isArray(notasData?.notas_credito) ? notasData.notas_credito : [];
+
+    const acumulado = notasCredito.reduce(
+      (acc: { total: number; sinIva: number; iva: number }, nc: any) => {
+        const valor = Number(nc?.valor_descuento) || 0;
+        const sinIva = Number(nc?.descuento_sin_iva) || 0;
+        const iva = Number(nc?.iva_descuento) || 0;
+        return {
+          total: acc.total + valor,
+          sinIva: acc.sinIva + sinIva,
+          iva: acc.iva + iva
+        };
+      },
+      { total: 0, sinIva: 0, iva: 0 }
+    );
+
+    return {
+      totalNotasCredito: acumulado.total,
+      totalNotasCreditoSinIVA: acumulado.sinIva,
+      totalNotasCreditoIVA: acumulado.iva,
+      retencionActual: notasData?.retencion_actual ?? null,
+      totalSinIvaOriginal: notasData?.total_sin_iva_original ?? null,
+      totalOriginal: notasData?.total_original ?? null,
+      ivaOriginal: notasData?.iva_original ?? null,
+      retencionPorcentaje: notasData?.retencion_porcentaje ?? null
+    };
+  } catch (error) {
+    console.error('Error parsing notas de crédito para totales:', error);
+    return {
+      totalNotasCredito: 0,
+      totalNotasCreditoSinIVA: 0,
+      totalNotasCreditoIVA: 0,
+      retencionActual: null,
+      totalSinIvaOriginal: null,
+      totalOriginal: null,
+      ivaOriginal: null,
+      retencionPorcentaje: null
+    };
+  }
+}
+
+export function obtenerBaseSinIVADespuesNotasCredito(factura: FacturaData): number {
+  const baseDesdeFactura = factura.total_a_pagar - (factura.factura_iva || 0);
+
+  if (Number.isFinite(baseDesdeFactura) && baseDesdeFactura >= 0) {
+    return baseDesdeFactura;
+  }
+
+  const baseOriginal = calcularValorOriginalAntesIVA(factura);
+  const { totalNotasCreditoSinIVA } = obtenerTotalesNotasCredito(factura);
+  return Math.max(0, baseOriginal - totalNotasCreditoSinIVA);
+}
+
 export function calcularMontoRetencionReal(factura: FacturaData): number {
   if (!factura.monto_retencion || factura.monto_retencion === 0) return 0;
-  // IMPORTANTE: La retención se calcula sobre el valor ORIGINAL antes de IVA (sin considerar descuentos)
-  const baseParaRetencion = calcularValorOriginalAntesIVA(factura);
+  const baseParaRetencion = obtenerBaseSinIVADespuesNotasCredito(factura);
   return baseParaRetencion * (factura.monto_retencion / 100);
 }
 
@@ -70,14 +149,13 @@ export function calcularValorRealAPagar(factura: FacturaData): number {
   }
 
   // 2. Restar retención si aplica
-  // La retención se calcula sobre el valor ORIGINAL sin descuentos (total_sin_iva)
+  // La retención se recalcula considerando notas de crédito aplicadas
   if (factura.tiene_retencion && factura.monto_retencion) {
-    const retencion = calcularMontoRetencionReal(factura);
-    valorReal -= retencion;
+    valorReal -= calcularMontoRetencionReal(factura);
   }
 
   // 3. Restar descuento por pronto pago si está disponible
-  // El pronto pago se calcula sobre el valor ORIGINAL sin descuentos (total_sin_iva)
+  // El pronto pago se calcula sobre la base original sin IVA (no se afecta con notas de crédito)
   if (factura.porcentaje_pronto_pago && factura.porcentaje_pronto_pago > 0) {
     const baseParaDescuento = calcularValorOriginalAntesIVA(factura);
     const descuento = baseParaDescuento * (factura.porcentaje_pronto_pago / 100);

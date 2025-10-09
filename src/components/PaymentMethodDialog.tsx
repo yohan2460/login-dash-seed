@@ -11,7 +11,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { CreditCard, Building2, Percent, Banknote, Calendar, Download, Plus, Trash2, User, Wallet, CheckCircle, DollarSign } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
-import { calcularValorRealAPagar, obtenerBaseSinIVAOriginal } from '@/utils/calcularValorReal';
+import { calcularValorRealAPagar, obtenerBaseSinIVAOriginal, obtenerBaseSinIVADespuesNotasCredito } from '@/utils/calcularValorReal';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
@@ -520,9 +520,10 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
     // Calcular valores
     const valoresOriginales = obtenerValoresOriginales(factura);
     const totalOriginalDisplay = valoresOriginales.totalOriginal ?? factura.total_a_pagar;
-    const totalSinIvaBase = obtenerBaseSinIVAOriginal(factura);
+    const totalSinIvaAjustado = obtenerBaseSinIVADespuesNotasCredito(factura);
+    const totalSinIvaOriginal = valoresOriginales.totalSinIvaOriginal ?? obtenerBaseSinIVAOriginal(factura);
     const retencion = factura.tiene_retencion && factura.monto_retencion
-      ? totalSinIvaBase * ((factura.monto_retencion || 0) / 100)
+      ? totalSinIvaAjustado * ((factura.monto_retencion || 0) / 100)
       : 0;
     const valorFinal = obtenerValorFinal(factura);
 
@@ -533,7 +534,7 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
       : usedProntoPago === 'yes' && factura.porcentaje_pronto_pago;
 
     const prontoPago = aplicarProntoPago
-      ? totalSinIvaBase * ((factura.porcentaje_pronto_pago || 0) / 100)
+      ? totalSinIvaOriginal * ((factura.porcentaje_pronto_pago || 0) / 100)
       : 0;
     const totalDescuentosResumen = Math.max(0, totalOriginalDisplay - valorFinal);
 
@@ -545,7 +546,7 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
         descuentosAdicionales = JSON.parse(factura.descuentos_antes_iva);
         totalDescuentosAdicionales = descuentosAdicionales.reduce((sum, desc) => {
           if (desc.tipo === 'porcentaje') {
-            return sum + (totalSinIvaBase * desc.valor / 100);
+            return sum + (totalSinIvaOriginal * desc.valor / 100);
           }
           return sum + desc.valor;
         }, 0);
@@ -687,7 +688,7 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
     if (descuentosAdicionales.length > 0) {
       descuentosAdicionales.forEach((desc) => {
         const valorDescuento = desc.tipo === 'porcentaje'
-          ? totalSinIvaBase * (desc.valor / 100)
+          ? totalSinIvaOriginal * (desc.valor / 100)
           : desc.valor;
         const textoDescuento = desc.tipo === 'porcentaje'
           ? `${desc.concepto} (${desc.valor}%)`
@@ -1292,6 +1293,9 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
 
   if (!factura) return null;
 
+  const baseSinIVAActual = obtenerBaseSinIVADespuesNotasCredito(factura);
+  const baseSinIVAOriginal = obtenerBaseSinIVAOriginal(factura);
+
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
@@ -1324,12 +1328,12 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
                 <p className="text-sm font-semibold mb-3">Desglose de la factura:</p>
 
                 {(() => {
-                  const valorAntesIVA = obtenerBaseSinIVAOriginal(factura);
                   console.log('Valores de la factura:', {
                     total_a_pagar: factura.total_a_pagar,
                     factura_iva: factura.factura_iva,
                     total_sin_iva: factura.total_sin_iva,
-                    valorAntesIVA,
+                    valorAntesIVAOriginal: baseSinIVAOriginal,
+                    valorAntesIVAActual: baseSinIVAActual,
                     descuentos_antes_iva: factura.descuentos_antes_iva
                   });
                   return null;
@@ -1338,9 +1342,15 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
                 <div className="flex justify-between text-sm">
                   <span>Valor antes de IVA:</span>
                   <span className="font-medium">
-                    {formatCurrency(obtenerBaseSinIVAOriginal(factura))}
+                    {formatCurrency(baseSinIVAActual)}
                   </span>
                 </div>
+                {Math.round(baseSinIVAOriginal) !== Math.round(baseSinIVAActual) && (
+                  <div className="flex justify-between text-xs text-muted-foreground">
+                    <span>Base original sin IVA:</span>
+                    <span>{formatCurrency(baseSinIVAOriginal)}</span>
+                  </div>
+                )}
 
                 {/* Mostrar descuentos antes de IVA si existen */}
                 {factura.descuentos_antes_iva && (() => {
@@ -1352,10 +1362,10 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
                       console.log('No hay descuentos en el array');
                       return null;
                     }
+                    const baseCalculada = baseSinIVAOriginal;
                     const totalDescuentos = descuentos.reduce((sum: number, desc: any) => {
                       if (desc.tipo === 'porcentaje') {
-                        const base = obtenerBaseSinIVAOriginal(factura);
-                        return sum + (base * desc.valor / 100);
+                        return sum + (baseCalculada * desc.valor / 100);
                       }
                       return sum + desc.valor;
                     }, 0);
@@ -1368,7 +1378,7 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
                             <span>• {desc.concepto}:</span>
                             <span>
                               {desc.tipo === 'porcentaje' ? `${desc.valor}%` : formatCurrency(desc.valor)}
-                              {desc.tipo === 'porcentaje' && ` = ${formatCurrency(obtenerBaseSinIVAOriginal(factura) * desc.valor / 100)}`}
+                              {desc.tipo === 'porcentaje' && ` = ${formatCurrency(baseCalculada * desc.valor / 100)}`}
                             </span>
                           </div>
                         ))}
@@ -1397,13 +1407,13 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
 
                 {factura.tiene_retencion && factura.monto_retencion && (
                   <div className="text-orange-600 text-sm pt-2 border-t">
-                    <strong>Retención ({factura.monto_retencion}%):</strong> -{formatCurrency(obtenerBaseSinIVAOriginal(factura) * ((factura.monto_retencion || 0) / 100))}
+                    <strong>Retención ({factura.monto_retencion}%):</strong> -{formatCurrency(baseSinIVAActual * ((factura.monto_retencion || 0) / 100))}
                   </div>
                 )}
 
                 {factura.porcentaje_pronto_pago && factura.porcentaje_pronto_pago > 0 && (
                   <div className="text-green-600 text-sm font-semibold">
-                    Descuento pronto pago disponible: {factura.porcentaje_pronto_pago}% (-{formatCurrency(obtenerBaseSinIVAOriginal(factura) * (factura.porcentaje_pronto_pago || 0) / 100)})
+                    Descuento pronto pago disponible: {factura.porcentaje_pronto_pago}% (-{formatCurrency(baseSinIVAOriginal * (factura.porcentaje_pronto_pago || 0) / 100)})
                   </div>
                 )}
 

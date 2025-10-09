@@ -321,7 +321,7 @@ export default function ModernDashboard() {
     return facturas
       .filter(f => f.clasificacion === 'mercancia' && f.uso_pronto_pago)
       .reduce((total, factura) => {
-        const montoBase = factura.total_a_pagar - (factura.factura_iva || 0);
+        const montoBase = obtenerBaseSinIVAOriginal(factura);
         const descuento = montoBase * ((factura.porcentaje_pronto_pago || 0) / 100);
         return total + descuento;
       }, 0);
