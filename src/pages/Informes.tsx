@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Navigate, Link } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
@@ -35,7 +35,9 @@ import {
   X,
   Edit2,
   Check,
-  Paperclip
+  Paperclip,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 
 interface Factura {
@@ -101,6 +103,15 @@ export default function Informes() {
   const [loadingPdf, setLoadingPdf] = useState(false);
   const [editingSerieId, setEditingSerieId] = useState<string | null>(null);
   const [editingSerieValue, setEditingSerieValue] = useState<string>('');
+  const tableContainerRef = useRef<HTMLDivElement | null>(null);
+  const setTableRef = useCallback((node: HTMLTableElement | null) => {
+    if (node && node.parentElement instanceof HTMLDivElement) {
+      tableContainerRef.current = node.parentElement;
+    } else {
+      tableContainerRef.current = null;
+    }
+  }, []);
+
   // Obtener el primer y último día del mes actual
   const getCurrentMonthRange = () => {
     const now = new Date();
@@ -401,6 +412,7 @@ export default function Informes() {
         'Fecha de Vencimiento': formatFechaSafe(factura.fecha_vencimiento),
         'Total de la Factura': factura.total_a_pagar,
         'Total Pagado': factura.valor_real_a_pagar || factura.monto_pagado || 0,
+        'Retención': factura.tiene_retencion ? calcularMontoRetencionReal(factura) : 0,
         'Estado': factura.estado_mercancia || 'Pendiente',
         'Método de Pago': metodoPagoTexto,
         'Fecha de Pago': factura.fecha_pago ? formatFechaSafe(factura.fecha_pago) : 'No pagada',
@@ -635,10 +647,8 @@ export default function Informes() {
 
       if (error) throw error;
 
-      // Actualizar la factura en el estado local
-      setFacturas(prev => prev.map(f =>
-        f.id === facturaId ? { ...f, numero_serie: editingSerieValue || null } : f
-      ));
+      // Refrescar los datos
+      await refetch();
 
       toast({
         title: "Serie actualizada",
@@ -660,6 +670,17 @@ export default function Informes() {
   const handleCancelEdit = () => {
     setEditingSerieId(null);
     setEditingSerieValue('');
+  };
+
+  const scrollTable = (direction: 'left' | 'right') => {
+    const scrollContainer = tableContainerRef.current;
+    if (scrollContainer) {
+      const scrollAmount = 400;
+      scrollContainer.scrollBy({
+        left: direction === 'left' ? -scrollAmount : scrollAmount,
+        behavior: 'smooth'
+      });
+    }
   };
 
   // Helper: Obtener pagos partidos de una factura
@@ -1474,8 +1495,29 @@ export default function Informes() {
             </div>
           </CardHeader>
           <CardContent className="p-0">
-            <div className="overflow-x-auto">
-              <Table>
+            <div className="sticky top-24 z-40 flex justify-between px-4 pointer-events-none">
+              <Button
+                variant="outline"
+                size="icon"
+                className="h-10 w-10 rounded-full shadow-lg bg-white/90 hover:bg-white border-2 pointer-events-auto"
+                onClick={() => scrollTable('left')}
+                type="button"
+              >
+                <ChevronLeft className="h-5 w-5" />
+              </Button>
+              <Button
+                variant="outline"
+                size="icon"
+                className="h-10 w-10 rounded-full shadow-lg bg-white/90 hover:bg-white border-2 pointer-events-auto"
+                onClick={() => scrollTable('right')}
+                type="button"
+              >
+                <ChevronRight className="h-5 w-5" />
+              </Button>
+            </div>
+
+            <div className="overflow-x-auto pt-4">
+              <Table ref={setTableRef}>
                 <TableHeader>
                   <TableRow className="bg-muted/50">
                     <TableHead className="w-10">
@@ -1508,6 +1550,7 @@ export default function Informes() {
                     <TableHead className="w-[100px] text-xs">Vencimiento</TableHead>
                     <TableHead className="w-[110px] text-right">Total Factura</TableHead>
                     <TableHead className="w-[110px] text-right">Total Pagado</TableHead>
+                    <TableHead className="w-[90px] text-right">Retención</TableHead>
                     <TableHead className="w-[90px]">Estado</TableHead>
                     <TableHead className="w-[100px] text-xs">Método Pago</TableHead>
                     <TableHead className="w-[50px] text-center">
@@ -1622,6 +1665,15 @@ export default function Informes() {
                           <span className="font-semibold text-green-600 text-sm">
                             {formatCurrency(factura.valor_real_a_pagar || factura.monto_pagado || 0)}
                           </span>
+                        </TableCell>
+                        <TableCell className="py-3 text-right">
+                          {factura.tiene_retencion ? (
+                            <span className="font-semibold text-blue-600 text-sm">
+                              {formatCurrency(calcularMontoRetencionReal(factura))}
+                            </span>
+                          ) : (
+                            <span className="text-sm text-muted-foreground">-</span>
+                          )}
                         </TableCell>
                         <TableCell className="py-3">
                           <div className="flex flex-col gap-1">
