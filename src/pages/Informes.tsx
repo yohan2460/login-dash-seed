@@ -854,7 +854,7 @@ export default function Informes() {
 
             // Ahora desglosar ese descuento en sus componentes (proporcional)
             // Pronto pago (proporcional)
-            if (factura.porcentaje_pronto_pago && factura.porcentaje_pronto_pago > 0) {
+            if (factura.uso_pronto_pago === true && factura.porcentaje_pronto_pago && factura.porcentaje_pronto_pago > 0) {
               const baseParaDescuento = obtenerBaseSinIVAOriginal(factura);
               totalProntoPago += (baseParaDescuento * (factura.porcentaje_pronto_pago / 100)) * proporcionOficial;
             }
@@ -885,7 +885,7 @@ export default function Informes() {
           // Fallback: Si no hay pagos en pagos_partidos, usar el método de pago de la factura
           if (factura.metodo_pago === metodoPago) {
             // Pronto pago (100% del descuento)
-            if (factura.porcentaje_pronto_pago && factura.porcentaje_pronto_pago > 0) {
+            if (factura.uso_pronto_pago === true && factura.porcentaje_pronto_pago && factura.porcentaje_pronto_pago > 0) {
               const baseParaDescuento = obtenerBaseSinIVAOriginal(factura);
               totalProntoPago += baseParaDescuento * (factura.porcentaje_pronto_pago / 100);
             }

@@ -55,6 +55,8 @@ interface MetodoPagoPartido {
   monto: number;
 }
 
+type MedioPago = 'Pago Banco' | 'Pago Tobías' | 'Caja';
+
 interface SaldoFavor {
   id: string;
   monto_inicial: number;
@@ -62,6 +64,7 @@ interface SaldoFavor {
   motivo: string;
   numero_factura_origen: string | null;
   fecha_generacion: string;
+  medio_pago: MedioPago;
 }
 
 export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcessed }: PaymentMethodDialogProps) {
@@ -313,9 +316,20 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
 
     setAplicandoSaldos(true);
     try {
+      const fechaSaldoAplicacion = (() => {
+        if (!paymentDate) return new Date().toISOString();
+        const [y, m, d] = paymentDate.split('-').map(Number);
+        if ([y, m, d].some(val => Number.isNaN(val))) {
+          return new Date().toISOString();
+        }
+        return new Date(y, m - 1, d, 12, 0, 0).toISOString();
+      })();
+
       // Aplicar cada saldo a favor usando la función de la base de datos
       for (const [saldoId, montoAplicado] of Object.entries(saldosSeleccionados)) {
         if (montoAplicado > 0) {
+          const saldoInfo = saldosDisponibles.find((saldo) => saldo.id === saldoId);
+
           const { error: saldoError } = await supabase.rpc('aplicar_saldo_favor', {
             p_saldo_favor_id: saldoId,
             p_factura_destino_id: factura.id,
@@ -324,6 +338,20 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
 
           if (saldoError) {
             throw new Error(`Error al aplicar saldo a favor: ${saldoError.message}`);
+          }
+
+          const medioPago = saldoInfo?.medio_pago ?? 'Pago Banco';
+          const { error: saldoPagoError } = await supabase
+            .from('pagos_partidos')
+            .insert({
+              factura_id: factura.id,
+              metodo_pago: medioPago,
+              monto: montoAplicado,
+              fecha_pago: fechaSaldoAplicacion
+            });
+
+          if (saldoPagoError) {
+            throw saldoPagoError;
           }
         }
       }
@@ -340,6 +368,7 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
       if (updateError) throw updateError;
 
       setSaldosAplicados(true);
+      setSaldosSeleccionados({});
 
       // Recargar los datos de la factura desde la BD para obtener el valor actualizado
       const { data: facturaActualizada, error: fetchError } = await supabase
@@ -359,6 +388,8 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
         title: "✅ Saldos aplicados exitosamente",
         description: `Se aplicaron ${formatCurrency(totalSaldos)} en saldos a favor. Nuevo valor real a pagar: ${formatCurrency(nuevoValorReal)}`,
       });
+
+      await fetchSaldosDisponibles();
 
       // Recargar saldos disponibles
       await fetchSaldosDisponibles();
@@ -496,16 +527,17 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
     if (saldosAplicados) {
       try {
         const { data: aplicaciones, error } = await supabase
-          .from('aplicaciones_saldo')
-          .select(`
-            *,
-            saldos_favor (
-              emisor_nombre,
-              emisor_nit,
-              numero_factura_origen,
-              motivo
-            )
-          `)
+        .from('aplicaciones_saldo')
+        .select(`
+          *,
+          saldos_favor (
+            emisor_nombre,
+            emisor_nit,
+            numero_factura_origen,
+            motivo,
+            medio_pago
+          )
+        `)
           .eq('factura_destino_id', factura.id);
 
         if (!error && aplicaciones) {
@@ -732,9 +764,10 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
       saldosAplicadosDesdeDB.forEach((aplicacion: any) => {
         const saldo = aplicacion.saldos_favor;
         if (saldo) {
+          const medio = aplicacion.medio_pago || saldo.medio_pago || 'Pago Banco';
           const origen = saldo.numero_factura_origen
-            ? `Factura: ${saldo.numero_factura_origen}`
-            : `Motivo: ${saldo.motivo || 'Crédito'}`;
+            ? `Factura: ${saldo.numero_factura_origen} · ${medio}`
+            : `Motivo: ${saldo.motivo || 'Crédito'} · ${medio}`;
           saldosData.push([origen, `-${formatCurrency(aplicacion.monto_aplicado)}`]);
           totalSaldosAplicados += aplicacion.monto_aplicado;
         }
@@ -748,8 +781,8 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
         const saldo = saldosDisponibles.find(s => s.id === saldoId);
         if (saldo && monto > 0) {
           const origen = saldo.numero_factura_origen
-            ? `Factura: ${saldo.numero_factura_origen}`
-            : `Motivo: ${saldo.motivo}`;
+            ? `Factura: ${saldo.numero_factura_origen} · ${saldo.medio_pago}`
+            : `Motivo: ${saldo.motivo} · ${saldo.medio_pago}`;
           saldosData.push([origen, `-${formatCurrency(monto)}`]);
         }
       });
@@ -1018,20 +1051,47 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
       const fechaPagoComprobante = new Date(parseInt(year), parseInt(month) - 1, parseInt(day), 12, 0, 0).toISOString();
 
       // Preparar información de saldos aplicados
-      const saldosAplicadosInfo = Object.entries(saldosSeleccionados)
-        .filter(([_, monto]) => monto > 0)
-        .map(([saldoId, monto]) => {
-          const saldo = saldosDisponibles.find(s => s.id === saldoId);
-          return {
-            saldo_id: saldoId,
-            monto: monto,
-            origen: saldo?.numero_factura_origen || saldo?.motivo || 'N/A'
-          };
-        });
+      const saldosAplicadosInfo =
+        saldosAplicados && saldosAplicadosDesdeDB.length > 0
+          ? saldosAplicadosDesdeDB.map((aplicacion: any) => ({
+              saldo_id: aplicacion.saldo_favor_id,
+              monto: aplicacion.monto_aplicado,
+              origen:
+                aplicacion.saldos_favor?.numero_factura_origen ||
+                aplicacion.saldos_favor?.motivo ||
+                'N/A',
+              medio_pago: aplicacion.medio_pago || aplicacion.saldos_favor?.medio_pago || null
+            }))
+          : Object.entries(saldosSeleccionados)
+              .filter(([_, monto]) => monto > 0)
+              .map(([saldoId, monto]) => {
+                const saldo = saldosDisponibles.find(s => s.id === saldoId);
+                return {
+                  saldo_id: saldoId,
+                  monto,
+                  origen: saldo?.numero_factura_origen || saldo?.motivo || 'N/A',
+                  medio_pago: saldo?.medio_pago || null
+                };
+              });
 
-      const totalSaldosInfo = calcularTotalSaldosAplicados();
+      const totalSaldosInfo = saldosAplicadosInfo.reduce((sum, info) => sum + (info.monto || 0), 0);
       const metodoPagoFinal = esPagadoConSoloSaldos
-        ? 'Saldos a Favor'
+        ? (() => {
+            const medios = Array.from(
+              new Set<string>(
+                saldosAplicadosInfo
+                  .map(info => info.medio_pago)
+                  .filter((medio): medio is string => Boolean(medio))
+              )
+            );
+            if (medios.length === 1) {
+              return medios[0];
+            }
+            if (medios.length > 1) {
+              return 'Pago Partido';
+            }
+            return 'Pago Banco';
+          })()
         : usarPagoPartido ? 'Pago Partido' : selectedPaymentMethod;
 
       const comprobanteData = {
@@ -1456,6 +1516,9 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
                             </p>
                             <p className="text-xs text-muted-foreground">
                               {saldo.numero_factura_origen ? `Factura: ${saldo.numero_factura_origen}` : `Origen: ${saldo.motivo}`}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              Medio: <span className="font-semibold text-foreground">{saldo.medio_pago}</span>
                             </p>
                           </div>
                           <div className="flex items-center gap-2">

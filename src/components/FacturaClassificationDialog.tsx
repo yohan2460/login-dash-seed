@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
@@ -13,7 +13,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { Package, CreditCard, Lightbulb, Loader2, Receipt, Calculator, Percent, FileText, Plus, Trash2, Tag, X } from 'lucide-react';
 import { SerieNumberSuggestion } from '@/utils/serieNumberSuggestion';
-import { calcularValorRealAPagar } from '@/utils/calcularValorReal';
+import { calcularValorRealAPagar, calcularMontoRetencionReal, obtenerBaseSinIVAOriginal } from '@/utils/calcularValorReal';
 import { formatCurrency } from '@/lib/utils';
 
 interface Factura {
@@ -26,6 +26,13 @@ interface Factura {
   clasificacion?: string | null;
   notas?: string | null;
   estado_nota_credito?: 'pendiente' | 'aplicada' | 'anulada' | null;
+  tiene_retencion?: boolean | null;
+  monto_retencion?: number | null;
+  porcentaje_pronto_pago?: number | null;
+  uso_pronto_pago?: boolean | null;
+  total_sin_iva?: number | null;
+  valor_real_a_pagar?: number | null;
+  descuentos_antes_iva?: string | null;
 }
 
 const parseNumeroSeguro = (valor: unknown): number | null => {
@@ -102,6 +109,28 @@ export function FacturaClassificationDialog({
   const [suggestedSerie, setSuggestedSerie] = useState<string | null>(null);
   const [availableSeries, setAvailableSeries] = useState<number[]>([]);
   const { toast } = useToast();
+
+  const resumenFinanciero = useMemo(() => {
+    if (!factura) {
+      return null;
+    }
+
+    const baseSinIVA = obtenerBaseSinIVAOriginal(factura);
+    const retencionPorcentaje = factura.tiene_retencion ? parseNumeroSeguro(factura.monto_retencion) || 0 : 0;
+    const retencionValor = factura.tiene_retencion ? calcularMontoRetencionReal(factura) : 0;
+    const prontoPagoPorcentaje = parseNumeroSeguro(factura.porcentaje_pronto_pago) || 0;
+    const prontoPagoValor = prontoPagoPorcentaje > 0 ? baseSinIVA * (prontoPagoPorcentaje / 100) : 0;
+    const valorReal = (parseNumeroSeguro(factura.valor_real_a_pagar) ?? calcularValorRealAPagar(factura));
+
+    return {
+      baseSinIVA,
+      retencionPorcentaje,
+      retencionValor,
+      prontoPagoPorcentaje,
+      prontoPagoValor,
+      valorReal
+    };
+  }, [factura]);
 
   // Función para obtener sugerencia de número de serie y números disponibles
   const fetchSerieSuggestion = useCallback(async () => {
@@ -457,6 +486,51 @@ export function FacturaClassificationDialog({
                 </div>
               </CardContent>
             </Card>
+
+            {resumenFinanciero && (
+              <Card className="border-l-4 border-l-purple-500 bg-muted/40">
+                <CardHeader className="pb-3">
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <Calculator className="w-4 h-4" />
+                    Resumen Financiero
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-0">
+                  <div>
+                    <p className="text-sm font-medium text-foreground">Base sin IVA</p>
+                    <p className="text-sm font-semibold text-blue-600">
+                      {formatCurrency(resumenFinanciero.baseSinIVA)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-foreground">Valor Real Registrado</p>
+                    <p className="text-sm font-semibold text-emerald-600">
+                      {formatCurrency(resumenFinanciero.valorReal)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-foreground">
+                      Retención {resumenFinanciero.retencionPorcentaje ? `(${resumenFinanciero.retencionPorcentaje}%)` : ''}
+                    </p>
+                    <p className="text-sm font-semibold text-orange-600">
+                      {resumenFinanciero.retencionValor > 0
+                        ? formatCurrency(resumenFinanciero.retencionValor)
+                        : 'Sin retención'}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-foreground">
+                      Pronto Pago {resumenFinanciero.prontoPagoPorcentaje ? `(${resumenFinanciero.prontoPagoPorcentaje}%)` : ''}
+                    </p>
+                    <p className="text-sm font-semibold text-green-600">
+                      {resumenFinanciero.prontoPagoValor > 0
+                        ? formatCurrency(resumenFinanciero.prontoPagoValor)
+                        : 'Sin descuento'}
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
 
             {/* Ajuste de Valores */}
             <Card>

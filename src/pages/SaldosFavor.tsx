@@ -29,6 +29,7 @@ interface SaldoFavor {
   fecha_generacion: string;
   estado: 'activo' | 'agotado' | 'cancelado';
   created_at: string;
+  medio_pago: MedioPago;
 }
 
 interface AplicacionSaldo {
@@ -38,6 +39,7 @@ interface AplicacionSaldo {
   monto_aplicado: number;
   fecha_aplicacion: string;
   factura_numero?: string;
+  medio_pago?: MedioPago | null;
 }
 
 interface ProveedorConSaldo {
@@ -47,6 +49,9 @@ interface ProveedorConSaldo {
   cantidad_saldos: number;
   saldos: SaldoFavor[];
 }
+
+type MedioPago = 'Pago Banco' | 'Pago Tobías' | 'Caja';
+const MEDIOS_PAGO: MedioPago[] = ['Pago Banco', 'Pago Tobías', 'Caja'];
 
 export default function SaldosFavor() {
   const { user, loading } = useAuth();
@@ -67,6 +72,7 @@ export default function SaldosFavor() {
   const [formMotivo, setFormMotivo] = useState<'pago_exceso' | 'nota_credito' | 'ajuste_manual'>('pago_exceso');
   const [formDescripcion, setFormDescripcion] = useState('');
   const [formNumeroFacturaOrigen, setFormNumeroFacturaOrigen] = useState('');
+  const [formMedioPago, setFormMedioPago] = useState<MedioPago>('Pago Banco');
 
   useEffect(() => {
     if (user) {
@@ -135,6 +141,7 @@ export default function SaldosFavor() {
           numero_factura_origen: formNumeroFacturaOrigen || null,
           motivo: formMotivo,
           descripcion: formDescripcion || null,
+          medio_pago: formMedioPago,
         });
 
       if (error) throw error;
@@ -151,6 +158,7 @@ export default function SaldosFavor() {
       setFormMotivo('pago_exceso');
       setFormDescripcion('');
       setFormNumeroFacturaOrigen('');
+      setFormMedioPago('Pago Banco');
       setShowCreateDialog(false);
       fetchSaldos();
     } catch (error) {
@@ -179,7 +187,8 @@ export default function SaldosFavor() {
 
       const aplicacionesConFactura = (data || []).map(app => ({
         ...app,
-        factura_numero: (app.facturas as any)?.numero_factura || 'N/A'
+        factura_numero: (app.facturas as any)?.numero_factura || 'N/A',
+        medio_pago: app.medio_pago || saldo.medio_pago
       }));
 
       setAplicaciones(aplicacionesConFactura);
@@ -397,14 +406,15 @@ export default function SaldosFavor() {
                 <CardContent>
                   <Table>
                     <TableHeader>
-                      <TableRow>
-                        <TableHead>Fecha</TableHead>
-                        <TableHead>Motivo</TableHead>
-                        <TableHead>Factura Origen</TableHead>
-                        <TableHead className="text-right">Monto Inicial</TableHead>
-                        <TableHead className="text-right">Disponible</TableHead>
-                        <TableHead>Estado</TableHead>
-                        <TableHead className="text-center">Acciones</TableHead>
+                    <TableRow>
+                      <TableHead>Fecha</TableHead>
+                      <TableHead>Motivo</TableHead>
+                      <TableHead>Medio de Pago</TableHead>
+                      <TableHead>Factura Origen</TableHead>
+                      <TableHead className="text-right">Monto Inicial</TableHead>
+                      <TableHead className="text-right">Disponible</TableHead>
+                      <TableHead>Estado</TableHead>
+                      <TableHead className="text-center">Acciones</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -416,6 +426,11 @@ export default function SaldosFavor() {
                           <TableCell>
                             <Badge variant="outline" className="text-xs">
                               {getMotivoLabel(saldo.motivo)}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="secondary" className="text-xs">
+                              {saldo.medio_pago}
                             </Badge>
                           </TableCell>
                           <TableCell className="text-sm">
@@ -508,6 +523,21 @@ export default function SaldosFavor() {
               </Select>
             </div>
             <div>
+              <Label>Medio de Pago *</Label>
+              <Select value={formMedioPago} onValueChange={(v: MedioPago) => setFormMedioPago(v)}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {MEDIOS_PAGO.map(medio => (
+                    <SelectItem key={medio} value={medio}>
+                      {medio}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
               <Label>N° Factura Origen (opcional)</Label>
               <Input
                 placeholder="Número de factura"
@@ -575,6 +605,7 @@ export default function SaldosFavor() {
                     <TableRow>
                       <TableHead>Fecha</TableHead>
                       <TableHead>Factura Destino</TableHead>
+                      <TableHead>Medio</TableHead>
                       <TableHead className="text-right">Monto Aplicado</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -585,6 +616,11 @@ export default function SaldosFavor() {
                           {new Date(app.fecha_aplicacion).toLocaleDateString('es-CO')}
                         </TableCell>
                         <TableCell>{app.factura_numero}</TableCell>
+                        <TableCell>
+                          <Badge variant="outline" className="text-xs">
+                            {app.medio_pago || selectedSaldo.medio_pago}
+                          </Badge>
+                        </TableCell>
                         <TableCell className="text-right font-semibold">
                           {formatCurrency(app.monto_aplicado)}
                         </TableCell>

@@ -1014,7 +1014,8 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
                     )}
                     {factura.porcentaje_pronto_pago && factura.porcentaje_pronto_pago > 0 && (
                       <Badge variant="outline" className="text-xs bg-green-50 text-green-700 border-green-200 font-mono">
-                        Pronto Pago -{formatCompactCurrency((obtenerBaseSinIVAOriginal(factura) * (factura.porcentaje_pronto_pago || 0)) / 100)}
+                        Pronto Pago{factura.uso_pronto_pago ? '' : ' (disp.)'} -
+                        {formatCompactCurrency((obtenerBaseSinIVAOriginal(factura) * (factura.porcentaje_pronto_pago || 0)) / 100)}
                       </Badge>
                     )}
                     {factura.factura_iva && factura.factura_iva > 0 && (
@@ -1231,7 +1232,7 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
                       </div>
                       {factura.numero_serie && (
                         <Badge variant="outline" className="w-fit text-[10px] px-1.5 py-0 bg-gradient-to-r from-blue-600 to-purple-500 text-white border-0">
-                          S{factura.numero_serie}
+                          {factura.numero_serie}
                         </Badge>
                       )}
                       <div className="text-[11px] font-medium truncate" title={factura.emisor_nombre}>
@@ -1329,7 +1330,7 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
                       )}
                       {factura.porcentaje_pronto_pago && factura.porcentaje_pronto_pago > 0 && (
                         <div className="text-[9px] text-green-600">
-                          -PP {formatCompactCurrency((obtenerBaseSinIVAOriginal(factura) * (factura.porcentaje_pronto_pago || 0)) / 100)}
+                          -PP {factura.uso_pronto_pago ? '' : 'disp. '}{formatCompactCurrency((obtenerBaseSinIVAOriginal(factura) * (factura.porcentaje_pronto_pago || 0)) / 100)}
                         </div>
                       )}
                       {(() => {

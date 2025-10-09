@@ -16,6 +16,8 @@ import { calcularValorRealAPagar, calcularMontoRetencionReal, obtenerBaseSinIVAD
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
+type MedioPago = 'Pago Banco' | 'Pago Tobías' | 'Caja';
+
 interface Factura {
   id: string;
   numero_factura: string;
@@ -59,6 +61,7 @@ interface SaldoFavor {
   motivo: string;
   numero_factura_origen: string | null;
   fecha_generacion: string;
+  medio_pago: MedioPago;
 }
 
 export function MultiplePaymentDialog({
@@ -83,7 +86,7 @@ export function MultiplePaymentDialog({
 
   // Estados para saldos a favor por proveedor
   const [saldosPorProveedor, setSaldosPorProveedor] = useState<{[nit: string]: SaldoFavor[]}>({});
-  const [saldosSeleccionados, setSaldosSeleccionados] = useState<{[saldoId: string]: {monto: number, proveedorNit: string}}>({});
+const [saldosSeleccionados, setSaldosSeleccionados] = useState<{[saldoId: string]: {monto: number; proveedorNit: string; medioPago: MedioPago}}>({});
   const [loadingSaldos, setLoadingSaldos] = useState(false);
   const [saldosAplicados, setSaldosAplicados] = useState(false);
   const [aplicandoSaldos, setAplicandoSaldos] = useState(false);
@@ -238,6 +241,15 @@ export function MultiplePaymentDialog({
 
     setAplicandoSaldos(true);
     try {
+      const fechaSaldoAplicacion = (() => {
+        if (!fechaPago) return new Date().toISOString();
+        const [y, m, d] = fechaPago.split('-').map(Number);
+        if ([y, m, d].some(val => Number.isNaN(val))) {
+          return new Date().toISOString();
+        }
+        return new Date(y, m - 1, d, 12, 0, 0).toISOString();
+      })();
+
       // Aplicar cada saldo a favor a las facturas correspondientes del proveedor
       for (const [saldoId, saldoInfo] of Object.entries(saldosSeleccionados)) {
         if (saldoInfo.monto > 0) {
@@ -247,13 +259,25 @@ export function MultiplePaymentDialog({
           if (facturasProveedor.length === 0) continue;
 
           // Aplicar el saldo proporcionalmente a todas las facturas del proveedor
-          const montoPorFactura = saldoInfo.monto / facturasProveedor.length;
+          const medioPago = saldoInfo.medioPago;
+          let restante = saldoInfo.monto;
 
-          for (const factura of facturasProveedor) {
+          for (const [index, factura] of facturasProveedor.entries()) {
+            const esUltima = index === facturasProveedor.length - 1;
+            const cuota = saldoInfo.monto / facturasProveedor.length;
+            const montoAplicado = Number(
+              (esUltima ? restante : Math.round(cuota * 100) / 100).toFixed(2)
+            );
+            restante = Number(Math.max(0, restante - montoAplicado).toFixed(2));
+
+            if (montoAplicado <= 0) {
+              return;
+            }
+
             const { error: saldoError } = await supabase.rpc('aplicar_saldo_favor', {
               p_saldo_favor_id: saldoId,
               p_factura_destino_id: factura.id,
-              p_monto_aplicado: montoPorFactura
+              p_monto_aplicado: montoAplicado
             });
 
             if (saldoError) {
@@ -262,7 +286,7 @@ export function MultiplePaymentDialog({
 
             // Actualizar valor_real_a_pagar de la factura
             const detalles = calcularDetallesFactura(factura);
-            const nuevoValorReal = detalles.valorReal - montoPorFactura;
+            const nuevoValorReal = detalles.valorReal - montoAplicado;
 
             const { error: updateError } = await supabase
               .from('facturas')
@@ -272,11 +296,24 @@ export function MultiplePaymentDialog({
               .eq('id', factura.id);
 
             if (updateError) throw updateError;
+            const { error: pagoSaldoError } = await supabase
+              .from('pagos_partidos')
+              .insert({
+                factura_id: factura.id,
+                metodo_pago: medioPago,
+                monto: montoAplicado,
+                fecha_pago: fechaSaldoAplicacion
+              });
+
+            if (pagoSaldoError) {
+              throw pagoSaldoError;
+            }
           }
         }
       }
 
       setSaldosAplicados(true);
+      setSaldosSeleccionados({});
 
       // Recargar todas las facturas desde la BD para obtener los valores actualizados
       const facturasIds = facturas.map(f => f.id);
@@ -634,7 +671,8 @@ export function MultiplePaymentDialog({
               emisor_nombre,
               emisor_nit,
               numero_factura_origen,
-              motivo
+              motivo,
+              medio_pago
             )
           `)
           .in('factura_destino_id', facturasIds);
@@ -936,31 +974,26 @@ export function MultiplePaymentDialog({
       // Usar los saldos aplicados desde la base de datos
       console.log('Usando saldos desde BD para PDF');
 
-      // Agrupar por proveedor para evitar duplicados
-      const saldosPorProveedor: {[key: string]: number} = {};
+      const saldosAgrupados: {[key: string]: { monto: number; descripcion: string; medio: MedioPago | string }} = {};
 
       saldosAplicadosDesdeDB.forEach((aplicacion: any) => {
         const saldo = aplicacion.saldos_favor;
         if (saldo) {
-          const key = saldo.emisor_nit;
-          if (!saldosPorProveedor[key]) {
-            saldosPorProveedor[key] = 0;
+          const medio = aplicacion.medio_pago || saldo.medio_pago || 'Pago Banco';
+          const key = `${saldo.emisor_nit}|${medio}`;
+          if (!saldosAgrupados[key]) {
+            const descripcion = saldo.numero_factura_origen
+              ? `${saldo.emisor_nombre} - Factura: ${saldo.numero_factura_origen}`
+              : `${saldo.emisor_nombre} - ${saldo.motivo || 'Crédito'}`;
+            saldosAgrupados[key] = { monto: 0, descripcion, medio };
           }
-          saldosPorProveedor[key] += aplicacion.monto_aplicado;
+          saldosAgrupados[key].monto += aplicacion.monto_aplicado;
         }
         totalSaldosAplicados += aplicacion.monto_aplicado;
       });
 
-      // Crear las filas para la tabla
-      Object.entries(saldosPorProveedor).forEach(([nit, monto]) => {
-        const aplicacion = saldosAplicadosDesdeDB.find((a: any) => a.saldos_favor?.emisor_nit === nit);
-        if (aplicacion && aplicacion.saldos_favor) {
-          const saldo = aplicacion.saldos_favor;
-          const origen = saldo.numero_factura_origen
-            ? `${saldo.emisor_nombre} - Factura: ${saldo.numero_factura_origen}`
-            : `${saldo.emisor_nombre} - ${saldo.motivo || 'Crédito'}`;
-          saldosData.push([origen, `-${formatCurrency(monto)}`]);
-        }
+      Object.values(saldosAgrupados).forEach(({ descripcion, monto, medio }) => {
+        saldosData.push([`${descripcion} · ${medio}`, `-${formatCurrency(monto)}`]);
       });
     } else {
       // Usar los saldos seleccionados (antes de aplicar)
@@ -975,7 +1008,7 @@ export function MultiplePaymentDialog({
             const origen = saldo.numero_factura_origen
               ? `${proveedor?.emisor_nombre} - Factura: ${saldo.numero_factura_origen}`
               : `${proveedor?.emisor_nombre} - ${saldo.motivo}`;
-            saldosData.push([origen, `-${formatCurrency(saldoInfo.monto)}`]);
+            saldosData.push([`${origen} · ${saldoInfo.medioPago}`, `-${formatCurrency(saldoInfo.monto)}`]);
           }
         }
       });
@@ -1309,25 +1342,54 @@ export function MultiplePaymentDialog({
       const fechaPagoComprobante = new Date(parseInt(year), parseInt(month) - 1, parseInt(day), 12, 0, 0).toISOString();
 
       // Preparar información de saldos aplicados
-      const saldosAplicadosInfo = Object.entries(saldosSeleccionados)
-        .filter(([_, saldoInfo]) => saldoInfo.monto > 0)
-        .map(([saldoId, saldoInfo]) => {
-          const saldo = saldosPorProveedor[saldoInfo.proveedorNit]?.find(s => s.id === saldoId);
-          const proveedor = facturas.find(f => f.emisor_nit === saldoInfo.proveedorNit);
-          return {
-            saldo_id: saldoId,
-            monto: saldoInfo.monto,
-            proveedor_nit: saldoInfo.proveedorNit,
-            proveedor_nombre: proveedor?.emisor_nombre || 'N/A',
-            origen: saldo?.numero_factura_origen || saldo?.motivo || 'N/A'
-          };
-        });
+      const saldosAplicadosInfo =
+        saldosAplicados && saldosAplicadosDesdeDB.length > 0
+          ? saldosAplicadosDesdeDB.map((aplicacion: any) => {
+              const saldo = aplicacion.saldos_favor;
+              return {
+                saldo_id: aplicacion.saldo_favor_id,
+                monto: aplicacion.monto_aplicado,
+                proveedor_nit: saldo?.emisor_nit || 'N/A',
+                proveedor_nombre: saldo?.emisor_nombre || 'N/A',
+                origen: saldo?.numero_factura_origen || saldo?.motivo || 'N/A',
+                medio_pago: aplicacion.medio_pago || saldo?.medio_pago || null
+              };
+            })
+          : Object.entries(saldosSeleccionados)
+              .filter(([_, saldoInfo]) => saldoInfo.monto > 0)
+              .map(([saldoId, saldoInfo]) => {
+                const saldo = saldosPorProveedor[saldoInfo.proveedorNit]?.find(s => s.id === saldoId);
+                const proveedor = facturas.find(f => f.emisor_nit === saldoInfo.proveedorNit);
+                return {
+                  saldo_id: saldoId,
+                  monto: saldoInfo.monto,
+                  proveedor_nit: saldoInfo.proveedorNit,
+                  proveedor_nombre: proveedor?.emisor_nombre || 'N/A',
+                  origen: saldo?.numero_factura_origen || saldo?.motivo || 'N/A',
+                  medio_pago: saldoInfo.medioPago
+                };
+              });
 
-      const totalSaldosInfo = calcularTotalSaldosAplicados();
+      const totalSaldosInfo = saldosAplicadosInfo.reduce((sum, info) => sum + (info.monto || 0), 0);
       const totalFinalPagado = calcularTotalFinalAPagar();
       const esPagadoConSoloSaldos = totalSaldosInfo > 0 && totalFinalPagado < 1;
       const metodoPagoFinal = esPagadoConSoloSaldos
-        ? 'Saldos a Favor'
+        ? (() => {
+            const medios = Array.from(
+              new Set<string>(
+                saldosAplicadosInfo
+                  .map(info => info.medio_pago)
+                  .filter((medio): medio is string => Boolean(medio))
+              )
+            );
+            if (medios.length === 1) {
+              return medios[0];
+            }
+            if (medios.length > 1) {
+              return 'Pago Partido';
+            }
+            return metodoPago || 'Pago Banco';
+          })()
         : usarPagoPartido ? 'Pago Partido' : metodoPago;
 
       const comprobanteData = {
@@ -1809,16 +1871,19 @@ export function MultiplePaymentDialog({
                                 <div key={saldo.id} className="flex items-center justify-between p-2 bg-white dark:bg-gray-800 rounded border">
                                   <div className="flex-1">
                                     <p className="text-sm font-medium">
-                                      {formatCurrency(saldo.saldo_disponible)} disponible
-                                    </p>
-                                    <p className="text-xs text-muted-foreground">
-                                      {saldo.numero_factura_origen ? `Factura: ${saldo.numero_factura_origen}` : `Motivo: ${saldo.motivo}`}
-                                    </p>
-                                  </div>
-                                  <div className="flex items-center gap-2">
-                                    <Input
-                                      type="text"
-                                      placeholder="0"
+                                  {formatCurrency(saldo.saldo_disponible)} disponible
+                                </p>
+                                <p className="text-xs text-muted-foreground">
+                                  {saldo.numero_factura_origen ? `Factura: ${saldo.numero_factura_origen}` : `Motivo: ${saldo.motivo}`}
+                                </p>
+                                <p className="text-xs text-muted-foreground">
+                                  Medio: <span className="font-semibold text-foreground">{saldo.medio_pago}</span>
+                                </p>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <Input
+                                  type="text"
+                                  placeholder="0"
                                       value={saldosSeleccionados[saldo.id]?.monto ? new Intl.NumberFormat('es-CO').format(saldosSeleccionados[saldo.id].monto) : ''}
                                       onChange={(e) => {
                                         const value = e.target.value.replace(/[^0-9]/g, '');
@@ -1828,7 +1893,7 @@ export function MultiplePaymentDialog({
 
                                         const nuevos = { ...saldosSeleccionados };
                                         if (montoFinal > 0) {
-                                          nuevos[saldo.id] = { monto: montoFinal, proveedorNit: nit };
+                                          nuevos[saldo.id] = { monto: montoFinal, proveedorNit: nit, medioPago: saldo.medio_pago };
                                         } else {
                                           delete nuevos[saldo.id];
                                         }
@@ -1848,7 +1913,7 @@ export function MultiplePaymentDialog({
                                         );
                                         setSaldosSeleccionados({
                                           ...saldosSeleccionados,
-                                          [saldo.id]: { monto: montoMax, proveedorNit: nit }
+                                          [saldo.id]: { monto: montoMax, proveedorNit: nit, medioPago: saldo.medio_pago }
                                         });
                                       }}
                                       disabled={saldosAplicados}
