@@ -5,6 +5,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -603,6 +604,19 @@ export default function Informes() {
     }
   };
 
+  const parseDetalles = (detalles: any) => {
+    if (!detalles) return null;
+    if (typeof detalles === 'string') {
+      try {
+        return JSON.parse(detalles);
+      } catch (error) {
+        console.error('Error parseando detalles del comprobante:', error);
+        return null;
+      }
+    }
+    return detalles;
+  };
+
   const obtenerComprobantePago = async (facturaId: string) => {
     const { data: comprobantes, error } = await supabase
       .from('comprobantes_pago')
@@ -615,7 +629,13 @@ export default function Informes() {
       throw error;
     }
 
-    return comprobantes?.[0] ?? null;
+    if (!comprobantes || comprobantes.length === 0) {
+      return null;
+    }
+
+    const comprobante = comprobantes[0];
+    const detalles = parseDetalles(comprobante.detalles);
+    return detalles ? { ...comprobante, detalles } : comprobante;
   };
 
   // Función para descargar comprobante de pago
@@ -632,9 +652,25 @@ export default function Informes() {
         return;
       }
 
+      const detallesComprobante = parseDetalles(comprobante.detalles);
+      const pdfPath =
+        comprobante.pdf_file_path ||
+        (detallesComprobante && typeof detallesComprobante === 'object'
+          ? (detallesComprobante as any)?.pdf_file_path
+          : null);
+
+      if (!pdfPath) {
+        toast({
+          title: "Archivo no disponible",
+          description: "El comprobante no tiene asociado un PDF para descargar.",
+          variant: "destructive"
+        });
+        return;
+      }
+
       const { data: urlData, error: urlError } = await supabase.storage
         .from('facturas-pdf')
-        .createSignedUrl(comprobante.pdf_file_path, 3600);
+        .createSignedUrl(pdfPath, 3600);
 
       if (urlError) throw urlError;
 
@@ -691,7 +727,7 @@ export default function Informes() {
       console.error('Error al descargar soporte:', error);
       toast({
         title: "Error al descargar",
-        description: "Hubo un error al descargar el soporte de pago",
+        description: `Hubo un error al descargar el soporte de pago (${error instanceof Error ? error.message : 'Desconocido'})`,
         variant: "destructive"
       });
     }
@@ -1819,27 +1855,43 @@ export default function Informes() {
 
                             {/* Botón Descargar Comprobante de Pago */}
                             {factura.estado_mercancia === 'pagada' && (
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-8 w-8 p-0"
-                                onClick={() => descargarComprobantePago(factura.id)}
-                                title="Descargar Comprobante de Pago"
-                              >
-                                <Receipt className="h-4 w-4 text-green-600" />
-                              </Button>
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="h-8 w-8 p-0"
+                                      onClick={() => descargarComprobantePago(factura.id)}
+                                    >
+                                      <Download className="h-4 w-4 text-green-600" />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent side="top">
+                                    Descargar comprobante de pago
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
                             )}
 
                             {factura.estado_mercancia === 'pagada' && (
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-8 w-8 p-0"
-                                onClick={() => descargarSoportePago(factura.id)}
-                                title="Descargar Soporte del Pago"
-                              >
-                                <Paperclip className="h-4 w-4 text-amber-600" />
-                              </Button>
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="h-8 w-8 p-0"
+                                      onClick={() => descargarSoportePago(factura.id)}
+                                    >
+                                      <Paperclip className="h-4 w-4 text-amber-600" />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent side="top">
+                                    Descargar soporte del pago
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
                             )}
                           </div>
                         </TableCell>
