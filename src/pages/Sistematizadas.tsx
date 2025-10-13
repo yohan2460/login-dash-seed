@@ -9,10 +9,14 @@ import { ModernStatsCard } from '@/components/ModernStatsCard';
 import { FacturasTable } from '@/components/FacturasTable';
 import { ModernLayout } from '@/components/ModernLayout';
 import { useSupabaseQuery } from '@/hooks/useSupabaseQuery';
+import { FacturaInfoDialog } from '@/components/FacturaInfoDialog';
+import { PDFViewer } from '@/components/PDFViewer';
+import { useToast } from '@/hooks/use-toast';
 
 interface Factura {
   id: string;
   numero_factura: string;
+  numero_serie?: string | null;
   emisor_nombre: string;
   emisor_nit: string;
   total_a_pagar: number;
@@ -23,14 +27,34 @@ interface Factura {
   clasificacion_original?: string | null;
   created_at: string;
   factura_iva?: number | null;
+  factura_iva_porcentaje?: number | null;
   descripcion?: string | null;
+  tiene_retencion?: boolean | null;
+  monto_retencion?: number | null;
+  porcentaje_pronto_pago?: number | null;
+  fecha_emision?: string | null;
+  fecha_vencimiento?: string | null;
+  fecha_pago?: string | null;
+  metodo_pago?: string | null;
+  monto_pagado?: number | null;
+  valor_real_a_pagar?: number | null;
+  total_sin_iva?: number | null;
+  descuentos_antes_iva?: string | null;
+  notas?: string | null;
+  estado_mercancia?: string | null;
 }
 
 export function Sistematizadas() {
   const { user, loading } = useAuth();
+  const { toast } = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
   const [filtroTipo, setFiltroTipo] = useState<string>('all');
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
+  const [selectedFacturaForInfo, setSelectedFacturaForInfo] = useState<Factura | null>(null);
+  const [isInfoDialogOpen, setIsInfoDialogOpen] = useState(false);
+  const [isPDFViewerOpen, setIsPDFViewerOpen] = useState(false);
+  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+  const [selectedFacturaForPDF, setSelectedFacturaForPDF] = useState<Factura | null>(null);
   const { data: facturasData, isLoading, refetch } = useSupabaseQuery<Factura[]>(
     ['facturas', 'sistematizadas'],
     async () => {
@@ -96,6 +120,53 @@ export function Sistematizadas() {
 
   const calcularMontoTotal = () => {
     return getFilteredFacturas().reduce((total, factura) => total + factura.total_a_pagar, 0);
+  };
+
+  // Función para abrir el diálogo de información
+  const handleViewInfo = (factura: Factura) => {
+    setSelectedFacturaForInfo(factura);
+    setIsInfoDialogOpen(true);
+  };
+
+  // Función para abrir el visor de PDF
+  const handleViewPDF = async (factura: Factura) => {
+    if (!factura.pdf_file_path) {
+      toast({
+        title: "PDF no disponible",
+        description: "Esta factura no tiene un archivo PDF asociado",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    try {
+      const { data, error } = await supabase.storage
+        .from('facturas-pdf')
+        .createSignedUrl(factura.pdf_file_path, 3600);
+
+      if (error) throw error;
+
+      if (data?.signedUrl) {
+        setSelectedFacturaForPDF(factura);
+        setPdfUrl(data.signedUrl);
+        setIsPDFViewerOpen(true);
+      }
+    } catch (error) {
+      console.error('Error viewing PDF:', error);
+      toast({
+        title: "Error",
+        description: "No se pudo abrir el archivo PDF",
+        variant: "destructive"
+      });
+    }
+  };
+
+  // Función para abrir PDF desde el diálogo de información
+  const handleViewPDFFromInfo = async () => {
+    if (selectedFacturaForInfo) {
+      setIsInfoDialogOpen(false);
+      await handleViewPDF(selectedFacturaForInfo);
+    }
   };
 
   if (loading) {
@@ -212,15 +283,45 @@ export function Sistematizadas() {
                 facturas={filteredFacturas}
                 onClassifyClick={() => {}}
                 refreshData={refetch}
-                showActions={false}
+                showActions={true}
                 showOriginalClassification={true}
                 showClassifyButton={false}
                 highlightedId={highlightedId}
+                allowDelete={false}
+                showViewButtons={true}
+                onViewInfoClick={handleViewInfo}
+                onViewPDFClick={handleViewPDF}
               />
             )}
           </CardContent>
         </Card>
       </div>
+
+      {/* Diálogo de información de factura */}
+      <FacturaInfoDialog
+        isOpen={isInfoDialogOpen}
+        onClose={() => {
+          setIsInfoDialogOpen(false);
+          setSelectedFacturaForInfo(null);
+        }}
+        factura={selectedFacturaForInfo}
+        onViewPDF={handleViewPDFFromInfo}
+      />
+
+      {/* Visor de PDF */}
+      <PDFViewer
+        isOpen={isPDFViewerOpen}
+        onClose={() => {
+          setIsPDFViewerOpen(false);
+          setPdfUrl(null);
+          setSelectedFacturaForPDF(null);
+        }}
+        pdfUrl={pdfUrl}
+        title={selectedFacturaForPDF ? `Factura #${selectedFacturaForPDF.numero_factura} - ${selectedFacturaForPDF.emisor_nombre}` : "Visualizador de Factura"}
+        descuentosAntesIva={selectedFacturaForPDF?.descuentos_antes_iva}
+        totalAPagar={selectedFacturaForPDF?.total_a_pagar}
+        totalSinIva={selectedFacturaForPDF?.total_sin_iva}
+      />
     </ModernLayout>
   );
 }

@@ -113,6 +113,7 @@ export default function PagosProximos() {
         .select('*')
         .or('estado_mercancia.neq.pagada,estado_mercancia.is.null')
         .not('fecha_vencimiento', 'is', null)
+        .neq('clasificacion', 'nota_credito')
         .order('fecha_vencimiento', { ascending: true });
 
       if (error) throw error;
@@ -121,7 +122,8 @@ export default function PagosProximos() {
         .from('facturas')
         .select('*')
         .or('estado_mercancia.neq.pagada,estado_mercancia.is.null')
-        .is('fecha_vencimiento', null);
+        .is('fecha_vencimiento', null)
+        .neq('clasificacion', 'nota_credito');
 
       if (errorSinFecha) throw errorSinFecha;
 
@@ -240,12 +242,18 @@ export default function PagosProximos() {
 
   // Memorizar las facturas filtradas
   const filteredFacturas = useMemo(() => {
+    // Primero, excluir notas de crédito
+    const facturasNoCredito = facturas.filter(factura =>
+      factura.clasificacion !== 'nota_credito' &&
+      factura.clasificacion_original !== 'nota_credito'
+    );
+
     if (!searchKeyword.trim()) {
-      return facturas;
+      return facturasNoCredito;
     }
 
     const keyword = searchKeyword.toLowerCase().trim();
-    return facturas.filter(factura =>
+    return facturasNoCredito.filter(factura =>
       factura.numero_factura.toLowerCase().includes(keyword) ||
       factura.emisor_nombre.toLowerCase().includes(keyword) ||
       factura.emisor_nit.toLowerCase().includes(keyword) ||
@@ -254,12 +262,18 @@ export default function PagosProximos() {
   }, [facturas, searchKeyword]);
 
   const filteredFacturasSinFecha = useMemo(() => {
+    // Primero, excluir notas de crédito
+    const facturasNoCredito = facturasSinFecha.filter(factura =>
+      factura.clasificacion !== 'nota_credito' &&
+      factura.clasificacion_original !== 'nota_credito'
+    );
+
     if (!searchKeyword.trim()) {
-      return facturasSinFecha;
+      return facturasNoCredito;
     }
 
     const keyword = searchKeyword.toLowerCase().trim();
-    return facturasSinFecha.filter(factura =>
+    return facturasNoCredito.filter(factura =>
       factura.numero_factura.toLowerCase().includes(keyword) ||
       factura.emisor_nombre.toLowerCase().includes(keyword) ||
       factura.emisor_nit.toLowerCase().includes(keyword)

@@ -4,7 +4,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Eye, Tag, CreditCard, Calendar, Clock, AlertTriangle, CheckCircle, Trash2, FileCheck, Download, Minus, Archive, Edit, Percent, Paperclip, Building2 } from 'lucide-react';
+import { Eye, Tag, CreditCard, Calendar, Clock, AlertTriangle, CheckCircle, Trash2, FileCheck, Download, Minus, Archive, Edit, Percent, Paperclip, Building2, FileText } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
@@ -74,9 +74,12 @@ interface FacturasTableProps {
   showMultiplePayment?: boolean;
   onMultiplePayClick?: (facturas: Factura[]) => void;
   highlightedId?: string | null;
+  showViewButtons?: boolean;
+  onViewInfoClick?: (factura: Factura) => void;
+  onViewPDFClick?: (factura: Factura) => void;
 }
 
-export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPaymentInfo = false, onDelete, onSistematizarClick, showSistematizarButton = false, allowDelete = true, showOriginalClassification = false, onNotaCreditoClick, refreshData, showActions = true, showClassifyButton = true, showValorRealAPagar = false, showOriginalValueForNC = false, showIngresoSistema = false, onIngresoSistemaClick, showEditButton = false, onEditClick, showMultiplePayment = false, onMultiplePayClick, highlightedId = null }: FacturasTableProps) {
+export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPaymentInfo = false, onDelete, onSistematizarClick, showSistematizarButton = false, allowDelete = true, showOriginalClassification = false, onNotaCreditoClick, refreshData, showActions = true, showClassifyButton = true, showValorRealAPagar = false, showOriginalValueForNC = false, showIngresoSistema = false, onIngresoSistemaClick, showEditButton = false, onEditClick, showMultiplePayment = false, onMultiplePayClick, highlightedId = null, showViewButtons = false, onViewInfoClick, onViewPDFClick }: FacturasTableProps) {
   const { toast } = useToast();
   const { user } = useAuth();
   const [selectedFacturas, setSelectedFacturas] = useState<string[]>([]);
@@ -1589,6 +1592,94 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
                             </AlertDialogFooter>
                           </AlertDialogContent>
                         </AlertDialog>
+                      )}
+
+                      {showViewButtons && onViewInfoClick && (
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => onViewInfoClick(factura)}
+                                className="h-7 w-7 p-0 hover:bg-blue-50"
+                                title="Ver información"
+                              >
+                                <FileText className="w-3 h-3 text-blue-600" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent side="top">
+                              Ver información completa
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      )}
+
+                      {showViewButtons && onViewPDFClick && factura.pdf_file_path && (
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => onViewPDFClick(factura)}
+                                className="h-7 w-7 p-0 hover:bg-green-50"
+                                title="Ver PDF"
+                              >
+                                <Eye className="w-3 h-3 text-green-600" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent side="top">
+                              Ver PDF
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      )}
+
+                      {showViewButtons && factura.pdf_file_path && (
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={async () => {
+                                  try {
+                                    const { data } = await supabase.storage
+                                      .from('facturas-pdf')
+                                      .createSignedUrl(factura.pdf_file_path!, 3600);
+
+                                    if (data?.signedUrl) {
+                                      const link = document.createElement('a');
+                                      link.href = data.signedUrl;
+                                      link.download = `factura_${factura.numero_factura}.pdf`;
+                                      document.body.appendChild(link);
+                                      link.click();
+                                      document.body.removeChild(link);
+                                      toast({
+                                        title: "Descarga iniciada",
+                                        description: "El PDF se está descargando...",
+                                      });
+                                    }
+                                  } catch (error) {
+                                    toast({
+                                      title: "Error",
+                                      description: "No se pudo descargar el PDF",
+                                      variant: "destructive"
+                                    });
+                                  }
+                                }}
+                                className="h-7 w-7 p-0 hover:bg-purple-50"
+                                title="Descargar PDF"
+                              >
+                                <Download className="w-3 h-3 text-purple-600" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent side="top">
+                              Descargar PDF
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
                       )}
                     </div>
                   </TableCell>

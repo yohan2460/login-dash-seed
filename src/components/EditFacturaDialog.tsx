@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -10,11 +10,12 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
-import { CalendarIcon, Save, X, Plus, Trash2 } from 'lucide-react';
+import { CalendarIcon, Save, X, Plus, Trash2, Lightbulb, Loader2 } from 'lucide-react';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
+import { SerieNumberSuggestion } from '@/utils/serieNumberSuggestion';
 
 interface Factura {
   id: string;
@@ -94,6 +95,42 @@ export function EditFacturaDialog({ isOpen, onClose, factura, onSave }: EditFact
     valor: '',
     tipo: 'valor_fijo'
   });
+  const [suggestionLoading, setSuggestionLoading] = useState(false);
+  const [suggestedSerie, setSuggestedSerie] = useState<string | null>(null);
+
+  // Función para obtener sugerencia de número de serie
+  const fetchSerieSuggestion = useCallback(async () => {
+    if (!factura?.emisor_nit || factura?.clasificacion !== 'mercancia') {
+      setSuggestedSerie(null);
+      return;
+    }
+
+    setSuggestionLoading(true);
+    try {
+      const suggestion = await SerieNumberSuggestion.suggestNextSerie(factura.emisor_nit);
+      setSuggestedSerie(suggestion);
+    } catch (error) {
+      setSuggestedSerie(null);
+    } finally {
+      setSuggestionLoading(false);
+    }
+  }, [factura?.emisor_nit, factura?.clasificacion]);
+
+  // Efecto para obtener sugerencia cuando se abre el diálogo
+  useEffect(() => {
+    if (isOpen && factura?.clasificacion === 'mercancia' && factura?.emisor_nit) {
+      fetchSerieSuggestion();
+    } else {
+      setSuggestedSerie(null);
+    }
+  }, [isOpen, factura?.clasificacion, factura?.emisor_nit, fetchSerieSuggestion]);
+
+  // Función para usar la sugerencia
+  const useSuggestion = () => {
+    if (suggestedSerie) {
+      handleInputChange('numero_serie', suggestedSerie);
+    }
+  };
 
   useEffect(() => {
     if (factura && isOpen) {
@@ -140,6 +177,8 @@ export function EditFacturaDialog({ isOpen, onClose, factura, onSave }: EditFact
     if (!isOpen) {
       setDescuentos([]);
       setNuevoDescuento({ concepto: '', valor: '', tipo: 'valor_fijo' });
+      setSuggestedSerie(null);
+      setSuggestionLoading(false);
     }
   }, [isOpen]);
 
@@ -320,6 +359,41 @@ export function EditFacturaDialog({ isOpen, onClose, factura, onSave }: EditFact
                     onChange={(e) => handleInputChange('numero_serie', e.target.value)}
                     placeholder="Ej: A001"
                   />
+
+                  {/* Mostrar sugerencia si está disponible */}
+                  {suggestedSerie && !suggestionLoading && factura?.clasificacion === 'mercancia' && (
+                    <div className="flex items-center gap-2 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
+                      <Lightbulb className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                      <div className="flex-1">
+                        <div className="text-sm text-blue-800 dark:text-blue-300">
+                          <span className="font-medium">Sugerencia: </span>
+                          <span className="font-mono">{suggestedSerie}</span>
+                        </div>
+                        <div className="text-xs text-blue-600 dark:text-blue-400">
+                          Siguiente al número más alto en la base de datos
+                        </div>
+                      </div>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={useSuggestion}
+                        className="border-blue-300 text-blue-700 hover:bg-blue-100 dark:border-blue-600 dark:text-blue-300 dark:hover:bg-blue-800"
+                      >
+                        Usar
+                      </Button>
+                    </div>
+                  )}
+
+                  {/* Indicador de carga */}
+                  {suggestionLoading && factura?.clasificacion === 'mercancia' && (
+                    <div className="flex items-center gap-2 p-3 bg-muted/50 rounded-lg border">
+                      <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+                      <span className="text-sm text-muted-foreground">
+                        Analizando patrones de numeración...
+                      </span>
+                    </div>
+                  )}
                 </div>
               </div>
 

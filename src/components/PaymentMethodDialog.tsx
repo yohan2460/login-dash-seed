@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import type { ChangeEvent } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -240,9 +240,9 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
   };
 
   // Calcular total de saldos aplicados
-  const calcularTotalSaldosAplicados = (): number => {
+  const totalSaldosSeleccionados = useMemo(() => {
     return Object.values(saldosSeleccionados).reduce((sum, monto) => sum + monto, 0);
-  };
+  }, [saldosSeleccionados]);
 
   const sanitizeFileName = (name: string) => {
     return name
@@ -291,10 +291,10 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
   };
 
   // Aplicar saldos a favor a la factura
-  const aplicarSaldosAFavor = async () => {
+  const aplicarSaldosAFavor = () => {
     if (!factura) return;
 
-    const totalSaldos = calcularTotalSaldosAplicados();
+    const totalSaldos = totalSaldosSeleccionados;
     if (totalSaldos === 0) {
       toast({
         title: "No hay saldos seleccionados",
@@ -308,123 +308,28 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
     if (totalSaldos > valorTotal) {
       toast({
         title: "Saldos exceden el total",
-        description: `Los saldos aplicados (${formatCurrency(totalSaldos)}) no pueden ser mayores al total a pagar (${formatCurrency(valorTotal)})`,
+        description: `Los saldos seleccionados (${formatCurrency(totalSaldos)}) no pueden ser mayores al total a pagar (${formatCurrency(valorTotal)})`,
         variant: "destructive"
       });
       return;
     }
 
-    setAplicandoSaldos(true);
-    try {
-      const fechaSaldoAplicacion = (() => {
-        if (!paymentDate) return new Date().toISOString();
-        const [y, m, d] = paymentDate.split('-').map(Number);
-        if ([y, m, d].some(val => Number.isNaN(val))) {
-          return new Date().toISOString();
-        }
-        return new Date(y, m - 1, d, 12, 0, 0).toISOString();
-      })();
-
-      // Aplicar cada saldo a favor usando la función de la base de datos
-      for (const [saldoId, montoAplicado] of Object.entries(saldosSeleccionados)) {
-        if (montoAplicado > 0) {
-          const saldoInfo = saldosDisponibles.find((saldo) => saldo.id === saldoId);
-
-          const { error: saldoError } = await supabase.rpc('aplicar_saldo_favor', {
-            p_saldo_favor_id: saldoId,
-            p_factura_destino_id: factura.id,
-            p_monto_aplicado: montoAplicado
-          });
-
-          if (saldoError) {
-            throw new Error(`Error al aplicar saldo a favor: ${saldoError.message}`);
-          }
-
-          const medioPago = saldoInfo?.medio_pago ?? 'Pago Banco';
-          const { error: saldoPagoError } = await supabase
-            .from('pagos_partidos')
-            .insert({
-              factura_id: factura.id,
-              metodo_pago: medioPago,
-              monto: montoAplicado,
-              fecha_pago: fechaSaldoAplicacion
-            });
-
-          if (saldoPagoError) {
-            throw saldoPagoError;
-          }
-        }
-      }
-
-      // Actualizar valor_real_a_pagar en la factura
-      const nuevoValorReal = valorTotal - totalSaldos;
-      const { error: updateError } = await supabase
-        .from('facturas')
-        .update({
-          valor_real_a_pagar: nuevoValorReal
-        })
-        .eq('id', factura.id);
-
-      if (updateError) throw updateError;
-
-      setSaldosAplicados(true);
-      setSaldosSeleccionados({});
-
-      // Recargar los datos de la factura desde la BD para obtener el valor actualizado
-      const { data: facturaActualizada, error: fetchError } = await supabase
-        .from('facturas')
-        .select('*')
-        .eq('id', factura.id)
-        .single();
-
-      if (fetchError) {
-        console.error('Error al recargar factura:', fetchError);
-      } else if (facturaActualizada) {
-        // Actualizar el objeto factura en memoria con los nuevos datos
-        Object.assign(factura, facturaActualizada);
-      }
-
-      toast({
-        title: "✅ Saldos aplicados exitosamente",
-        description: `Se aplicaron ${formatCurrency(totalSaldos)} en saldos a favor. Nuevo valor real a pagar: ${formatCurrency(nuevoValorReal)}`,
-      });
-
-      await fetchSaldosDisponibles();
-
-      // Recargar saldos disponibles
-      await fetchSaldosDisponibles();
-    } catch (error: any) {
-      console.error('Error al aplicar saldos:', error);
-      toast({
-        title: "Error al aplicar saldos",
-        description: error?.message || "No se pudieron aplicar los saldos a favor",
-        variant: "destructive"
-      });
-    } finally {
-      setAplicandoSaldos(false);
-    }
+    setSaldosAplicados(true);
+    toast({
+      title: "Saldos listos para aplicar",
+      description: "Los saldos a favor se descontarán al confirmar el pago.",
+    });
   };
 
   // Actualizar automáticamente el monto pagado cuando cambie el pronto pago o saldos
   useEffect(() => {
     if (factura) {
-      const valorReal = obtenerValorFinal(factura);
-
-      // Si los saldos ya fueron aplicados, el valorReal YA incluye la reducción de saldos
-      // Por lo tanto, NO debemos restar los saldos nuevamente
-      let montoAPagar;
-      if (saldosAplicados) {
-        // Los saldos ya están aplicados en la BD, usar el valor directamente
-        montoAPagar = valorReal;
-      } else {
-        // Los saldos NO están aplicados, restarlos del valor real
-        const totalSaldos = calcularTotalSaldosAplicados();
-        montoAPagar = Math.max(0, valorReal - totalSaldos);
-      }
-
+      const valorBase = obtenerValorFinal(factura);
+      const totalConfirmado = saldosAplicados ? totalSaldosSeleccionados : 0;
+      const montoAPagar = Math.max(0, valorBase - totalConfirmado);
       setAmountPaid(new Intl.NumberFormat('es-CO').format(montoAPagar));
     }
-  }, [usedProntoPago, factura, saldosSeleccionados, saldosAplicados]);
+  }, [usedProntoPago, factura, totalSaldosSeleccionados, saldosAplicados]);
 
   // Funciones para pagos partidos
   const agregarMetodoPago = () => {
@@ -455,7 +360,7 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
   const validarPagoPartido = (): boolean => {
     if (!usarPagoPartido || !factura) return true;
 
-    const totalReal = obtenerValorFinal(factura);
+    const totalReal = obtenerValorFinal(factura) - (saldosAplicados ? totalSaldosSeleccionados : 0);
     const totalMetodos = calcularTotalMetodosPago();
 
     const todosCompletos = metodosPago.every(mp => mp.metodo && mp.monto > 0);
@@ -775,7 +680,7 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
     } else {
       // Usar los saldos seleccionados (antes de aplicar)
       console.log('Usando saldos seleccionados para PDF');
-      totalSaldosAplicados = calcularTotalSaldosAplicados();
+      totalSaldosAplicados = totalSaldosSeleccionados;
 
       Object.entries(saldosSeleccionados).forEach(([saldoId, monto]) => {
         const saldo = saldosDisponibles.find(s => s.id === saldoId);
@@ -1162,21 +1067,31 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
     if (!factura) return;
 
     // Validar saldos seleccionados
-    const totalSaldos = calcularTotalSaldosAplicados();
     const valorTotal = obtenerValorFinal(factura);
+    const totalSaldosSeleccionadosActual = totalSaldosSeleccionados;
 
-    // Validar que los saldos no excedan el total
-    if (totalSaldos > valorTotal) {
+    if (totalSaldosSeleccionadosActual > valorTotal) {
       toast({
         title: "Saldos exceden el total",
-        description: `Los saldos aplicados (${formatCurrency(totalSaldos)}) no pueden ser mayores al total a pagar (${formatCurrency(valorTotal)})`,
+        description: `Los saldos seleccionados (${formatCurrency(totalSaldosSeleccionadosActual)}) no pueden ser mayores al total a pagar (${formatCurrency(valorTotal)})`,
         variant: "destructive"
       });
       return;
     }
 
+    if (!saldosAplicados && totalSaldosSeleccionadosActual > 0) {
+      toast({
+        title: "Confirma los saldos",
+        description: "Haz clic en 'Aplicar saldos a favor' antes de registrar el pago.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    const totalSaldosAplicar = saldosAplicados ? totalSaldosSeleccionadosActual : 0;
+
     // Si el pago se cubre completamente con saldos, no se requiere método de pago
-    const montoRestante = valorTotal - totalSaldos;
+    const montoRestante = valorTotal - totalSaldosAplicar;
     const esPagadoCompleto = montoRestante < 1;
 
     // Validar pago partido
@@ -1240,7 +1155,7 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
             metodo_pago: 'Pago Partido',
             uso_pronto_pago: factura.porcentaje_pronto_pago && factura.porcentaje_pronto_pago > 0,
             fecha_pago: fechaPagoISO,
-            valor_real_a_pagar: valorRealAPagar
+            valor_real_a_pagar: Math.max(0, valorRealAPagar - totalSaldosAplicar)
           })
           .eq('id', factura.id);
 
@@ -1290,7 +1205,7 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
             metodo_pago: selectedPaymentMethod,
             uso_pronto_pago: usedProntoPago === 'yes',
             fecha_pago: fechaPagoISO,
-            valor_real_a_pagar: valorRealAPagar
+            valor_real_a_pagar: Math.max(0, valorRealAPagar - totalSaldosAplicar)
           })
           .eq('id', factura.id);
 
@@ -1300,7 +1215,7 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
         console.log('📝 Insertando pago normal en pagos_partidos:', {
           factura_id: factura.id,
           metodo_pago: selectedPaymentMethod,
-          monto: valorRealAPagar
+          monto: Math.max(0, valorRealAPagar - totalSaldosAplicar)
         });
 
         const { error: pagoError } = await supabase
@@ -1308,7 +1223,7 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
           .insert({
             factura_id: factura.id,
             metodo_pago: selectedPaymentMethod,
-            monto: valorRealAPagar,
+            monto: Math.max(0, valorRealAPagar - totalSaldosAplicar),
             fecha_pago: fechaPagoISO
           });
 
@@ -1328,6 +1243,49 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
         });
       }
 
+      if (totalSaldosAplicar > 0) {
+        console.log('🎯 Aplicando saldos a favor al confirmar pago...');
+        const fechaSaldoAplicacion = (() => {
+          if (!paymentDate) return new Date().toISOString();
+          const [y, m, d] = paymentDate.split('-').map(Number);
+          if ([y, m, d].some(val => Number.isNaN(val))) {
+            return new Date().toISOString();
+          }
+          return new Date(y, m - 1, d, 12, 0, 0).toISOString();
+        })();
+
+        for (const [saldoId, montoAplicado] of Object.entries(saldosSeleccionados)) {
+          const monto = montoAplicado || 0;
+          if (monto <= 0) continue;
+
+          const saldoInfo = saldosDisponibles.find((saldo) => saldo.id === saldoId);
+
+          const { error: saldoError } = await supabase.rpc('aplicar_saldo_favor', {
+            p_saldo_favor_id: saldoId,
+            p_factura_destino_id: factura.id,
+            p_monto_aplicado: monto
+          });
+
+          if (saldoError) {
+            throw new Error(`Error al aplicar saldo a favor: ${saldoError.message}`);
+          }
+
+          const medioPago = saldoInfo?.medio_pago ?? 'Pago Banco';
+          const { error: saldoPagoError } = await supabase
+            .from('pagos_partidos')
+            .insert({
+              factura_id: factura.id,
+              metodo_pago: medioPago,
+              monto,
+              fecha_pago: fechaSaldoAplicacion
+            });
+
+          if (saldoPagoError) {
+            throw saldoPagoError;
+          }
+        }
+      }
+
       console.log('✅ Factura actualizada correctamente');
 
       onPaymentProcessed();
@@ -1339,6 +1297,9 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
       setPaymentDate(new Date().toISOString().split('T')[0]);
       setUsarPagoPartido(false);
       setMetodosPago([{ metodo: '', monto: 0 }]);
+      setSaldosSeleccionados({});
+      setSaldosAplicados(false);
+      await fetchSaldosDisponibles();
     } catch (error: any) {
       console.error('❌ Error en el proceso de pago:', error);
       toast({
@@ -1529,7 +1490,7 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
                               onChange={(e) => {
                                 const value = e.target.value.replace(/[^0-9]/g, '');
                                 const montoNum = value ? parseInt(value) : 0;
-                                const montoMax = Math.min(saldo.saldo_disponible, obtenerValorFinal(factura) - calcularTotalSaldosAplicados() + (saldosSeleccionados[saldo.id] || 0));
+                                const montoMax = Math.min(saldo.saldo_disponible, obtenerValorFinal(factura) - totalSaldosSeleccionados + (saldosSeleccionados[saldo.id] || 0));
                                 const montoFinal = Math.min(montoNum, montoMax);
 
                                 const nuevos = { ...saldosSeleccionados };
@@ -1550,7 +1511,7 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
                               onClick={() => {
                                 const montoMax = Math.min(
                                   saldo.saldo_disponible,
-                                  obtenerValorFinal(factura) - calcularTotalSaldosAplicados() + (saldosSeleccionados[saldo.id] || 0)
+                                  obtenerValorFinal(factura) - totalSaldosSeleccionados + (saldosSeleccionados[saldo.id] || 0)
                                 );
                                 setSaldosSeleccionados({
                                   ...saldosSeleccionados,
@@ -1565,7 +1526,7 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
                         </div>
                       ))}
 
-                      {!saldosAplicados && calcularTotalSaldosAplicados() > 0 && (
+                      {!saldosAplicados && totalSaldosSeleccionados > 0 && (
                         <div className="space-y-2">
                           <div className="p-2 bg-green-100 dark:bg-green-900/30 rounded border border-green-300 mt-2">
                             <div className="flex justify-between items-center">
@@ -1573,7 +1534,7 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
                                 Total saldos seleccionados:
                               </span>
                               <span className="text-sm font-bold text-green-700 dark:text-green-400">
-                                {formatCurrency(calcularTotalSaldosAplicados())}
+                                {formatCurrency(totalSaldosSeleccionados)}
                               </span>
                             </div>
                             <div className="flex justify-between items-center mt-1">
@@ -1581,7 +1542,7 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
                                 Monto restante a pagar:
                               </span>
                               <span className="text-sm font-bold text-green-600 dark:text-green-500">
-                                {formatCurrency(Math.max(0, obtenerValorFinal(factura) - calcularTotalSaldosAplicados()))}
+                                {formatCurrency(Math.max(0, obtenerValorFinal(factura) - totalSaldosSeleccionados))}
                               </span>
                             </div>
                           </div>
@@ -1590,21 +1551,39 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
                             <Button
                               type="button"
                               onClick={aplicarSaldosAFavor}
-                              disabled={aplicandoSaldos || calcularTotalSaldosAplicados() === 0}
+                              disabled={aplicandoSaldos || totalSaldosSeleccionados === 0}
                               className="w-full bg-green-600 hover:bg-green-700 text-white"
                             >
                               <CheckCircle className="w-4 h-4 mr-2" />
                               {aplicandoSaldos ? "Aplicando..." : "APLICAR SALDOS A FAVOR"}
                             </Button>
                           ) : (
-                            <div className="p-3 bg-green-50 dark:bg-green-900/20 rounded border border-green-300">
+                            <div className="p-3 bg-green-50 dark:bg-green-900/20 rounded border border-green-300 space-y-2">
                               <div className="flex items-center gap-2 text-green-700 dark:text-green-400">
                                 <CheckCircle className="w-5 h-5" />
-                                <span className="text-sm font-semibold">Saldos aplicados exitosamente</span>
+                                <span className="text-sm font-semibold">Saldos listos para aplicarse al pago</span>
                               </div>
-                              <p className="text-xs text-green-600 dark:text-green-500 mt-1">
-                                El valor real a pagar se ha actualizado en la base de datos
-                              </p>
+                              <div className="flex items-center justify-between text-xs text-green-600 dark:text-green-500">
+                                <span>Total seleccionado:</span>
+                                <span className="font-semibold">
+                                  {formatCurrency(totalSaldosSeleccionados)}
+                                </span>
+                              </div>
+                              <div className="flex items-center justify-between text-xs text-green-600 dark:text-green-500">
+                                <span>Restante por pagar:</span>
+                                <span className="font-semibold">
+                                  {formatCurrency(Math.max(0, obtenerValorFinal(factura) - totalSaldosSeleccionados))}
+                                </span>
+                              </div>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setSaldosAplicados(false)}
+                                className="w-full"
+                              >
+                                Quitar saldos seleccionados
+                              </Button>
                             </div>
                           )}
                         </div>
@@ -1648,7 +1627,7 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
             </Card>
 
             {/* Toggle para Pago Partido */}
-            {obtenerValorFinal(factura) - calcularTotalSaldosAplicados() > 0 && (
+            {obtenerValorFinal(factura) - totalSaldosSeleccionados > 0 && (
               <div className="flex items-center space-x-2 p-3 bg-muted/50 rounded-lg">
                 <Checkbox
                   id="pago-partido-single"
@@ -1671,7 +1650,7 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
             )}
 
             {/* Método de pago (Solo si NO es pago partido y queda saldo por pagar) */}
-            {!usarPagoPartido && obtenerValorFinal(factura) - calcularTotalSaldosAplicados() > 0 && (
+            {!usarPagoPartido && obtenerValorFinal(factura) - totalSaldosSeleccionados > 0 && (
               <div>
                 <Label className="text-base font-medium mb-3 block">Método de pago:</Label>
                 <RadioGroup value={selectedPaymentMethod} onValueChange={setSelectedPaymentMethod}>
@@ -1838,7 +1817,7 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
             )}
 
             {/* ¿Se aplicó pronto pago? - Solo si queda saldo por pagar */}
-            {!usarPagoPartido && obtenerValorFinal(factura) - calcularTotalSaldosAplicados() > 0 && (
+            {!usarPagoPartido && obtenerValorFinal(factura) - totalSaldosSeleccionados > 0 && (
               <div>
               <Label className="text-base font-medium mb-3 block">¿Se aplicó descuento por pronto pago?</Label>
               <RadioGroup value={usedProntoPago} onValueChange={setUsedProntoPago}>
