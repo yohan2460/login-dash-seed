@@ -217,13 +217,13 @@ const [saldosSeleccionados, setSaldosSeleccionados] = useState<{[saldoId: string
     return Math.max(0, totalReal - totalSaldos);
   };
 
-  // Aplicar saldos a favor a las facturas
-  const aplicarSaldosAFavor = async () => {
+  // Preparar saldos a favor para aplicarlos cuando se confirme el pago
+  const prepararSaldosAFavor = () => {
     const totalSaldos = calcularTotalSaldosAplicados();
     if (totalSaldos === 0) {
       toast({
         title: "No hay saldos seleccionados",
-        description: "Selecciona al menos un saldo a favor para aplicar",
+        description: "Selecciona al menos un saldo a favor para confirmar",
         variant: "destructive"
       });
       return;
@@ -233,124 +233,26 @@ const [saldosSeleccionados, setSaldosSeleccionados] = useState<{[saldoId: string
     if (totalSaldos > totalReal) {
       toast({
         title: "Saldos exceden el total",
-        description: `Los saldos aplicados (${formatCurrency(totalSaldos)}) no pueden ser mayores al total a pagar (${formatCurrency(totalReal)})`,
+        description: `Los saldos seleccionados (${formatCurrency(totalSaldos)}) no pueden ser mayores al total a pagar (${formatCurrency(totalReal)})`,
         variant: "destructive"
       });
       return;
     }
 
-    setAplicandoSaldos(true);
-    try {
-      const fechaSaldoAplicacion = (() => {
-        if (!fechaPago) return new Date().toISOString();
-        const [y, m, d] = fechaPago.split('-').map(Number);
-        if ([y, m, d].some(val => Number.isNaN(val))) {
-          return new Date().toISOString();
-        }
-        return new Date(y, m - 1, d, 12, 0, 0).toISOString();
-      })();
+    setSaldosAplicados(true);
+    toast({
+      title: "✅ Saldos preparados",
+      description: "Los saldos se aplicarán al confirmar el pago. Puedes quitarlos antes de confirmar.",
+    });
+  };
 
-      // Aplicar cada saldo a favor a las facturas correspondientes del proveedor
-      for (const [saldoId, saldoInfo] of Object.entries(saldosSeleccionados)) {
-        if (saldoInfo.monto > 0) {
-          // Encontrar facturas de este proveedor en el lote
-          const facturasProveedor = facturas.filter(f => f.emisor_nit === saldoInfo.proveedorNit);
-
-          if (facturasProveedor.length === 0) continue;
-
-          // Aplicar el saldo proporcionalmente a todas las facturas del proveedor
-          const medioPago = saldoInfo.medioPago;
-          let restante = saldoInfo.monto;
-
-          for (const [index, factura] of facturasProveedor.entries()) {
-            const esUltima = index === facturasProveedor.length - 1;
-            const cuota = saldoInfo.monto / facturasProveedor.length;
-            const montoAplicado = Number(
-              (esUltima ? restante : Math.round(cuota * 100) / 100).toFixed(2)
-            );
-            restante = Number(Math.max(0, restante - montoAplicado).toFixed(2));
-
-            if (montoAplicado <= 0) {
-              return;
-            }
-
-            const { error: saldoError } = await supabase.rpc('aplicar_saldo_favor', {
-              p_saldo_favor_id: saldoId,
-              p_factura_destino_id: factura.id,
-              p_monto_aplicado: montoAplicado
-            });
-
-            if (saldoError) {
-              throw new Error(`Error al aplicar saldo a favor: ${saldoError.message}`);
-            }
-
-            // Actualizar valor_real_a_pagar de la factura
-            const detalles = calcularDetallesFactura(factura);
-            const nuevoValorReal = detalles.valorReal - montoAplicado;
-
-            const { error: updateError } = await supabase
-              .from('facturas')
-              .update({
-                valor_real_a_pagar: nuevoValorReal
-              })
-              .eq('id', factura.id);
-
-            if (updateError) throw updateError;
-            const { error: pagoSaldoError } = await supabase
-              .from('pagos_partidos')
-              .insert({
-                factura_id: factura.id,
-                metodo_pago: medioPago,
-                monto: montoAplicado,
-                fecha_pago: fechaSaldoAplicacion
-              });
-
-            if (pagoSaldoError) {
-              throw pagoSaldoError;
-            }
-          }
-        }
-      }
-
-      setSaldosAplicados(true);
-      setSaldosSeleccionados({});
-
-      // Recargar todas las facturas desde la BD para obtener los valores actualizados
-      const facturasIds = facturas.map(f => f.id);
-      const { data: facturasActualizadas, error: fetchError } = await supabase
-        .from('facturas')
-        .select('*')
-        .in('id', facturasIds);
-
-      if (fetchError) {
-        console.error('Error al recargar facturas:', fetchError);
-      } else if (facturasActualizadas) {
-        // Actualizar los objetos factura en memoria con los nuevos datos
-        facturas.forEach(factura => {
-          const facturaActualizada = facturasActualizadas.find(f => f.id === factura.id);
-          if (facturaActualizada) {
-            Object.assign(factura, facturaActualizada);
-          }
-        });
-      }
-
-      toast({
-        title: "✅ Saldos aplicados exitosamente",
-        description: `Se aplicaron ${formatCurrency(totalSaldos)} en saldos a favor. Las facturas han sido actualizadas.`,
-      });
-
-      // Recargar saldos disponibles
-      await fetchSaldosDisponibles();
-    } catch (error: any) {
-      console.error('Error al aplicar saldos:', error);
-      toast({
-        title: "Error al aplicar saldos",
-        description: error?.message || "No se pudieron aplicar los saldos a favor",
-        variant: "destructive"
-      });
-    } finally {
-      setAplicandoSaldos(false);
-    }
+  // Quitar los saldos preparados
+  const quitarSaldosPreparados = () => {
+    setSaldosAplicados(false);
+    toast({
+      title: "Saldos removidos",
+      description: "Los saldos a favor han sido removidos. Puedes seleccionar otros montos si lo deseas.",
+    });
   };
 
   // Cargar saldos disponibles para cada proveedor al abrir el dialog
@@ -583,7 +485,7 @@ const [saldosSeleccionados, setSaldosSeleccionados] = useState<{[saldoId: string
   const validarPagoPartido = (): boolean => {
     if (!usarPagoPartido) return true;
 
-    const totalReal = calcularTotalReal();
+    const totalReal = saldosAplicados ? calcularTotalFinalAPagar() : calcularTotalReal();
     const totalMetodos = calcularTotalMetodosPago();
 
     // Verificar que todos los métodos estén seleccionados y tengan monto
@@ -1691,7 +1593,14 @@ const [saldosSeleccionados, setSaldosSeleccionados] = useState<{[saldoId: string
                 </div>
                 <div className="text-center">
                   <p className="text-sm text-muted-foreground">Total a Pagar</p>
-                  <p className="text-2xl font-bold text-green-600">{formatCurrency(calcularTotalReal())}</p>
+                  <p className="text-2xl font-bold text-green-600">
+                    {formatCurrency(saldosAplicados ? calcularTotalFinalAPagar() : calcularTotalReal())}
+                  </p>
+                  {saldosAplicados && calcularTotalSaldosAplicados() > 0 && (
+                    <p className="text-xs text-muted-foreground mt-1">
+                      (Saldos: -{formatCurrency(calcularTotalSaldosAplicados())})
+                    </p>
+                  )}
                 </div>
                 <div className="text-center">
                   <p className="text-sm text-muted-foreground">Descuentos Factura</p>
@@ -1927,7 +1836,7 @@ const [saldosSeleccionados, setSaldosSeleccionados] = useState<{[saldoId: string
                           );
                         })}
 
-                        {!saldosAplicados && calcularTotalSaldosAplicados() > 0 && (
+                        {calcularTotalSaldosAplicados() > 0 && (
                           <div className="space-y-2">
                             <div className="p-3 bg-green-100 dark:bg-green-900/30 rounded border border-green-300 mt-2">
                               <div className="flex justify-between items-center">
@@ -1951,22 +1860,37 @@ const [saldosSeleccionados, setSaldosSeleccionados] = useState<{[saldoId: string
                             {!saldosAplicados ? (
                               <Button
                                 type="button"
-                                onClick={aplicarSaldosAFavor}
-                                disabled={aplicandoSaldos || calcularTotalSaldosAplicados() === 0}
+                                onClick={prepararSaldosAFavor}
+                                disabled={calcularTotalSaldosAplicados() === 0}
                                 className="w-full bg-green-600 hover:bg-green-700 text-white"
                               >
                                 <CheckCircle className="w-4 h-4 mr-2" />
-                                {aplicandoSaldos ? "Aplicando..." : "APLICAR SALDOS A FAVOR"}
+                                CONFIRMAR SALDOS SELECCIONADOS
                               </Button>
                             ) : (
                               <div className="p-3 bg-green-50 dark:bg-green-900/20 rounded border border-green-300">
                                 <div className="flex items-center gap-2 text-green-700 dark:text-green-400">
                                   <CheckCircle className="w-5 h-5" />
-                                  <span className="text-sm font-semibold">Saldos aplicados exitosamente</span>
+                                  <span className="text-sm font-semibold">✓ Saldos confirmados (se aplicarán al pagar)</span>
                                 </div>
-                                <p className="text-xs text-green-600 dark:text-green-500 mt-1">
-                                  El valor real a pagar se ha actualizado en la base de datos
-                                </p>
+                                <div className="mt-2 space-y-1">
+                                  <div className="flex justify-between items-center text-sm">
+                                    <span className="text-green-600 dark:text-green-500">Total saldos a aplicar:</span>
+                                    <span className="font-bold text-green-700 dark:text-green-400">-{formatCurrency(calcularTotalSaldosAplicados())}</span>
+                                  </div>
+                                  <div className="flex justify-between items-center text-sm">
+                                    <span className="text-green-600 dark:text-green-500">Nuevo total a pagar:</span>
+                                    <span className="font-bold text-green-700 dark:text-green-400">{formatCurrency(calcularTotalFinalAPagar())}</span>
+                                  </div>
+                                </div>
+                                <Button
+                                  type="button"
+                                  onClick={quitarSaldosPreparados}
+                                  variant="outline"
+                                  className="w-full mt-3 border-red-300 text-red-700 hover:bg-red-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-900/20"
+                                >
+                                  Quitar saldos y volver a seleccionar
+                                </Button>
                               </div>
                             )}
                           </div>
@@ -2010,7 +1934,7 @@ const [saldosSeleccionados, setSaldosSeleccionados] = useState<{[saldoId: string
               </Card>
 
               {/* Toggle para Pago Partido - Solo si queda saldo por pagar */}
-              {(!saldosAplicados || (saldosAplicados && calcularTotalReal() > 0)) && (
+              {(!saldosAplicados || (saldosAplicados && calcularTotalFinalAPagar() > 0)) && (
                 <div className="flex items-center space-x-2 p-3 bg-muted/50 rounded-lg">
                 <Checkbox
                   id="pago-partido"
@@ -2033,7 +1957,7 @@ const [saldosSeleccionados, setSaldosSeleccionados] = useState<{[saldoId: string
               )}
 
               {/* Método de Pago con Cards (Solo si NO es pago partido y queda saldo por pagar) */}
-              {!usarPagoPartido && (!saldosAplicados || (saldosAplicados && calcularTotalReal() > 0)) && (
+              {!usarPagoPartido && (!saldosAplicados || (saldosAplicados && calcularTotalFinalAPagar() > 0)) && (
                 <div className="space-y-2">
                   <Label>Método de pago:</Label>
                   <div className="grid grid-cols-3 gap-3">
@@ -2110,7 +2034,7 @@ const [saldosSeleccionados, setSaldosSeleccionados] = useState<{[saldoId: string
               )}
 
               {/* Interface para Pago Partido - Solo si queda saldo por pagar */}
-              {usarPagoPartido && (!saldosAplicados || (saldosAplicados && calcularTotalReal() > 0)) && (
+              {usarPagoPartido && (!saldosAplicados || (saldosAplicados && calcularTotalFinalAPagar() > 0)) && (
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
                     <Label>Métodos de Pago:</Label>
@@ -2198,7 +2122,7 @@ const [saldosSeleccionados, setSaldosSeleccionados] = useState<{[saldoId: string
                     <div className="flex justify-between text-sm">
                       <span className="text-muted-foreground">Total ingresado:</span>
                       <span className={`font-semibold ${
-                        Math.abs(calcularTotalMetodosPago() - calcularTotalReal()) < 1
+                        Math.abs(calcularTotalMetodosPago() - (saldosAplicados ? calcularTotalFinalAPagar() : calcularTotalReal())) < 1
                           ? 'text-green-600'
                           : 'text-orange-600'
                       }`}>
@@ -2207,17 +2131,17 @@ const [saldosSeleccionados, setSaldosSeleccionados] = useState<{[saldoId: string
                     </div>
                     <div className="flex justify-between text-sm">
                       <span className="text-muted-foreground">Total a pagar:</span>
-                      <span className="font-semibold">{formatCurrency(calcularTotalReal())}</span>
+                      <span className="font-semibold">{formatCurrency(saldosAplicados ? calcularTotalFinalAPagar() : calcularTotalReal())}</span>
                     </div>
-                    {Math.abs(calcularTotalMetodosPago() - calcularTotalReal()) >= 1 && (
+                    {Math.abs(calcularTotalMetodosPago() - (saldosAplicados ? calcularTotalFinalAPagar() : calcularTotalReal())) >= 1 && (
                       <div className="flex justify-between text-sm">
                         <span className="text-muted-foreground">Diferencia:</span>
                         <span className="font-semibold text-destructive">
-                          {formatCurrency(Math.abs(calcularTotalMetodosPago() - calcularTotalReal()))}
+                          {formatCurrency(Math.abs(calcularTotalMetodosPago() - (saldosAplicados ? calcularTotalFinalAPagar() : calcularTotalReal())))}
                         </span>
                       </div>
                     )}
-                    {Math.abs(calcularTotalMetodosPago() - calcularTotalReal()) < 1 && (
+                    {Math.abs(calcularTotalMetodosPago() - (saldosAplicados ? calcularTotalFinalAPagar() : calcularTotalReal())) < 1 && (
                       <div className="flex items-center gap-1 text-sm text-green-600">
                         <CheckCircle className="w-4 h-4" />
                         <span>Los montos coinciden correctamente</span>
@@ -2283,7 +2207,7 @@ const [saldosSeleccionados, setSaldosSeleccionados] = useState<{[saldoId: string
                 ) : (
                   <>
                     <CheckCircle className="w-4 h-4 mr-2" />
-                    Pagar {formatCurrency(calcularTotalReal())}
+                    Pagar {formatCurrency(saldosAplicados ? calcularTotalFinalAPagar() : calcularTotalReal())}
                   </>
                 )}
               </Button>
