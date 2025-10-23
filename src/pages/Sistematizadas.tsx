@@ -4,9 +4,13 @@ import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { CheckCircle, Package, CreditCard, Filter, FileText } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import { CheckCircle, Package, CreditCard, Filter, FileText, Search, X, Eye, Download, Receipt, FileCheck } from 'lucide-react';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Badge } from '@/components/ui/badge';
 import { ModernStatsCard } from '@/components/ModernStatsCard';
-import { FacturasTable } from '@/components/FacturasTable';
 import { ModernLayout } from '@/components/ModernLayout';
 import { useSupabaseQuery } from '@/hooks/useSupabaseQuery';
 import { FacturaInfoDialog } from '@/components/FacturaInfoDialog';
@@ -49,6 +53,9 @@ export function Sistematizadas() {
   const { toast } = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
   const [filtroTipo, setFiltroTipo] = useState<string>('all');
+  const [searchTerm, setSearchTerm] = useState<string>('');
+  const [fechaInicio, setFechaInicio] = useState<string>('');
+  const [fechaFin, setFechaFin] = useState<string>('');
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
   const [selectedFacturaForInfo, setSelectedFacturaForInfo] = useState<Factura | null>(null);
   const [isInfoDialogOpen, setIsInfoDialogOpen] = useState(false);
@@ -100,10 +107,48 @@ export function Sistematizadas() {
   };
 
   const getFilteredFacturas = () => {
-    if (filtroTipo === 'all') {
-      return facturas;
+    let filtered = facturas;
+
+    // Filtro por tipo
+    if (filtroTipo !== 'all') {
+      filtered = filtered.filter(f => f.clasificacion_original === filtroTipo);
     }
-    return facturas.filter(f => f.clasificacion_original === filtroTipo);
+
+    // Filtro por búsqueda
+    if (searchTerm.trim() !== '') {
+      const searchLower = searchTerm.toLowerCase();
+      filtered = filtered.filter(f =>
+        f.numero_factura.toLowerCase().includes(searchLower) ||
+        f.emisor_nombre.toLowerCase().includes(searchLower) ||
+        f.emisor_nit.toLowerCase().includes(searchLower) ||
+        (f.numero_serie && f.numero_serie.toLowerCase().includes(searchLower)) ||
+        (f.descripcion && f.descripcion.toLowerCase().includes(searchLower))
+      );
+    }
+
+    // Filtro por fechas
+    if (fechaInicio) {
+      filtered = filtered.filter(f => {
+        const fechaFactura = f.fecha_emision || f.created_at;
+        return fechaFactura >= fechaInicio;
+      });
+    }
+
+    if (fechaFin) {
+      filtered = filtered.filter(f => {
+        const fechaFactura = f.fecha_emision || f.created_at;
+        return fechaFactura <= fechaFin;
+      });
+    }
+
+    return filtered;
+  };
+
+  const limpiarFiltros = () => {
+    setSearchTerm('');
+    setFechaInicio('');
+    setFechaFin('');
+    setFiltroTipo('all');
   };
 
   const calcularTotalSistematizadas = () => {
@@ -169,6 +214,131 @@ export function Sistematizadas() {
     }
   };
 
+  // Función para obtener comprobante de pago
+  const obtenerComprobantePago = async (facturaId: string) => {
+    const { data: comprobantes, error } = await supabase
+      .from('comprobantes_pago')
+      .select('*')
+      .filter('facturas_ids', 'cs', `{${facturaId}}`)
+      .order('created_at', { ascending: false })
+      .limit(1);
+
+    if (error) {
+      throw error;
+    }
+
+    if (!comprobantes || comprobantes.length === 0) {
+      return null;
+    }
+
+    return comprobantes[0];
+  };
+
+  // Función para descargar comprobante de pago (PDF generado)
+  const descargarComprobantePago = async (facturaId: string) => {
+    try {
+      const comprobante = await obtenerComprobantePago(facturaId);
+
+      if (!comprobante) {
+        toast({
+          title: "Comprobante no encontrado",
+          description: "No hay comprobante de pago asociado a esta factura.",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      // Parsear detalles si existen
+      let detallesComprobante = null;
+      if (comprobante.detalles) {
+        try {
+          detallesComprobante = typeof comprobante.detalles === 'string'
+            ? JSON.parse(comprobante.detalles)
+            : comprobante.detalles;
+        } catch (error) {
+          console.error('Error parseando detalles del comprobante:', error);
+        }
+      }
+
+      // Obtener el path del PDF (puede estar en el campo directo o en detalles)
+      const pdfPath =
+        comprobante.pdf_file_path ||
+        (detallesComprobante && typeof detallesComprobante === 'object'
+          ? (detallesComprobante as any)?.pdf_file_path
+          : null);
+
+      if (!pdfPath) {
+        toast({
+          title: "Archivo no disponible",
+          description: "El comprobante no tiene asociado un PDF.",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      // IMPORTANTE: El comprobante se guarda en el bucket 'facturas-pdf'
+      const { data: urlData, error } = await supabase.storage
+        .from('facturas-pdf')
+        .createSignedUrl(pdfPath, 3600);
+
+      if (error) throw error;
+
+      if (urlData?.signedUrl) {
+        window.open(urlData.signedUrl, '_blank');
+        toast({
+          title: "Comprobante abierto",
+          description: "El comprobante de pago se abrió en una nueva pestaña"
+        });
+      }
+    } catch (error) {
+      console.error('Error al abrir comprobante:', error);
+      toast({
+        title: "Error",
+        description: "Hubo un error al abrir el comprobante",
+        variant: "destructive"
+      });
+    }
+  };
+
+  // Función para descargar soporte de pago
+  const descargarSoportePago = async (facturaId: string) => {
+    try {
+      const comprobante = await obtenerComprobantePago(facturaId);
+
+      const soportePath = comprobante?.soporte_pago_file_path;
+
+      if (!comprobante || !soportePath) {
+        toast({
+          title: "Soporte no disponible",
+          description: "No se encontró un soporte de pago asociado a esta factura.",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      const { data: urlData, error } = await supabase.storage
+        .from('soportes-pago')
+        .createSignedUrl(soportePath, 3600);
+
+      if (error) throw error;
+
+      if (urlData?.signedUrl) {
+        window.open(urlData.signedUrl, '_blank');
+        toast({
+          title: "Soporte abierto",
+          description: "El soporte de pago se abrió en una nueva pestaña"
+        });
+      }
+    } catch (error) {
+      console.error('Error al abrir soporte:', error);
+      toast({
+        title: "Error",
+        description: "Hubo un error al abrir el soporte de pago",
+        variant: "destructive"
+      });
+    }
+  };
+
   if (loading) {
     return <div>Cargando...</div>;
   }
@@ -221,25 +391,87 @@ export function Sistematizadas() {
         {/* Filters */}
         <Card>
           <CardHeader>
-            <CardTitle>Filtros</CardTitle>
+            <CardTitle className="flex items-center justify-between">
+              <span>Filtros</span>
+              {(searchTerm || fechaInicio || fechaFin || filtroTipo !== 'all') && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={limpiarFiltros}
+                  className="text-muted-foreground hover:text-foreground"
+                >
+                  <X className="w-4 h-4 mr-2" />
+                  Limpiar filtros
+                </Button>
+              )}
+            </CardTitle>
             <CardDescription>
-              Filtra las facturas sistematizadas por su clasificación original
+              Filtra las facturas sistematizadas por tipo, fechas o búsqueda
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="flex items-center gap-4">
-              <Filter className="w-4 h-4 text-muted-foreground" />
-              <span className="text-sm font-medium">Filtrar por tipo:</span>
-              <Select value={filtroTipo} onValueChange={setFiltroTipo}>
-                <SelectTrigger className="w-[200px]">
-                  <SelectValue placeholder="Seleccionar filtro" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todas</SelectItem>
-                  <SelectItem value="mercancia">Solo Mercancía</SelectItem>
-                  <SelectItem value="gasto">Solo Gastos</SelectItem>
-                </SelectContent>
-              </Select>
+            <div className="space-y-4">
+              {/* Búsqueda */}
+              <div className="flex items-center gap-4">
+                <Search className="w-4 h-4 text-muted-foreground" />
+                <div className="flex-1">
+                  <Input
+                    placeholder="Buscar por número de factura, emisor, NIT, serie o descripción..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="w-full"
+                  />
+                </div>
+              </div>
+
+              {/* Filtros en fila */}
+              <div className="flex flex-wrap items-center gap-4">
+                <Filter className="w-4 h-4 text-muted-foreground" />
+
+                {/* Filtro por tipo */}
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium whitespace-nowrap">Tipo:</span>
+                  <Select value={filtroTipo} onValueChange={setFiltroTipo}>
+                    <SelectTrigger className="w-[180px]">
+                      <SelectValue placeholder="Seleccionar filtro" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todas</SelectItem>
+                      <SelectItem value="mercancia">Solo Mercancía</SelectItem>
+                      <SelectItem value="gasto">Solo Gastos</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Filtro por fecha inicio */}
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium whitespace-nowrap">Desde:</span>
+                  <Input
+                    type="date"
+                    value={fechaInicio}
+                    onChange={(e) => setFechaInicio(e.target.value)}
+                    className="w-[160px]"
+                  />
+                </div>
+
+                {/* Filtro por fecha fin */}
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium whitespace-nowrap">Hasta:</span>
+                  <Input
+                    type="date"
+                    value={fechaFin}
+                    onChange={(e) => setFechaFin(e.target.value)}
+                    className="w-[160px]"
+                  />
+                </div>
+              </div>
+
+              {/* Indicador de resultados */}
+              {(searchTerm || fechaInicio || fechaFin || filtroTipo !== 'all') && (
+                <div className="text-sm text-muted-foreground">
+                  Mostrando {filteredFacturas.length} de {facturas.length} facturas
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -279,19 +511,178 @@ export function Sistematizadas() {
                 </p>
               </div>
             ) : (
-              <FacturasTable
-                facturas={filteredFacturas}
-                onClassifyClick={() => {}}
-                refreshData={refetch}
-                showActions={true}
-                showOriginalClassification={true}
-                showClassifyButton={false}
-                highlightedId={highlightedId}
-                allowDelete={false}
-                showViewButtons={true}
-                onViewInfoClick={handleViewInfo}
-                onViewPDFClick={handleViewPDF}
-              />
+              <div className="rounded-md border overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>N° Factura</TableHead>
+                      <TableHead>Emisor</TableHead>
+                      <TableHead>NIT</TableHead>
+                      <TableHead>Tipo Original</TableHead>
+                      <TableHead>Total</TableHead>
+                      <TableHead>Fecha Emisión</TableHead>
+                      <TableHead className="text-center">Acciones</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredFacturas.map((factura) => (
+                      <TableRow
+                        key={factura.id}
+                        className={highlightedId === factura.id ? 'bg-yellow-50 dark:bg-yellow-900/20' : ''}
+                      >
+                        <TableCell className="font-medium">{factura.numero_factura}</TableCell>
+                        <TableCell>{factura.emisor_nombre}</TableCell>
+                        <TableCell>{factura.emisor_nit}</TableCell>
+                        <TableCell>
+                          <Badge variant={factura.clasificacion_original === 'mercancia' ? 'default' : 'secondary'}>
+                            {factura.clasificacion_original === 'mercancia' ? 'Mercancía' : 'Gasto'}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          {new Intl.NumberFormat('es-CO', {
+                            style: 'currency',
+                            currency: 'COP',
+                            minimumFractionDigits: 0
+                          }).format(factura.total_a_pagar)}
+                        </TableCell>
+                        <TableCell>
+                          {factura.fecha_emision
+                            ? new Date(factura.fecha_emision).toLocaleDateString('es-CO')
+                            : new Date(factura.created_at).toLocaleDateString('es-CO')
+                          }
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center justify-center gap-1">
+                            {/* Ver factura original (PDF) */}
+                            {factura.pdf_file_path && (
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => handleViewPDF(factura)}
+                                      className="h-8 w-8 p-0 hover:bg-blue-50"
+                                    >
+                                      <Eye className="w-4 h-4 text-blue-600" />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent side="top">
+                                    Ver factura original (PDF)
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                            )}
+
+                            {/* Ver resumen de factura */}
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => handleViewInfo(factura)}
+                                    className="h-8 w-8 p-0 hover:bg-green-50"
+                                  >
+                                    <FileText className="w-4 h-4 text-green-600" />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent side="top">
+                                  Ver resumen de factura
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+
+                            {/* Ver PDF generado de pago (comprobante) */}
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => descargarComprobantePago(factura.id)}
+                                    className="h-8 w-8 p-0 hover:bg-purple-50"
+                                  >
+                                    <FileCheck className="w-4 h-4 text-purple-600" />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent side="top">
+                                  Ver comprobante de pago (PDF generado)
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+
+                            {/* Ver soporte de pago */}
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => descargarSoportePago(factura.id)}
+                                    className="h-8 w-8 p-0 hover:bg-orange-50"
+                                  >
+                                    <Receipt className="w-4 h-4 text-orange-600" />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent side="top">
+                                  Ver soporte de pago
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+
+                            {/* Descargar factura original */}
+                            {factura.pdf_file_path && (
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={async () => {
+                                        try {
+                                          const { data } = await supabase.storage
+                                            .from('facturas-pdf')
+                                            .createSignedUrl(factura.pdf_file_path!, 3600);
+
+                                          if (data?.signedUrl) {
+                                            const link = document.createElement('a');
+                                            link.href = data.signedUrl;
+                                            link.download = `factura_${factura.numero_factura}.pdf`;
+                                            document.body.appendChild(link);
+                                            link.click();
+                                            document.body.removeChild(link);
+                                            toast({
+                                              title: "Descarga iniciada",
+                                              description: "El PDF se está descargando...",
+                                            });
+                                          }
+                                        } catch (error) {
+                                          toast({
+                                            title: "Error",
+                                            description: "No se pudo descargar el PDF",
+                                            variant: "destructive"
+                                          });
+                                        }
+                                      }}
+                                      className="h-8 w-8 p-0 hover:bg-gray-50"
+                                    >
+                                      <Download className="w-4 h-4 text-gray-600" />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent side="top">
+                                    Descargar factura original
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                            )}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
             )}
           </CardContent>
         </Card>
