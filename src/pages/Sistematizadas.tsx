@@ -76,7 +76,7 @@ export function Sistematizadas() {
     },
     { enabled: !!user }
   );
-  const facturas = facturasData ?? [];
+  const facturas = facturasData || [];
 
   useEffect(() => {
     const highlightId = searchParams.get('highlight');
@@ -261,11 +261,15 @@ export function Sistematizadas() {
       }
 
       // Obtener el path del PDF (puede estar en el campo directo o en detalles)
-      const pdfPath =
-        comprobante.pdf_file_path ||
-        (detallesComprobante && typeof detallesComprobante === 'object'
-          ? (detallesComprobante as any)?.pdf_file_path
-          : null);
+      let pdfPath = null;
+      if (comprobante.pdf_file_path) {
+        pdfPath = comprobante.pdf_file_path;
+      } else if (detallesComprobante && typeof detallesComprobante === 'object') {
+        const detallesObj = detallesComprobante as any;
+        if (detallesObj.pdf_file_path) {
+          pdfPath = detallesObj.pdf_file_path;
+        }
+      }
 
       if (!pdfPath) {
         toast({
@@ -283,7 +287,7 @@ export function Sistematizadas() {
 
       if (error) throw error;
 
-      if (urlData?.signedUrl) {
+      if (urlData && urlData.signedUrl) {
         window.open(urlData.signedUrl, '_blank');
         toast({
           title: "Comprobante abierto",
@@ -305,7 +309,9 @@ export function Sistematizadas() {
     try {
       const comprobante = await obtenerComprobantePago(facturaId);
 
-      const soportePath = comprobante?.soporte_pago_file_path;
+      const soportePath = comprobante && comprobante.soporte_pago_file_path
+        ? comprobante.soporte_pago_file_path
+        : null;
 
       if (!comprobante || !soportePath) {
         toast({
@@ -322,7 +328,7 @@ export function Sistematizadas() {
 
       if (error) throw error;
 
-      if (urlData?.signedUrl) {
+      if (urlData && urlData.signedUrl) {
         window.open(urlData.signedUrl, '_blank');
         toast({
           title: "Soporte abierto",
@@ -334,6 +340,44 @@ export function Sistematizadas() {
       toast({
         title: "Error",
         description: "Hubo un error al abrir el soporte de pago",
+        variant: "destructive"
+      });
+    }
+  };
+
+  // Función para descargar factura original
+  const descargarFacturaOriginal = async (factura: Factura) => {
+    try {
+      if (!factura.pdf_file_path) {
+        toast({
+          title: "Error",
+          description: "No hay PDF disponible para esta factura",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      const { data } = await supabase.storage
+        .from('facturas-pdf')
+        .createSignedUrl(factura.pdf_file_path, 3600);
+
+      if (data && data.signedUrl) {
+        const link = document.createElement('a');
+        link.href = data.signedUrl;
+        link.download = 'factura_' + factura.numero_factura + '.pdf';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        toast({
+          title: "Descarga iniciada",
+          description: "El PDF se está descargando...",
+        });
+      }
+    } catch (error) {
+      console.error('Error descargando PDF:', error);
+      toast({
+        title: "Error",
+        description: "No se pudo descargar el PDF",
         variant: "destructive"
       });
     }
@@ -639,32 +683,7 @@ export function Sistematizadas() {
                                     <Button
                                       variant="ghost"
                                       size="sm"
-                                      onClick={async () => {
-                                        try {
-                                          const { data } = await supabase.storage
-                                            .from('facturas-pdf')
-                                            .createSignedUrl(factura.pdf_file_path!, 3600);
-
-                                          if (data?.signedUrl) {
-                                            const link = document.createElement('a');
-                                            link.href = data.signedUrl;
-                                            link.download = `factura_${factura.numero_factura}.pdf`;
-                                            document.body.appendChild(link);
-                                            link.click();
-                                            document.body.removeChild(link);
-                                            toast({
-                                              title: "Descarga iniciada",
-                                              description: "El PDF se está descargando...",
-                                            });
-                                          }
-                                        } catch (error) {
-                                          toast({
-                                            title: "Error",
-                                            description: "No se pudo descargar el PDF",
-                                            variant: "destructive"
-                                          });
-                                        }
-                                      }}
+                                      onClick={() => descargarFacturaOriginal(factura)}
                                       className="h-8 w-8 p-0 hover:bg-gray-50"
                                     >
                                       <Download className="w-4 h-4 text-gray-600" />
@@ -709,9 +728,9 @@ export function Sistematizadas() {
         }}
         pdfUrl={pdfUrl}
         title={selectedFacturaForPDF ? `Factura #${selectedFacturaForPDF.numero_factura} - ${selectedFacturaForPDF.emisor_nombre}` : "Visualizador de Factura"}
-        descuentosAntesIva={selectedFacturaForPDF?.descuentos_antes_iva}
-        totalAPagar={selectedFacturaForPDF?.total_a_pagar}
-        totalSinIva={selectedFacturaForPDF?.total_sin_iva}
+        descuentosAntesIva={selectedFacturaForPDF && selectedFacturaForPDF.descuentos_antes_iva ? selectedFacturaForPDF.descuentos_antes_iva : undefined}
+        totalAPagar={selectedFacturaForPDF && selectedFacturaForPDF.total_a_pagar ? selectedFacturaForPDF.total_a_pagar : undefined}
+        totalSinIva={selectedFacturaForPDF && selectedFacturaForPDF.total_sin_iva ? selectedFacturaForPDF.total_sin_iva : undefined}
       />
     </ModernLayout>
   );
