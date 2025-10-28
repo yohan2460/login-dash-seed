@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { CheckCircle, Package, CreditCard, Filter, FileText, Search, X, Eye, Download, Receipt, FileCheck } from 'lucide-react';
+import { CheckCircle, Package, CreditCard, Filter, FileText, Search, X, Eye, Download, Receipt, FileCheck, Minus } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
@@ -117,27 +117,48 @@ export function Sistematizadas() {
     // Filtro por búsqueda
     if (searchTerm.trim() !== '') {
       const searchLower = searchTerm.toLowerCase();
-      filtered = filtered.filter(f =>
-        f.numero_factura.toLowerCase().includes(searchLower) ||
-        f.emisor_nombre.toLowerCase().includes(searchLower) ||
-        f.emisor_nit.toLowerCase().includes(searchLower) ||
-        (f.numero_serie && f.numero_serie.toLowerCase().includes(searchLower)) ||
-        (f.descripcion && f.descripcion.toLowerCase().includes(searchLower))
-      );
+      filtered = filtered.filter(f => {
+        // Verificar que los campos existan y sean strings antes de usar toLowerCase
+        const numeroFactura = (f.numero_factura && typeof f.numero_factura === 'string')
+          ? f.numero_factura.toLowerCase()
+          : '';
+        const emisorNombre = (f.emisor_nombre && typeof f.emisor_nombre === 'string')
+          ? f.emisor_nombre.toLowerCase()
+          : '';
+        const emisorNit = (f.emisor_nit && typeof f.emisor_nit === 'string')
+          ? f.emisor_nit.toLowerCase()
+          : '';
+        const numeroSerie = (f.numero_serie && typeof f.numero_serie === 'string')
+          ? f.numero_serie.toLowerCase()
+          : '';
+        const descripcion = (f.descripcion && typeof f.descripcion === 'string')
+          ? f.descripcion.toLowerCase()
+          : '';
+
+        return numeroFactura.includes(searchLower) ||
+               emisorNombre.includes(searchLower) ||
+               emisorNit.includes(searchLower) ||
+               numeroSerie.includes(searchLower) ||
+               descripcion.includes(searchLower);
+      });
     }
 
     // Filtro por fechas
     if (fechaInicio) {
       filtered = filtered.filter(f => {
         const fechaFactura = f.fecha_emision || f.created_at;
-        return fechaFactura >= fechaInicio;
+        // Extraer solo la fecha (YYYY-MM-DD) para comparación
+        const fechaFacturaSolo = fechaFactura.split('T')[0];
+        return fechaFacturaSolo >= fechaInicio;
       });
     }
 
     if (fechaFin) {
       filtered = filtered.filter(f => {
         const fechaFactura = f.fecha_emision || f.created_at;
-        return fechaFactura <= fechaFin;
+        // Extraer solo la fecha (YYYY-MM-DD) para comparación
+        const fechaFacturaSolo = fechaFactura.split('T')[0];
+        return fechaFacturaSolo <= fechaFin;
       });
     }
 
@@ -346,6 +367,7 @@ export function Sistematizadas() {
   };
 
   // Función para descargar factura original
+  // Función para descargar factura original
   const descargarFacturaOriginal = async (factura: Factura) => {
     try {
       if (!factura.pdf_file_path) {
@@ -381,6 +403,27 @@ export function Sistematizadas() {
         variant: "destructive"
       });
     }
+  };
+
+  // Función para obtener notas de crédito de una factura
+  const obtenerNotasCredito = (factura: Factura): any[] => {
+    if (!factura.notas) return [];
+
+    try {
+      const notasData = JSON.parse(factura.notas);
+      return Array.isArray(notasData.notas_credito) ? notasData.notas_credito : [];
+    } catch (error) {
+      console.error('Error parseando notas de crédito:', error);
+      return [];
+    }
+  };
+
+  // Función para calcular el total de notas de crédito
+  const calcularTotalNotasCredito = (factura: Factura): number => {
+    const notasCredito = obtenerNotasCredito(factura);
+    return notasCredito.reduce((total, nc) => {
+      return total + (Number(nc.valor_descuento) || 0);
+    }, 0);
   };
 
   if (loading) {
@@ -564,6 +607,7 @@ export function Sistematizadas() {
                       <TableHead>NIT</TableHead>
                       <TableHead>Tipo Original</TableHead>
                       <TableHead>Total</TableHead>
+                      <TableHead>Notas Crédito</TableHead>
                       <TableHead>Fecha Emisión</TableHead>
                       <TableHead className="text-center">Acciones</TableHead>
                     </TableRow>
@@ -588,6 +632,54 @@ export function Sistematizadas() {
                             currency: 'COP',
                             minimumFractionDigits: 0
                           }).format(factura.total_a_pagar)}
+                        </TableCell>
+                        <TableCell>
+                          {(() => {
+                            const notasCredito = obtenerNotasCredito(factura);
+                            const totalNC = calcularTotalNotasCredito(factura);
+
+                            if (notasCredito.length === 0) {
+                              return (
+                                <span className="text-muted-foreground text-sm">-</span>
+                              );
+                            }
+
+                            return (
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <div className="flex items-center gap-1 cursor-help">
+                                      <Badge variant="outline" className="text-xs bg-red-50 border-red-200 text-red-700">
+                                        <Minus className="w-3 h-3 mr-1" />
+                                        {notasCredito.length}
+                                      </Badge>
+                                      <span className="text-sm font-medium text-red-600">
+                                        {new Intl.NumberFormat('es-CO', {
+                                          style: 'currency',
+                                          currency: 'COP',
+                                          minimumFractionDigits: 0
+                                        }).format(totalNC)}
+                                      </span>
+                                    </div>
+                                  </TooltipTrigger>
+                                  <TooltipContent side="top">
+                                    <div className="space-y-1">
+                                      <p className="font-medium">Notas de Crédito Aplicadas:</p>
+                                      {notasCredito.map((nc, idx) => (
+                                        <div key={idx} className="text-xs">
+                                          • {nc.numero_nota || 'N/A'}: {new Intl.NumberFormat('es-CO', {
+                                            style: 'currency',
+                                            currency: 'COP',
+                                            minimumFractionDigits: 0
+                                          }).format(nc.valor_descuento || 0)}
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                            );
+                          })()}
                         </TableCell>
                         <TableCell>
                           {factura.fecha_emision
