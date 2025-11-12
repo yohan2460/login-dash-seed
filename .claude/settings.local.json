@@ -3,7 +3,8 @@
     "allow": [
       "Bash(node:*)",
       "Bash(npx supabase:*)",
-      "Bash(npx tsc:*)"
+      "Bash(npx tsc:*)",
+      "Bash(npm install)"
     ],
     "deny": [],
     "ask": []

@@ -567,93 +567,130 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
     doc.setFontSize(8);
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(107, 114, 128);
-    doc.text('Descuentos', 14 + colWidth * 2.5, currentY + 8, { align: 'center' });
+    doc.text('Total Descuentos', 14 + colWidth * 2.5, currentY + 8, { align: 'center' });
     doc.setFontSize(11);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(34, 197, 94);
     doc.text(formatCurrency(totalDescuentosResumen), 14 + colWidth * 2.5, currentY + 18, { align: 'center' });
 
-    // Línea separadora
     currentY += 28;
-    doc.setDrawColor(229, 231, 235);
-    doc.setLineWidth(0.3);
-    doc.line(18, currentY, pageWidth - 18, currentY);
-    currentY += 2;
 
-    // Segunda fila
-    doc.setFontSize(8);
-    doc.setFont('helvetica', 'normal');
-    doc.setTextColor(107, 114, 128);
-    doc.text('IVA Total', 14 + colWidth / 2, currentY + 8, { align: 'center' });
-    doc.setFontSize(10);
-    doc.setFont('helvetica', 'bold');
-    doc.setTextColor(0, 0, 0);
-    doc.text(formatCurrency(factura.factura_iva || 0), 14 + colWidth / 2, currentY + 16, { align: 'center' });
+    // ========== DESGLOSE DE DESCUENTOS Y AJUSTES ==========
+    const tieneDescuentos = prontoPago > 0 || retencion > 0 || totalDescuentosAdicionales > 0 || totalNotasCredito > 0;
 
-    doc.setFontSize(8);
-    doc.setFont('helvetica', 'normal');
-    doc.setTextColor(107, 114, 128);
-    doc.text('Retenciones', 14 + colWidth * 1.5, currentY + 8, { align: 'center' });
-    doc.setFontSize(10);
-    doc.setFont('helvetica', 'bold');
-    doc.setTextColor(249, 115, 22);
-    doc.text(`-${formatCurrency(retencion)}`, 14 + colWidth * 1.5, currentY + 16, { align: 'center' });
+    if (tieneDescuentos) {
+      ensureSpace(50);
+      doc.setFillColor(240, 253, 244); // Verde muy claro
+      doc.roundedRect(14, currentY, pageWidth - 28, 10, 2, 2, 'F');
+      doc.setFontSize(11);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(22, 163, 74);
+      doc.text('DESGLOSE DE DESCUENTOS Y AJUSTES', 18, currentY + 7);
+      currentY += 15;
 
-    doc.setFontSize(8);
-    doc.setFont('helvetica', 'normal');
-    doc.setTextColor(107, 114, 128);
-    doc.text('Pronto Pago', 14 + colWidth * 2.5, currentY + 8, { align: 'center' });
-    doc.setFontSize(10);
-    doc.setFont('helvetica', 'bold');
-    doc.setTextColor(34, 197, 94);
-    doc.text(`-${formatCurrency(prontoPago)}`, 14 + colWidth * 2.5, currentY + 16, { align: 'center' });
+      // Crear tabla de descuentos
+      const descuentosData: any[] = [];
 
-    currentY += 36;
+      if (prontoPago > 0) {
+        descuentosData.push([
+          `Descuento Pronto Pago (${factura.porcentaje_pronto_pago}%)`,
+          `-${formatCurrency(prontoPago)}`,
+          'Descuento'
+        ]);
+      }
 
-    // ========== DETALLES DE LA FACTURA ==========
+      if (totalDescuentosAdicionales > 0 && descuentosAdicionales.length > 0) {
+        descuentosAdicionales.forEach((desc) => {
+          const valorDescuento = desc.tipo === 'porcentaje'
+            ? totalSinIvaOriginal * (desc.valor / 100)
+            : desc.valor;
+          const textoDescuento = desc.tipo === 'porcentaje'
+            ? `${desc.concepto} (${desc.valor}%)`
+            : desc.concepto;
+          descuentosData.push([
+            textoDescuento,
+            `-${formatCurrency(valorDescuento)}`,
+            'Descuento'
+          ]);
+        });
+      }
+
+      if (totalNotasCredito > 0 && notasCredito.length > 0) {
+        notasCredito.forEach((nc) => {
+          descuentosData.push([
+            `Nota de Crédito ${nc.numero || ''}`,
+            `-${formatCurrency(nc.valor || 0)}`,
+            'Nota Crédito'
+          ]);
+        });
+      }
+
+      if (retencion > 0) {
+        descuentosData.push([
+          `Retención en la Fuente (${factura.monto_retencion}%)`,
+          `-${formatCurrency(retencion)}`,
+          'Retención'
+        ]);
+      }
+
+      autoTable(doc, {
+        startY: currentY,
+        head: [['Concepto', 'Monto', 'Tipo']],
+        body: descuentosData,
+        theme: 'striped',
+        headStyles: {
+          fillColor: [34, 197, 94],
+          textColor: [255, 255, 255],
+          fontStyle: 'bold',
+          fontSize: 9
+        },
+        styles: {
+          fontSize: 9,
+          cellPadding: 3
+        },
+        columnStyles: {
+          0: { cellWidth: 100 },
+          1: { cellWidth: 50, halign: 'right', fontStyle: 'bold' },
+          2: { cellWidth: 32, halign: 'center' }
+        }
+      });
+
+      currentY = (doc as any).lastAutoTable.finalY + 5;
+
+      // Total de descuentos
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(22, 163, 74);
+      doc.text('TOTAL DESCUENTOS Y AJUSTES:', pageWidth - 100, currentY);
+      doc.text(`-${formatCurrency(totalDescuentosResumen)}`, pageWidth - 14, currentY, { align: 'right' });
+
+      currentY += 15;
+    } else {
+      // Si no hay descuentos, solo una línea separadora
+      doc.setDrawColor(229, 231, 235);
+      doc.setLineWidth(0.3);
+      doc.line(18, currentY, pageWidth - 18, currentY);
+      currentY += 10;
+    }
+
+    // ========== INFORMACIÓN DE LA FACTURA ==========
+    ensureSpace(30);
     doc.setFillColor(245, 247, 250);
     doc.roundedRect(14, currentY, pageWidth - 28, 10, 2, 2, 'F');
     doc.setFontSize(11);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(0, 0, 0);
-    doc.text('DETALLES DE LA FACTURA', 18, currentY + 7);
+    doc.text('INFORMACIÓN DE LA FACTURA', 18, currentY + 7);
     currentY += 15;
 
-    // Tabla de detalles
+    // Tabla de información básica (sin descuentos, ya están en la sección anterior)
     const tableData: any[] = [];
 
     tableData.push(['N° Factura', factura.numero_factura]);
     tableData.push(['Proveedor', factura.emisor_nombre]);
     tableData.push(['NIT', factura.emisor_nit]);
-    tableData.push(['Clasificacion', factura.clasificacion === 'mercancia' ? 'Mercancia' : 'Gasto']);
-
-    if (retencion > 0) {
-      tableData.push([`Retencion (${factura.monto_retencion}%)`, `-${formatCurrency(retencion)}`]);
-    }
-
-    if (prontoPago > 0) {
-      tableData.push([`Pronto Pago (${factura.porcentaje_pronto_pago}%)`, `-${formatCurrency(prontoPago)}`]);
-    }
-
-    // Agregar descuentos adicionales si existen
-    if (descuentosAdicionales.length > 0) {
-      descuentosAdicionales.forEach((desc) => {
-        const valorDescuento = desc.tipo === 'porcentaje'
-          ? totalSinIvaOriginal * (desc.valor / 100)
-          : desc.valor;
-        const textoDescuento = desc.tipo === 'porcentaje'
-          ? `${desc.concepto} (${desc.valor}%)`
-          : desc.concepto;
-        tableData.push([textoDescuento, `-${formatCurrency(valorDescuento)}`]);
-      });
-    }
-
-    if (notasCredito.length > 0) {
-      notasCredito.forEach((nc) => {
-        const etiqueta = nc.numero ? `Nota Crédito ${nc.numero}` : 'Nota Crédito';
-        tableData.push([etiqueta, `-${formatCurrency(nc.valor || 0)}`]);
-      });
-    }
+    tableData.push(['Clasificación', factura.clasificacion === 'mercancia' ? 'Mercancía' : 'Gasto']);
+    tableData.push(['Fecha de Emisión', new Date(factura.created_at).toLocaleDateString('es-CO')]);
 
     autoTable(doc, {
       startY: currentY,
@@ -743,44 +780,7 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
       currentY += 15;
     }
 
-    if (notasCredito.length > 0) {
-      ensureSpace(20 + notasCredito.length * 8);
-      doc.setFillColor(255, 247, 237); // Naranja claro
-      doc.roundedRect(14, currentY, pageWidth - 28, 10, 2, 2, 'F');
-      doc.setFontSize(11);
-      doc.setFont('helvetica', 'bold');
-      doc.setTextColor(249, 115, 22);
-      doc.text('NOTAS DE CRÉDITO APLICADAS', 18, currentY + 7);
-      currentY += 15;
-
-      autoTable(doc, {
-        startY: currentY,
-        body: notasCredito.map((nc) => [
-          nc.numero || 'Nota Crédito',
-          `-${formatCurrency(nc.valor || 0)}`
-        ]),
-        theme: 'plain',
-        styles: {
-          fontSize: 9,
-          cellPadding: 3,
-          textColor: [249, 115, 22]
-        },
-        columnStyles: {
-          0: { cellWidth: 100, fontStyle: 'bold' },
-          1: { cellWidth: 60, halign: 'right', fontStyle: 'bold' }
-        }
-      });
-
-      currentY = (doc as any).lastAutoTable.finalY + 8;
-
-      doc.setFontSize(10);
-      doc.setFont('helvetica', 'bold');
-      doc.setTextColor(249, 115, 22);
-      doc.text('Total Notas Crédito Aplicadas:', pageWidth - 110, currentY);
-      doc.text(`-${formatCurrency(totalNotasCredito)}`, pageWidth - 14, currentY, { align: 'right' });
-
-      currentY += 15;
-    }
+    // Las notas de crédito ya están incluidas en "DESGLOSE DE DESCUENTOS Y AJUSTES"
 
     // ========== DETALLES DEL PAGO ==========
     const valorFinalDisponible = valorFinal;
@@ -914,8 +914,9 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
       .substring(0, 40);
     const fileName = `Pago_${nombreLimpio}_${factura.numero_factura}_${timestamp}.pdf`;
 
-    // Descargar el PDF
+    // Descargar el PDF inmediatamente
     doc.save(fileName);
+    console.log('✅ PDF descargado localmente:', fileName);
 
     // Guardar el PDF en Supabase Storage
     try {

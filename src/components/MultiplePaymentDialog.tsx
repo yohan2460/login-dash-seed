@@ -733,6 +733,156 @@ const [saldosSeleccionados, setSaldosSeleccionados] = useState<{[saldoId: string
 
     currentY += 28;
 
+    // ========== DESGLOSE DETALLADO DE DESCUENTOS Y AJUSTES ==========
+    // Calcular totales primero
+    const totalProntoPagoCalc = calcularTotalProntoPago();
+    const totalRetencionesCalc = calcularTotalRetenciones();
+    const totalDescuentosAdicionalesCalc = facturas.reduce((sum, f) => {
+      if (!f.descuentos_antes_iva) return sum;
+      try {
+        const descuentos = JSON.parse(f.descuentos_antes_iva);
+        const baseSinIva = obtenerBaseSinIVAOriginal(f);
+        return sum + descuentos.reduce((descSum: number, desc: any) => {
+          if (desc.tipo === 'porcentaje') {
+            return descSum + (baseSinIva * (desc.valor / 100));
+          }
+          return descSum + desc.valor;
+        }, 0);
+      } catch {
+        return sum;
+      }
+    }, 0);
+
+    // Calcular total de notas de crédito aplicadas
+    const notasCreditoAplicadas = facturas.flatMap(f => {
+      const { notasCredito } = extraerNotasCredito(f);
+      return notasCredito.map(nc => ({
+        facturaNumero: f.numero_factura,
+        proveedor: f.emisor_nombre,
+        notaNumero: nc.numero,
+        valor: nc.valor || 0
+      }));
+    });
+    const totalNotasCreditoAplicadas = notasCreditoAplicadas.reduce((sum, item) => sum + (item.valor || 0), 0);
+
+    const tieneDescuentos = totalProntoPagoCalc > 0 || totalRetencionesCalc > 0 || totalDescuentosAdicionalesCalc > 0 || totalNotasCreditoAplicadas > 0;
+
+    if (tieneDescuentos) {
+      ensureSpace(50);
+      doc.setFillColor(240, 253, 244); // Verde muy claro
+      doc.roundedRect(14, currentY, pageWidth - 28, 10, 2, 2, 'F');
+      doc.setFontSize(11);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(22, 163, 74);
+      doc.text('DESGLOSE DETALLADO DE DESCUENTOS Y AJUSTES', 18, currentY + 7);
+      currentY += 15;
+
+      // Crear tabla de descuentos consolidada
+      const descuentosData: any[] = [];
+
+      // Descuentos de pronto pago por factura
+      if (totalProntoPagoCalc > 0) {
+        facturas.forEach(f => {
+          if (facturasConProntoPago.has(f.id) && f.porcentaje_pronto_pago && f.porcentaje_pronto_pago > 0) {
+            const baseSinIva = obtenerBaseSinIVAOriginal(f);
+            const montoProntoPago = baseSinIva * (f.porcentaje_pronto_pago / 100);
+            descuentosData.push([
+              `Pronto Pago - Fact. ${f.numero_factura} (${f.porcentaje_pronto_pago}%)`,
+              `-${formatCurrency(montoProntoPago)}`,
+              'Descuento'
+            ]);
+          }
+        });
+      }
+
+      // Descuentos adicionales por factura
+      if (totalDescuentosAdicionalesCalc > 0) {
+        facturas.forEach(f => {
+          if (!f.descuentos_antes_iva) return;
+          try {
+            const descuentos = JSON.parse(f.descuentos_antes_iva);
+            const baseSinIva = obtenerBaseSinIVAOriginal(f);
+            descuentos.forEach((desc: any) => {
+              const valorDescuento = desc.tipo === 'porcentaje'
+                ? baseSinIva * (desc.valor / 100)
+                : desc.valor;
+              const textoDescuento = desc.tipo === 'porcentaje'
+                ? `${desc.concepto} (${desc.valor}%) - Fact. ${f.numero_factura}`
+                : `${desc.concepto} - Fact. ${f.numero_factura}`;
+              descuentosData.push([
+                textoDescuento,
+                `-${formatCurrency(valorDescuento)}`,
+                'Descuento'
+              ]);
+            });
+          } catch {}
+        });
+      }
+
+      // Notas de crédito por factura
+      if (totalNotasCreditoAplicadas > 0) {
+        facturas.forEach(f => {
+          const { notasCredito } = extraerNotasCredito(f);
+          notasCredito.forEach(nc => {
+            descuentosData.push([
+              `Nota Crédito ${nc.numero} - Fact. ${f.numero_factura}`,
+              `-${formatCurrency(nc.valor || 0)}`,
+              'Nota Crédito'
+            ]);
+          });
+        });
+      }
+
+      // Retenciones por factura
+      if (totalRetencionesCalc > 0) {
+        facturas.forEach(f => {
+          if (f.tiene_retencion && f.monto_retencion) {
+            const baseSinIva = obtenerBaseSinIVADespuesNotasCredito(f);
+            const retencion = baseSinIva * (f.monto_retencion / 100);
+            descuentosData.push([
+              `Retención (${f.monto_retencion}%) - Fact. ${f.numero_factura}`,
+              `-${formatCurrency(retencion)}`,
+              'Retención'
+            ]);
+          }
+        });
+      }
+
+      autoTable(doc, {
+        startY: currentY,
+        head: [['Concepto', 'Monto', 'Tipo']],
+        body: descuentosData,
+        theme: 'striped',
+        headStyles: {
+          fillColor: [34, 197, 94],
+          textColor: [255, 255, 255],
+          fontStyle: 'bold',
+          fontSize: 9
+        },
+        styles: {
+          fontSize: 8,
+          cellPadding: 2
+        },
+        columnStyles: {
+          0: { cellWidth: 110 },
+          1: { cellWidth: 42, halign: 'right', fontStyle: 'bold' },
+          2: { cellWidth: 30, halign: 'center' }
+        }
+      });
+
+      currentY = (doc as any).lastAutoTable.finalY + 5;
+
+      // Total de descuentos
+      const totalDescuentosGlobal = totalProntoPagoCalc + totalDescuentosAdicionalesCalc + totalNotasCreditoAplicadas + totalRetencionesCalc;
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(22, 163, 74);
+      doc.text('TOTAL DESCUENTOS Y AJUSTES:', pageWidth - 100, currentY);
+      doc.text(`-${formatCurrency(totalDescuentosGlobal)}`, pageWidth - 14, currentY, { align: 'right' });
+
+      currentY += 15;
+    }
+
     // ========== FACTURAS SELECCIONADAS ==========
     // Agregar espacio adicional antes del título
     currentY += 8;
@@ -953,61 +1103,7 @@ const [saldosSeleccionados, setSaldosSeleccionados] = useState<{[saldoId: string
       currentY += 20;
     }
 
-    const notasCreditoAplicadas = facturas.flatMap((f) => {
-      const detalles = calcularDetallesFactura(f);
-      if (!detalles.notasCredito || detalles.notasCredito.length === 0) {
-        return [];
-      }
-      return detalles.notasCredito.map((nc: { numero: string; valor: number }) => ({
-        facturaNumero: f.numero_factura,
-        proveedor: f.emisor_nombre,
-        notaNumero: nc.numero,
-        valor: nc.valor || 0
-      }));
-    });
-    const totalNotasCreditoAplicadas = notasCreditoAplicadas.reduce((sum, item) => sum + (item.valor || 0), 0);
-
-    if (notasCreditoAplicadas.length > 0) {
-      ensureSpace(20 + notasCreditoAplicadas.length * 8);
-      doc.setFillColor(255, 247, 237); // Naranja claro
-      doc.roundedRect(14, currentY, pageWidth - 28, 10, 2, 2, 'F');
-      doc.setFontSize(11);
-      doc.setFont('helvetica', 'bold');
-      doc.setTextColor(249, 115, 22);
-      doc.text('NOTAS DE CRÉDITO APLICADAS', 18, currentY + 7);
-      currentY += 15;
-
-      autoTable(doc, {
-        startY: currentY,
-        body: notasCreditoAplicadas.map((item) => [
-          `${item.proveedor} - Factura ${item.facturaNumero}`,
-          item.notaNumero || 'Nota Crédito',
-          `-${formatCurrency(item.valor)}`
-        ]),
-        theme: 'plain',
-        styles: {
-          fontSize: 9,
-          cellPadding: 3,
-          textColor: [249, 115, 22]
-        },
-        columnStyles: {
-          0: { cellWidth: 90 },
-          1: { cellWidth: 60, fontStyle: 'bold' },
-          2: { cellWidth: 42, halign: 'right', fontStyle: 'bold' }
-        },
-        margin: { left: 14, right: 14 }
-      });
-
-      currentY = (doc as any).lastAutoTable.finalY + 8;
-
-      doc.setFontSize(10);
-      doc.setFont('helvetica', 'bold');
-      doc.setTextColor(249, 115, 22);
-      doc.text('Total Notas Crédito Aplicadas:', pageWidth - 110, currentY);
-      doc.text(`-${formatCurrency(totalNotasCreditoAplicadas)}`, pageWidth - 14, currentY, { align: 'right' });
-
-      currentY += 18;
-    }
+    // Las notas de crédito ya están incluidas en "DESGLOSE DETALLADO DE DESCUENTOS Y AJUSTES"
 
     // ========== DETALLES DEL PAGO ==========
     const totalReal = calcularTotalReal();
@@ -1161,29 +1257,13 @@ const [saldosSeleccionados, setSaldosSeleccionados] = useState<{[saldoId: string
       fileName = `Pago_Multiple_${timestamp}_${facturas.length}_facturas.pdf`;
     }
 
+    // Descargar PDF inmediatamente
     doc.save(fileName);
+    console.log('✅ PDF descargado localmente:', fileName);
 
     // Guardar el PDF en Supabase Storage
     try {
       console.log('💾 Iniciando guardado de comprobante múltiple para', facturas.length, 'facturas');
-
-      if (soporteFile) {
-        const soporteFileName = sanitizeFileName(soporteFile.name);
-        const soporteStoragePath = `soportes-pago/${timestamp}_${soporteFileName}`;
-
-        const { data: soporteUploadData, error: soporteUploadError } = await supabase.storage
-          .from('facturas-pdf')
-          .upload(soporteStoragePath, soporteFile, {
-            contentType: soporteFile.type || 'application/octet-stream',
-            upsert: false
-          });
-
-        if (soporteUploadError) {
-          throw soporteUploadError;
-        }
-
-        soportePagoPath = soporteUploadData?.path || soporteStoragePath;
-      }
 
       if (soporteFile) {
         const soporteFileName = sanitizeFileName(soporteFile.name);
