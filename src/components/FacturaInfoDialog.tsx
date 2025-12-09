@@ -35,6 +35,8 @@ interface Factura {
   created_at: string;
   factura_iva?: number | null;
   factura_iva_porcentaje?: number | null;
+  factura_iva_5?: number | null;
+  factura_iva_5_porcentaje?: number | null;
   descripcion?: string | null;
   tiene_retencion?: boolean | null;
   monto_retencion?: number | null;
@@ -312,10 +314,24 @@ export function FacturaInfoDialog({ isOpen, onClose, factura, onViewPDF }: Factu
                   <p className="text-lg font-bold">{formatCurrency(factura.total_a_pagar)}</p>
                 </div>
                 <div>
-                  <p className="text-sm text-muted-foreground">IVA ({factura.factura_iva_porcentaje || 0}%)</p>
+                  <p className="text-sm text-muted-foreground">IVA 19% ({factura.factura_iva_porcentaje || 0}%)</p>
                   <p className="text-lg font-semibold">{formatCurrency(factura.factura_iva || 0)}</p>
                 </div>
               </div>
+
+              {/* IVA 5% si existe */}
+              {factura.factura_iva_5 && factura.factura_iva_5 > 0 && (
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-sm text-muted-foreground">IVA 5% ({factura.factura_iva_5_porcentaje || 5}%)</p>
+                    <p className="text-lg font-semibold text-cyan-600">{formatCurrency(factura.factura_iva_5)}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">IVA Total</p>
+                    <p className="text-lg font-semibold">{formatCurrency((factura.factura_iva || 0) + (factura.factura_iva_5 || 0))}</p>
+                  </div>
+                </div>
+              )}
 
               <div className="grid grid-cols-2 gap-4">
                 <div>

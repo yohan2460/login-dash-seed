@@ -4,7 +4,10 @@
       "Bash(node:*)",
       "Bash(npx supabase:*)",
       "Bash(npx tsc:*)",
-      "Bash(npm install)"
+      "Bash(npm install)",
+      "Bash(cat:*)",
+      "Bash(sudo tee:*)",
+      "Bash(sudo sysctl:*)"
     ],
     "deny": [],
     "ask": []

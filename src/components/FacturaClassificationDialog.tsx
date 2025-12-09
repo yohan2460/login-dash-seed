@@ -23,6 +23,9 @@ interface Factura {
   emisor_nit: string;
   total_a_pagar: number;
   factura_iva?: number;
+  factura_iva_porcentaje?: number | null;
+  factura_iva_5?: number | null;
+  factura_iva_5_porcentaje?: number | null;
   clasificacion?: string | null;
   notas?: string | null;
   estado_nota_credito?: 'pendiente' | 'aplicada' | 'anulada' | null;
@@ -61,6 +64,8 @@ interface FacturaUpdateData {
   estado_mercancia: string | null;
   total_a_pagar: number;
   factura_iva: number;
+  factura_iva_5: number;
+  factura_iva_5_porcentaje: number;
   valor_real_a_pagar: number;
   descuentos_antes_iva?: string | null;
 }
@@ -93,6 +98,9 @@ export function FacturaClassificationDialog({
   const [estadoMercancia, setEstadoMercancia] = useState<string>('');
   const [totalAPagar, setTotalAPagar] = useState<string>('');
   const [recalcularIVA, setRecalcularIVA] = useState<boolean>(false);
+  const [iva5Monto, setIva5Monto] = useState<string>('');
+  const [iva5Porcentaje, setIva5Porcentaje] = useState<string>('5');
+  const [recalcularIVA5, setRecalcularIVA5] = useState<boolean>(false);
   const [descuentos, setDescuentos] = useState<Descuento[]>([]);
   const [nuevoDescuento, setNuevoDescuento] = useState<{concepto: string; valor: string; tipo: 'porcentaje' | 'valor_fijo'}>({
     concepto: '',
@@ -188,6 +196,9 @@ export function FacturaClassificationDialog({
       setEstadoMercancia('');
       setTotalAPagar('');
       setRecalcularIVA(false);
+      setIva5Monto('');
+      setIva5Porcentaje('5');
+      setRecalcularIVA5(false);
       setDescuentos([]);
       setNuevoDescuento({ concepto: '', valor: '', tipo: 'valor_fijo' });
       setSuggestedSerie(null);
@@ -201,6 +212,12 @@ export function FacturaClassificationDialog({
   useEffect(() => {
     if (isOpen && factura) {
       setTotalAPagar(factura.total_a_pagar.toString());
+
+      // Inicializar IVA 5% si existe
+      if (factura.factura_iva_5 && factura.factura_iva_5 > 0) {
+        setIva5Monto(factura.factura_iva_5.toString());
+        setIva5Porcentaje((factura.factura_iva_5_porcentaje || 5).toString());
+      }
 
       if (factura.notas) {
         try {
@@ -289,19 +306,22 @@ export function FacturaClassificationDialog({
 
       const nuevoTotal = parseFloat(totalAPagar) || factura.total_a_pagar;
       const nuevoIVA = calcularIVA();
+      const nuevoIVA5 = calcularIVA5();
+      const nuevoIVA5Porcentaje = parseFloat(iva5Porcentaje) || 5;
 
       // Validar datos
       if (isNaN(nuevoTotal) || nuevoTotal < 0) {
         throw new Error('El total debe ser un número válido mayor a 0');
       }
 
- 
+
 
 
       // CRÍTICO: total_sin_iva es el valor ORIGINAL antes de IVA y ANTES de descuentos
       // nuevoTotal es el valor ingresado por el usuario (con IVA, sin descuentos aplicados)
       // Los descuentos se aplican DESPUÉS sobre este valor original
-      const valorOriginalSinIVA = nuevoTotal - nuevoIVA;
+      // Ahora restamos ambos IVAs (19% y 5%)
+      const valorOriginalSinIVA = nuevoTotal - nuevoIVA - nuevoIVA5;
 
 
 
@@ -313,6 +333,7 @@ export function FacturaClassificationDialog({
         monto_retencion: tieneRetencion && (isCustomRetencion ? customRetencion : montoRetencion) ? parseFloat(isCustomRetencion ? customRetencion : montoRetencion) : 0,
         porcentaje_pronto_pago: (isCustomProntoPago ? customProntoPago : porcentajeProntoPago) && (isCustomProntoPago ? customProntoPago : porcentajeProntoPago) !== "0" ? parseFloat(isCustomProntoPago ? customProntoPago : porcentajeProntoPago) : null,
         factura_iva: nuevoIVA,
+        factura_iva_5: nuevoIVA5,
         descuentos_antes_iva: descuentos.length > 0 ? JSON.stringify(descuentos) : null
       };
 
@@ -328,6 +349,8 @@ export function FacturaClassificationDialog({
         estado_mercancia: classification === 'mercancia' ? 'pendiente' : null,
         total_a_pagar: nuevoTotal,
         factura_iva: nuevoIVA,
+        factura_iva_5: nuevoIVA5,
+        factura_iva_5_porcentaje: nuevoIVA5Porcentaje,
         valor_real_a_pagar: valorRealAPagar,
         descuentos_antes_iva: descuentos.length > 0 ? JSON.stringify(descuentos) : null
       };
@@ -362,6 +385,9 @@ export function FacturaClassificationDialog({
       setEstadoMercancia('');
       setTotalAPagar('');
       setRecalcularIVA(false);
+      setIva5Monto('');
+      setIva5Porcentaje('5');
+      setRecalcularIVA5(false);
       setDescuentos([]);
       setNuevoDescuento({ concepto: '', valor: '', tipo: 'valor_fijo' });
       setSuggestedSerie(null);
@@ -387,7 +413,8 @@ export function FacturaClassificationDialog({
 
     // CRÍTICO: total_sin_iva es el valor ORIGINAL antes de IVA y antes de descuentos
     // totalAPagar es el valor ingresado (original con IVA, sin descuentos aplicados aún)
-    const valorSinIVA = parseFloat(totalAPagar) - calcularIVA();
+    // Ahora restamos ambos IVAs (19% y 5%)
+    const valorSinIVA = parseFloat(totalAPagar) - calcularIVA() - calcularIVA5();
 
     return (valorSinIVA * parseFloat(porcentaje)) / 100;
   };
@@ -425,6 +452,45 @@ export function FacturaClassificationDialog({
     } catch (error) {
       console.error('Error calculando IVA:', error);
       return factura?.factura_iva || 0;
+    }
+  };
+
+  // Calcular IVA 5% automáticamente basado en el total
+  const calcularIVA5 = (): number => {
+    try {
+      if (!factura) return 0;
+
+      // Si hay un monto de IVA 5% ingresado manualmente, usarlo
+      if (iva5Monto && parseFloat(iva5Monto) > 0) {
+        // Si recalcular está activado, ajustar proporcionalmente
+        if (recalcularIVA5 && totalAPagar) {
+          const nuevoTotal = parseFloat(totalAPagar) || 0;
+          const totalOriginal = factura.total_a_pagar || 0;
+          if (totalOriginal === 0) return parseFloat(iva5Monto);
+
+          const proporcion = nuevoTotal / totalOriginal;
+          return parseFloat(iva5Monto) * proporcion;
+        }
+        return parseFloat(iva5Monto);
+      }
+
+      // Si la factura original tenía IVA 5%
+      if (factura.factura_iva_5 && factura.factura_iva_5 > 0) {
+        if (recalcularIVA5 && totalAPagar) {
+          const nuevoTotal = parseFloat(totalAPagar) || 0;
+          const totalOriginal = factura.total_a_pagar || 0;
+          if (totalOriginal === 0) return factura.factura_iva_5;
+
+          const proporcion = nuevoTotal / totalOriginal;
+          return factura.factura_iva_5 * proporcion;
+        }
+        return factura.factura_iva_5;
+      }
+
+      return 0;
+    } catch (error) {
+      console.error('Error calculando IVA 5%:', error);
+      return 0;
     }
   };
 
@@ -560,8 +626,8 @@ export function FacturaClassificationDialog({
                     </p>
                   </div>
                   <div className="space-y-2">
-                    <Label className="text-sm font-medium">Información de IVA</Label>
-                    <div className="p-3 bg-muted/50 rounded-lg space-y-3">
+                    <Label className="text-sm font-medium">IVA 19%</Label>
+                    <div className="p-3 bg-muted/50 rounded-lg space-y-3 border border-blue-200 dark:border-blue-800">
                       <div className="space-y-1">
                         <p className="text-xs text-muted-foreground">
                           IVA original: {formatCurrency(factura.factura_iva || 0)}
@@ -578,24 +644,84 @@ export function FacturaClassificationDialog({
                           onCheckedChange={(checked) => setRecalcularIVA(checked === true)}
                         />
                         <Label htmlFor="recalcular_iva" className="text-xs">
-                          Recalcular IVA automáticamente al cambiar el total
+                          Recalcular IVA automáticamente
                         </Label>
                       </div>
-
-                      {!recalcularIVA && (
-                        <p className="text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 p-2 rounded border-l-2 border-amber-400">
-                          💡 El IVA se mantiene fijo en el valor original
-                        </p>
-                      )}
-
-                      {recalcularIVA && totalAPagar && parseFloat(totalAPagar) !== factura.total_a_pagar && (
-                        <p className="text-xs text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 p-2 rounded border-l-2 border-blue-400">
-                          🔄 IVA recalculado proporcionalmente
-                        </p>
-                      )}
                     </div>
                   </div>
                 </div>
+
+                {/* IVA 5% (Opcional) */}
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">IVA 5% (Opcional)</Label>
+                  <div className="p-3 bg-muted/50 rounded-lg space-y-3 border border-cyan-200 dark:border-cyan-800">
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <Label htmlFor="iva5_monto" className="text-xs text-muted-foreground">Monto IVA 5%</Label>
+                        <Input
+                          id="iva5_monto"
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={iva5Monto}
+                          onChange={(e) => setIva5Monto(e.target.value)}
+                          placeholder="0.00"
+                          className="h-8"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label htmlFor="iva5_porcentaje" className="text-xs text-muted-foreground">% IVA</Label>
+                        <Input
+                          id="iva5_porcentaje"
+                          type="number"
+                          step="0.1"
+                          min="0"
+                          max="100"
+                          value={iva5Porcentaje}
+                          onChange={(e) => setIva5Porcentaje(e.target.value)}
+                          placeholder="5"
+                          className="h-8"
+                        />
+                      </div>
+                    </div>
+
+                    {factura.factura_iva_5 && factura.factura_iva_5 > 0 && (
+                      <p className="text-xs text-cyan-600">
+                        IVA 5% original: {formatCurrency(factura.factura_iva_5)}
+                      </p>
+                    )}
+
+                    {calcularIVA5() > 0 && (
+                      <p className="text-xs text-cyan-600 font-medium">
+                        IVA 5% a usar: {formatCurrency(calcularIVA5())}
+                      </p>
+                    )}
+
+                    <div className="flex items-center space-x-2 pt-2 border-t border-muted-foreground/20">
+                      <Checkbox
+                        id="recalcular_iva5"
+                        checked={recalcularIVA5}
+                        onCheckedChange={(checked) => setRecalcularIVA5(checked === true)}
+                      />
+                      <Label htmlFor="recalcular_iva5" className="text-xs">
+                        Recalcular IVA 5% al cambiar total
+                      </Label>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Resumen de IVA Total */}
+                {(calcularIVA() > 0 || calcularIVA5() > 0) && (
+                  <div className="p-3 bg-emerald-50 dark:bg-emerald-900/20 rounded-lg border border-emerald-200 dark:border-emerald-800">
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm font-medium text-emerald-800 dark:text-emerald-300">IVA Total:</span>
+                      <span className="text-sm font-bold text-emerald-600">{formatCurrency(calcularIVA() + calcularIVA5())}</span>
+                    </div>
+                    <div className="text-xs text-emerald-600 dark:text-emerald-400 mt-1">
+                      IVA 19%: {formatCurrency(calcularIVA())} {calcularIVA5() > 0 && `+ IVA 5%: ${formatCurrency(calcularIVA5())}`}
+                    </div>
+                  </div>
+                )}
               </CardContent>
             </Card>
 
@@ -862,8 +988,8 @@ export function FacturaClassificationDialog({
                           <div className="p-2 bg-orange-50 dark:bg-orange-900/20 rounded border-l-2 border-orange-400">
                             <p className="text-sm font-medium text-orange-800 dark:text-orange-300">
                               Retención estimada: {formatCurrency((() => {
-                                // CRÍTICO: total_sin_iva = totalAPagar - IVA (valor ORIGINAL sin descuentos)
-                                const valorSinIVA = parseFloat(totalAPagar) - calcularIVA();
+                                // CRÍTICO: total_sin_iva = totalAPagar - IVA 19% - IVA 5% (valor ORIGINAL sin descuentos)
+                                const valorSinIVA = parseFloat(totalAPagar) - calcularIVA() - calcularIVA5();
                                 return (valorSinIVA * parseFloat(isCustomRetencion ? customRetencion : montoRetencion)) / 100;
                               })())}
                             </p>
@@ -1096,7 +1222,8 @@ export function FacturaClassificationDialog({
                               // IMPORTANTE: retención y pronto pago se calculan sobre total_sin_iva (valor ORIGINAL)
                               const totalDescuentos = calcularTotalDescuentos();
                               const valorConDescuentos = parseFloat(totalAPagar) - totalDescuentos;
-                              const valorSinIVA = parseFloat(totalAPagar) - calcularIVA();
+                              // Restamos ambos IVAs (19% y 5%)
+                              const valorSinIVA = parseFloat(totalAPagar) - calcularIVA() - calcularIVA5();
 
                               const retencion = (tieneRetencion && (isCustomRetencion ? customRetencion : montoRetencion))
                                 ? (valorSinIVA * parseFloat(isCustomRetencion ? customRetencion : montoRetencion)) / 100

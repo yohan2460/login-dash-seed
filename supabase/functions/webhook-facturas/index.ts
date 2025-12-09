@@ -19,6 +19,8 @@ interface FacturaData {
   pdf_file_path?: string;
   factura_iva?: number;
   factura_iva_porcentaje?: number;
+  factura_iva_5?: number;
+  factura_iva_5_porcentaje?: number;
   descripcion?: string;
   tiene_retencion?: boolean;
   monto_retencion?: number;
@@ -78,6 +80,8 @@ serve(async (req) => {
         factura_cufe: formData.get('factura_cufe') as string || undefined,
         factura_iva: formData.get('factura_iva') ? parseFloat(formData.get('factura_iva') as string) : 0,
         factura_iva_porcentaje: formData.get('factura_iva_porcentaje') ? parseFloat(formData.get('factura_iva_porcentaje') as string) : 0,
+        factura_iva_5: formData.get('factura_iva_5') ? parseFloat(formData.get('factura_iva_5') as string) : 0,
+        factura_iva_5_porcentaje: formData.get('factura_iva_5_porcentaje') ? parseFloat(formData.get('factura_iva_5_porcentaje') as string) : 5,
         descripcion: formData.get('descripcion') as string || undefined,
         tiene_retencion: formData.get('tiene_retencion') === 'true',
         monto_retencion: formData.get('monto_retencion') ? parseFloat(formData.get('monto_retencion') as string) : 0,

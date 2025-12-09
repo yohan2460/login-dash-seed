@@ -26,6 +26,8 @@ interface Factura {
   created_at: string;
   factura_iva?: number | null;
   factura_iva_porcentaje?: number | null;
+  factura_iva_5?: number | null;
+  factura_iva_5_porcentaje?: number | null;
   descripcion?: string | null;
   tiene_retencion?: boolean | null;
   monto_retencion?: number | null;
@@ -453,8 +455,10 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
         'Clasificación': factura.clasificacion || 'Sin clasificar',
         'Clasificación Original': factura.clasificacion_original || '',
         'Total a Pagar': factura.total_a_pagar,
-        'IVA': factura.factura_iva || 0,
-        'Porcentaje IVA': factura.factura_iva_porcentaje || 0,
+        'IVA 19%': factura.factura_iva || 0,
+        '% IVA 19': factura.factura_iva_porcentaje || 0,
+        'IVA 5%': factura.factura_iva_5 || 0,
+        '% IVA 5': factura.factura_iva_5_porcentaje || 0,
         'Descuentos': descuentosTexto,
         'Total Descuentos': totalDescuentos,
         'Tiene Retención': factura.tiene_retencion ? 'Sí' : 'No',
@@ -1055,7 +1059,12 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
                     )}
                     {factura.factura_iva && factura.factura_iva > 0 && (
                       <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200 font-mono">
-                        IVA +{formatCompactCurrency(factura.factura_iva)}
+                        IVA 19% +{formatCompactCurrency(factura.factura_iva)}
+                      </Badge>
+                    )}
+                    {factura.factura_iva_5 && factura.factura_iva_5 > 0 && (
+                      <Badge variant="outline" className="text-xs bg-cyan-50 text-cyan-700 border-cyan-200 font-mono">
+                        IVA 5% +{formatCompactCurrency(factura.factura_iva_5)}
                       </Badge>
                     )}
                   </div>

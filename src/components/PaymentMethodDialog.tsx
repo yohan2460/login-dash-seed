@@ -26,6 +26,8 @@ interface Factura {
   created_at: string;
   factura_iva?: number | null;
   factura_iva_porcentaje?: number | null;
+  factura_iva_5?: number | null;
+  factura_iva_5_porcentaje?: number | null;
   descripcion?: string | null;
   tiene_retencion?: boolean | null;
   monto_retencion?: number | null;
@@ -1431,8 +1433,15 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
 
                 {factura.factura_iva && factura.factura_iva > 0 && (
                   <div className="flex justify-between text-sm text-blue-600 pt-2 border-t">
-                    <span>IVA ({factura.factura_iva_porcentaje || 19}%):</span>
+                    <span>IVA 19% ({factura.factura_iva_porcentaje || 19}%):</span>
                     <span className="font-medium">+{formatCurrency(factura.factura_iva)}</span>
+                  </div>
+                )}
+
+                {factura.factura_iva_5 && factura.factura_iva_5 > 0 && (
+                  <div className="flex justify-between text-sm text-cyan-600">
+                    <span>IVA 5% ({factura.factura_iva_5_porcentaje || 5}%):</span>
+                    <span className="font-medium">+{formatCurrency(factura.factura_iva_5)}</span>
                   </div>
                 )}
 

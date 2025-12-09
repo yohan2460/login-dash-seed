@@ -28,6 +28,8 @@ interface Factura {
   descripcion?: string | null;
   factura_iva?: number | null;
   factura_iva_porcentaje?: number | null;
+  factura_iva_5?: number | null;
+  factura_iva_5_porcentaje?: number | null;
   tiene_retencion?: boolean | null;
   monto_retencion?: number | null;
   porcentaje_pronto_pago?: number | null;
@@ -56,6 +58,8 @@ interface FormData {
   descripcion: string;
   factura_iva: number;
   factura_iva_porcentaje: number;
+  factura_iva_5: number;
+  factura_iva_5_porcentaje: number;
   tiene_retencion: boolean;
   monto_retencion: number;
   porcentaje_pronto_pago: number;
@@ -82,6 +86,8 @@ export function EditFacturaDialog({ isOpen, onClose, factura, onSave }: EditFact
     descripcion: '',
     factura_iva: 0,
     factura_iva_porcentaje: 0,
+    factura_iva_5: 0,
+    factura_iva_5_porcentaje: 5,
     tiene_retencion: false,
     monto_retencion: 0,
     porcentaje_pronto_pago: 0,
@@ -142,6 +148,8 @@ export function EditFacturaDialog({ isOpen, onClose, factura, onSave }: EditFact
         descripcion: factura.descripcion || '',
         factura_iva: factura.factura_iva || 0,
         factura_iva_porcentaje: factura.factura_iva_porcentaje || 0,
+        factura_iva_5: factura.factura_iva_5 || 0,
+        factura_iva_5_porcentaje: factura.factura_iva_5_porcentaje || 5,
         tiene_retencion: factura.tiene_retencion || false,
         monto_retencion: factura.monto_retencion || 0,
         porcentaje_pronto_pago: factura.porcentaje_pronto_pago || 0,
@@ -209,8 +217,8 @@ export function EditFacturaDialog({ isOpen, onClose, factura, onSave }: EditFact
       return factura.total_sin_iva;
     }
 
-    // Fallback: Calcular restando IVA del total_a_pagar
-    const base = formData.total_a_pagar - (formData.factura_iva || 0);
+    // Fallback: Calcular restando ambos IVAs del total_a_pagar
+    const base = formData.total_a_pagar - (formData.factura_iva || 0) - (formData.factura_iva_5 || 0);
     return base > 0 ? base : formData.total_a_pagar;
   };
 
@@ -278,6 +286,8 @@ export function EditFacturaDialog({ isOpen, onClose, factura, onSave }: EditFact
         descripcion: formData.descripcion || null,
         factura_iva: formData.factura_iva || null,
         factura_iva_porcentaje: formData.factura_iva_porcentaje || null,
+        factura_iva_5: formData.factura_iva_5 || null,
+        factura_iva_5_porcentaje: formData.factura_iva_5_porcentaje || null,
         tiene_retencion: formData.tiene_retencion,
         monto_retencion: formData.monto_retencion || null,
         porcentaje_pronto_pago: formData.porcentaje_pronto_pago || null,
@@ -529,33 +539,71 @@ export function EditFacturaDialog({ isOpen, onClose, factura, onSave }: EditFact
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="factura_iva">Valor IVA</Label>
-                  <Input
-                    id="factura_iva"
-                    type="number"
-                    step="0.01"
-                    value={formData.factura_iva}
-                    onChange={(e) => handleInputChange('factura_iva', parseFloat(e.target.value) || 0)}
-                    placeholder="0"
-                  />
-                  <div className="text-xs text-muted-foreground">
-                    {formatCurrency(formData.factura_iva)}
+              {/* IVA 19% */}
+              <div className="border rounded-lg p-3 space-y-2">
+                <p className="text-sm font-medium text-muted-foreground">IVA 19%</p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="factura_iva">Valor IVA</Label>
+                    <Input
+                      id="factura_iva"
+                      type="number"
+                      step="0.01"
+                      value={formData.factura_iva}
+                      onChange={(e) => handleInputChange('factura_iva', parseFloat(e.target.value) || 0)}
+                      placeholder="0"
+                    />
+                    <div className="text-xs text-muted-foreground">
+                      {formatCurrency(formData.factura_iva)}
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="factura_iva_porcentaje">Porcentaje IVA (%)</Label>
+                    <Input
+                      id="factura_iva_porcentaje"
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      max="100"
+                      value={formData.factura_iva_porcentaje}
+                      onChange={(e) => handleInputChange('factura_iva_porcentaje', parseFloat(e.target.value) || 0)}
+                      placeholder="0"
+                    />
                   </div>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="factura_iva_porcentaje">Porcentaje IVA (%)</Label>
-                  <Input
-                    id="factura_iva_porcentaje"
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    max="100"
-                    value={formData.factura_iva_porcentaje}
-                    onChange={(e) => handleInputChange('factura_iva_porcentaje', parseFloat(e.target.value) || 0)}
-                    placeholder="0"
-                  />
+              </div>
+
+              {/* IVA 5% (opcional) */}
+              <div className="border rounded-lg p-3 space-y-2">
+                <p className="text-sm font-medium text-muted-foreground">IVA 5% (opcional)</p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="factura_iva_5">Valor IVA 5%</Label>
+                    <Input
+                      id="factura_iva_5"
+                      type="number"
+                      step="0.01"
+                      value={formData.factura_iva_5}
+                      onChange={(e) => handleInputChange('factura_iva_5', parseFloat(e.target.value) || 0)}
+                      placeholder="0"
+                    />
+                    <div className="text-xs text-muted-foreground">
+                      {formatCurrency(formData.factura_iva_5)}
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="factura_iva_5_porcentaje">Porcentaje IVA (%)</Label>
+                    <Input
+                      id="factura_iva_5_porcentaje"
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      max="100"
+                      value={formData.factura_iva_5_porcentaje}
+                      onChange={(e) => handleInputChange('factura_iva_5_porcentaje', parseFloat(e.target.value) || 0)}
+                      placeholder="5"
+                    />
+                  </div>
                 </div>
               </div>
             </CardContent>

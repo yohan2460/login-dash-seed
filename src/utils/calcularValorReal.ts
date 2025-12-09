@@ -5,6 +5,8 @@ export interface FacturaData {
   monto_retencion?: number | null;
   porcentaje_pronto_pago?: number | null;
   factura_iva?: number | null;
+  factura_iva_5?: number | null;
+  factura_iva_5_porcentaje?: number | null;
   notas?: string | null;
   clasificacion?: string | null;
   descuentos_antes_iva?: string | null;
@@ -46,9 +48,9 @@ function calcularValorOriginalAntesIVA(factura: FacturaData): number {
     return factura.total_sin_iva;
   }
 
-  // Fallback: Si no existe total_sin_iva, calcular restando el IVA
+  // Fallback: Si no existe total_sin_iva, calcular restando ambos IVAs (19% y 5%)
   // Esto NO considera descuentos, pero es mejor que nada
-  return factura.total_a_pagar - (factura.factura_iva || 0);
+  return factura.total_a_pagar - (factura.factura_iva || 0) - (factura.factura_iva_5 || 0);
 }
 
 function obtenerTotalesNotasCredito(factura: FacturaData): NotasCreditoTotales {
@@ -109,7 +111,8 @@ function obtenerTotalesNotasCredito(factura: FacturaData): NotasCreditoTotales {
 }
 
 export function obtenerBaseSinIVADespuesNotasCredito(factura: FacturaData): number {
-  const baseDesdeFactura = factura.total_a_pagar - (factura.factura_iva || 0);
+  // Restar ambos IVAs (19% y 5%) del total
+  const baseDesdeFactura = factura.total_a_pagar - (factura.factura_iva || 0) - (factura.factura_iva_5 || 0);
 
   if (Number.isFinite(baseDesdeFactura) && baseDesdeFactura >= 0) {
     return baseDesdeFactura;
@@ -236,4 +239,11 @@ export function calcularTotalReal(factura: FacturaData): number {
 
 export function obtenerBaseSinIVAOriginal(factura: FacturaData): number {
   return calcularValorOriginalAntesIVA(factura);
+}
+
+/**
+ * Obtiene el IVA total (suma de IVA 19% + IVA 5%)
+ */
+export function obtenerIVATotal(factura: FacturaData): number {
+  return (factura.factura_iva || 0) + (factura.factura_iva_5 || 0);
 }

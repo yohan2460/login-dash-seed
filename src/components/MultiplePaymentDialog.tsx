@@ -26,6 +26,7 @@ interface Factura {
   total_a_pagar: number;
   clasificacion?: string | null;
   factura_iva?: number | null;
+  factura_iva_5?: number | null;
   tiene_retencion?: boolean | null;
   monto_retencion?: number | null;
   porcentaje_pronto_pago?: number | null;
@@ -181,7 +182,7 @@ const [saldosSeleccionados, setSaldosSeleccionados] = useState<{[saldoId: string
   };
 
   const calcularTotalIVA = () => {
-    return facturas.reduce((total, factura) => total + (factura.factura_iva || 0), 0);
+    return facturas.reduce((total, factura) => total + (factura.factura_iva || 0) + (factura.factura_iva_5 || 0), 0);
   };
 
   const calcularTotalRetenciones = () => {
@@ -199,7 +200,7 @@ const [saldosSeleccionados, setSaldosSeleccionados] = useState<{[saldoId: string
       const originales = obtenerValoresOriginales(factura);
       const baseParaDescuento = originales.totalSinIvaOriginal
         ?? factura.total_sin_iva
-        ?? (factura.total_a_pagar - (factura.factura_iva || 0));
+        ?? (factura.total_a_pagar - (factura.factura_iva || 0) - (factura.factura_iva_5 || 0));
       const descuento = baseParaDescuento * (factura.porcentaje_pronto_pago / 100);
       return total + descuento;
     }, 0);

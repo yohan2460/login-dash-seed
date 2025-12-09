@@ -60,7 +60,7 @@ export function MercanciaPendiente() {
         .from('facturas')
         .select('*, ingresado_sistema')
         .eq('clasificacion', 'mercancia')
-        .neq('estado_mercancia', 'pagada')
+        .or('estado_mercancia.is.null,estado_mercancia.neq.pagada')
         .order('created_at', { ascending: false });
 
       if (error) throw error;

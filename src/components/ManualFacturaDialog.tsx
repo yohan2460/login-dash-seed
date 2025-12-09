@@ -30,30 +30,33 @@ interface FacturaFormData {
   total_a_pagar: number;
   descripcion: string;
   numero_serie: string;
-  
+
   // Fechas
   fecha_emision: Date | undefined;
   fecha_vencimiento: Date | undefined;
-  
-  // Información fiscal
+
+  // Información fiscal - IVA 19%
   factura_iva: number;
   factura_iva_porcentaje: number;
+  // Información fiscal - IVA 5%
+  factura_iva_5: number;
+  factura_iva_5_porcentaje: number;
   tiene_retencion: boolean;
   monto_retencion: number;
-  
+
   // Pronto pago
   porcentaje_pronto_pago: number;
-  
+
   // Clasificación
   clasificacion: string;
-  
+
   // Información de pago (opcional)
   estado_mercancia: string;
   metodo_pago: string;
   monto_pagado: number;
   fecha_pago: Date | undefined;
   uso_pronto_pago: boolean;
-  
+
   // Archivo PDF
   pdf_file: File | null;
 }
@@ -69,6 +72,8 @@ const initialFormData: FacturaFormData = {
   fecha_vencimiento: undefined,
   factura_iva: 0,
   factura_iva_porcentaje: 19,
+  factura_iva_5: 0,
+  factura_iva_5_porcentaje: 5,
   tiene_retencion: false,
   monto_retencion: 0,
   porcentaje_pronto_pago: 0,
@@ -101,22 +106,38 @@ export function ManualFacturaDialog({ isOpen, onClose, onFacturaCreated }: Manua
       [field]: value
     }));
 
-    // Auto-calcular IVA si se cambia el porcentaje o total
-    if (field === 'total_a_pagar' || field === 'factura_iva_porcentaje') {
-      const total = field === 'total_a_pagar' ? value : formData.total_a_pagar;
-      const porcentaje = field === 'factura_iva_porcentaje' ? value : formData.factura_iva_porcentaje;
-
+    // Auto-calcular IVA 19% si se cambia el porcentaje
+    if (field === 'factura_iva_porcentaje') {
+      const porcentaje = value;
+      const total = formData.total_a_pagar;
       if (total > 0 && porcentaje > 0) {
-        // Calcular IVA sobre el valor ingresado (el total NO incluye IVA)
         const iva = total * (porcentaje / 100);
         setFormData(prev => ({
           ...prev,
           factura_iva: Math.round(iva)
         }));
-      } else if (total === 0 || porcentaje === 0) {
+      } else {
         setFormData(prev => ({
           ...prev,
           factura_iva: 0
+        }));
+      }
+    }
+
+    // Auto-calcular IVA 5% si se cambia el porcentaje
+    if (field === 'factura_iva_5_porcentaje') {
+      const porcentaje = value;
+      const total = formData.total_a_pagar;
+      if (total > 0 && porcentaje > 0) {
+        const iva = total * (porcentaje / 100);
+        setFormData(prev => ({
+          ...prev,
+          factura_iva_5: Math.round(iva)
+        }));
+      } else {
+        setFormData(prev => ({
+          ...prev,
+          factura_iva_5: 0
         }));
       }
     }
@@ -218,6 +239,21 @@ export function ManualFacturaDialog({ isOpen, onClose, onFacturaCreated }: Manua
     
     try {
       // Primero insertar la factura para obtener el ID
+      // Determinar clasificación: null si es 'sin_clasificar' o vacío
+      const clasificacionFinal = (formData.clasificacion === 'sin_clasificar' || formData.clasificacion === '')
+        ? null
+        : formData.clasificacion;
+
+      // Determinar estado_mercancia: null si es 'pendiente' o vacío (pendiente es el estado por defecto)
+      const estadoMercanciaFinal = (formData.estado_mercancia === 'pendiente' || formData.estado_mercancia === '')
+        ? null
+        : formData.estado_mercancia;
+
+      // Determinar método de pago: null si no está seleccionado
+      const metodoPagoFinal = (formData.metodo_pago === 'no_seleccionado' || formData.metodo_pago === '')
+        ? null
+        : formData.metodo_pago;
+
       const facturaData = {
         numero_factura: formData.numero_factura.trim(),
         emisor_nombre: formData.emisor_nombre.trim(),
@@ -229,12 +265,14 @@ export function ManualFacturaDialog({ isOpen, onClose, onFacturaCreated }: Manua
         fecha_vencimiento: formData.fecha_vencimiento?.toISOString() || null,
         factura_iva: formData.factura_iva || null,
         factura_iva_porcentaje: formData.factura_iva_porcentaje || null,
+        factura_iva_5: formData.factura_iva_5 || null,
+        factura_iva_5_porcentaje: formData.factura_iva_5_porcentaje || null,
         tiene_retencion: formData.tiene_retencion,
         monto_retencion: formData.tiene_retencion ? formData.monto_retencion : null,
         porcentaje_pronto_pago: formData.porcentaje_pronto_pago || null,
-        clasificacion: formData.clasificacion === 'sin_clasificar' ? null : formData.clasificacion || null,
-        estado_mercancia: formData.estado_mercancia === 'pendiente' ? null : formData.estado_mercancia || null,
-        metodo_pago: formData.metodo_pago === 'no_seleccionado' ? null : formData.metodo_pago || null,
+        clasificacion: clasificacionFinal,
+        estado_mercancia: estadoMercanciaFinal,
+        metodo_pago: metodoPagoFinal,
         monto_pagado: formData.monto_pagado || null,
         fecha_pago: formData.fecha_pago?.toISOString() || null,
         uso_pronto_pago: formData.uso_pronto_pago,
@@ -490,26 +528,57 @@ export function ManualFacturaDialog({ isOpen, onClose, onFacturaCreated }: Manua
                 )}
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="factura_iva_porcentaje">% IVA</Label>
-                  <Input
-                    id="factura_iva_porcentaje"
-                    type="number"
-                    value={formData.factura_iva_porcentaje}
-                    onChange={(e) => handleInputChange('factura_iva_porcentaje', parseFloat(e.target.value) || 0)}
-                    placeholder="19"
-                  />
+              {/* IVA 19% */}
+              <div className="border rounded-lg p-3 space-y-2">
+                <p className="text-sm font-medium text-muted-foreground">IVA 19%</p>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="factura_iva_porcentaje">% IVA</Label>
+                    <Input
+                      id="factura_iva_porcentaje"
+                      type="number"
+                      value={formData.factura_iva_porcentaje}
+                      onChange={(e) => handleInputChange('factura_iva_porcentaje', parseFloat(e.target.value) || 0)}
+                      placeholder="19"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="factura_iva">Valor IVA</Label>
+                    <Input
+                      id="factura_iva"
+                      type="number"
+                      value={formData.factura_iva}
+                      onChange={(e) => handleInputChange('factura_iva', parseFloat(e.target.value) || 0)}
+                      placeholder="0"
+                    />
+                  </div>
                 </div>
-                <div>
-                  <Label htmlFor="factura_iva">Valor IVA</Label>
-                  <Input
-                    id="factura_iva"
-                    type="number"
-                    value={formData.factura_iva}
-                    onChange={(e) => handleInputChange('factura_iva', parseFloat(e.target.value) || 0)}
-                    placeholder="0"
-                  />
+              </div>
+
+              {/* IVA 5% (opcional) */}
+              <div className="border rounded-lg p-3 space-y-2">
+                <p className="text-sm font-medium text-muted-foreground">IVA 5% (opcional)</p>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="factura_iva_5_porcentaje">% IVA</Label>
+                    <Input
+                      id="factura_iva_5_porcentaje"
+                      type="number"
+                      value={formData.factura_iva_5_porcentaje}
+                      onChange={(e) => handleInputChange('factura_iva_5_porcentaje', parseFloat(e.target.value) || 0)}
+                      placeholder="5"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="factura_iva_5">Valor IVA</Label>
+                    <Input
+                      id="factura_iva_5"
+                      type="number"
+                      value={formData.factura_iva_5}
+                      onChange={(e) => handleInputChange('factura_iva_5', parseFloat(e.target.value) || 0)}
+                      placeholder="0"
+                    />
+                  </div>
                 </div>
               </div>
 
