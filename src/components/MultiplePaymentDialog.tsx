@@ -94,6 +94,10 @@ const [saldosSeleccionados, setSaldosSeleccionados] = useState<{[saldoId: string
   const [soporteFile, setSoporteFile] = useState<File | null>(null);
   const soporteInputRef = useRef<HTMLInputElement | null>(null);
 
+  // Estado para facturas actualizadas desde BD (para asegurar datos frescos con NC)
+  const [facturasActualizadas, setFacturasActualizadas] = useState<Factura[]>([]);
+  const [cargandoFacturas, setCargandoFacturas] = useState(false);
+
   const { toast } = useToast();
 
   const extraerNotasCredito = (factura: Factura) => {
@@ -263,9 +267,47 @@ const [saldosSeleccionados, setSaldosSeleccionados] = useState<{[saldoId: string
     }
   }, [isOpen, facturas]);
 
+  // Recargar facturas desde BD cuando se abre el diálogo para asegurar datos frescos (incluye NC aplicadas)
+  useEffect(() => {
+    const recargarFacturasDesdeDB = async () => {
+      if (!isOpen || facturas.length === 0) {
+        setFacturasActualizadas([]);
+        return;
+      }
+
+      setCargandoFacturas(true);
+      try {
+        const ids = facturas.map(f => f.id);
+        const { data, error } = await supabase
+          .from('facturas')
+          .select('*')
+          .in('id', ids);
+
+        if (error) {
+          console.error('Error al recargar facturas:', error);
+          setFacturasActualizadas([]);
+        } else if (data) {
+          console.log('✅ Facturas recargadas desde BD:', data.length);
+          data.forEach(f => {
+            console.log(`📝 Factura ${f.numero_factura} - notas:`, f.notas);
+          });
+          setFacturasActualizadas(data as Factura[]);
+        }
+      } catch (error) {
+        console.error('Error al recargar facturas:', error);
+        setFacturasActualizadas([]);
+      } finally {
+        setCargandoFacturas(false);
+      }
+    };
+
+    recargarFacturasDesdeDB();
+  }, [isOpen, facturas]);
+
   useEffect(() => {
     if (!isOpen) {
       setSoporteFile(null);
+      setFacturasActualizadas([]);
       if (soporteInputRef.current) {
         soporteInputRef.current.value = '';
       }
@@ -545,6 +587,13 @@ const [saldosSeleccionados, setSaldosSeleccionados] = useState<{[saldoId: string
 
   // Función auxiliar para generar y guardar el PDF del comprobante múltiple
   const generarYGuardarComprobantePDF = async () => {
+    // Usar facturas actualizadas desde BD si están disponibles (incluyen NC aplicadas)
+    const facturasParaPDF = facturasActualizadas.length > 0 ? facturasActualizadas : facturas;
+    console.log('📄 Generando PDF con', facturasParaPDF.length, 'facturas');
+    facturasParaPDF.forEach(f => {
+      console.log(`📝 Factura ${f.numero_factura} - notas:`, f.notas);
+    });
+
     const doc = new jsPDF();
     const pageWidth = doc.internal.pageSize.width;
     const pageHeight = doc.internal.pageSize.height;
@@ -565,7 +614,7 @@ const [saldosSeleccionados, setSaldosSeleccionados] = useState<{[saldoId: string
     let saldosAplicadosDesdeDB: any[] = [];
     if (saldosAplicados) {
       try {
-        const facturasIds = facturas.map(f => f.id);
+        const facturasIds = facturasParaPDF.map(f => f.id);
         const { data: aplicaciones, error } = await supabase
           .from('aplicaciones_saldo')
           .select(`
@@ -595,7 +644,7 @@ const [saldosSeleccionados, setSaldosSeleccionados] = useState<{[saldoId: string
     doc.rect(0, 0, pageWidth, 45, 'F');
 
     // Determinar si hay un único proveedor o múltiples
-    const proveedoresUnicos = [...new Set(facturas.map(f => f.emisor_nombre))];
+    const proveedoresUnicos = [...new Set(facturasParaPDF.map(f => f.emisor_nombre))];
     const esProveedorUnico = proveedoresUnicos.length === 1;
 
     // Título principal
@@ -616,9 +665,9 @@ const [saldosSeleccionados, setSaldosSeleccionados] = useState<{[saldoId: string
     doc.setFontSize(11);
     doc.setFont('helvetica', 'normal');
     if (esProveedorUnico) {
-      doc.text(`${facturas.length} ${facturas.length === 1 ? 'Factura' : 'Facturas'}`, pageWidth / 2, 28, { align: 'center' });
+      doc.text(`${facturasParaPDF.length} ${facturasParaPDF.length === 1 ? 'Factura' : 'Facturas'}`, pageWidth / 2, 28, { align: 'center' });
     } else {
-      doc.text(`${facturas.length} Facturas - ${proveedoresUnicos.length} Proveedores`, pageWidth / 2, 28, { align: 'center' });
+      doc.text(`${facturasParaPDF.length} Facturas - ${proveedoresUnicos.length} Proveedores`, pageWidth / 2, 28, { align: 'center' });
     }
 
     // Línea decorativa
@@ -655,7 +704,7 @@ const [saldosSeleccionados, setSaldosSeleccionados] = useState<{[saldoId: string
     doc.setFontSize(16);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(59, 130, 246);
-    doc.text(facturas.length.toString(), 14 + colWidth / 2, currentY + 18, { align: 'center' });
+    doc.text(facturasParaPDF.length.toString(), 14 + colWidth / 2, currentY + 18, { align: 'center' });
 
     // Total Original
     doc.setFontSize(8);
@@ -738,7 +787,7 @@ const [saldosSeleccionados, setSaldosSeleccionados] = useState<{[saldoId: string
     // Calcular totales primero
     const totalProntoPagoCalc = calcularTotalProntoPago();
     const totalRetencionesCalc = calcularTotalRetenciones();
-    const totalDescuentosAdicionalesCalc = facturas.reduce((sum, f) => {
+    const totalDescuentosAdicionalesCalc = facturasParaPDF.reduce((sum, f) => {
       if (!f.descuentos_antes_iva) return sum;
       try {
         const descuentos = JSON.parse(f.descuentos_antes_iva);
@@ -755,7 +804,7 @@ const [saldosSeleccionados, setSaldosSeleccionados] = useState<{[saldoId: string
     }, 0);
 
     // Calcular total de notas de crédito aplicadas
-    const notasCreditoAplicadas = facturas.flatMap(f => {
+    const notasCreditoAplicadas = facturasParaPDF.flatMap(f => {
       const { notasCredito } = extraerNotasCredito(f);
       return notasCredito.map(nc => ({
         facturaNumero: f.numero_factura,
@@ -783,7 +832,7 @@ const [saldosSeleccionados, setSaldosSeleccionados] = useState<{[saldoId: string
 
       // Descuentos de pronto pago por factura
       if (totalProntoPagoCalc > 0) {
-        facturas.forEach(f => {
+        facturasParaPDF.forEach(f => {
           if (facturasConProntoPago.has(f.id) && f.porcentaje_pronto_pago && f.porcentaje_pronto_pago > 0) {
             const baseSinIva = obtenerBaseSinIVAOriginal(f);
             const montoProntoPago = baseSinIva * (f.porcentaje_pronto_pago / 100);
@@ -798,7 +847,7 @@ const [saldosSeleccionados, setSaldosSeleccionados] = useState<{[saldoId: string
 
       // Descuentos adicionales por factura
       if (totalDescuentosAdicionalesCalc > 0) {
-        facturas.forEach(f => {
+        facturasParaPDF.forEach(f => {
           if (!f.descuentos_antes_iva) return;
           try {
             const descuentos = JSON.parse(f.descuentos_antes_iva);
@@ -822,7 +871,7 @@ const [saldosSeleccionados, setSaldosSeleccionados] = useState<{[saldoId: string
 
       // Notas de crédito por factura
       if (totalNotasCreditoAplicadas > 0) {
-        facturas.forEach(f => {
+        facturasParaPDF.forEach(f => {
           const { notasCredito } = extraerNotasCredito(f);
           notasCredito.forEach(nc => {
             descuentosData.push([
@@ -836,7 +885,7 @@ const [saldosSeleccionados, setSaldosSeleccionados] = useState<{[saldoId: string
 
       // Retenciones por factura
       if (totalRetencionesCalc > 0) {
-        facturas.forEach(f => {
+        facturasParaPDF.forEach(f => {
           if (f.tiene_retencion && f.monto_retencion) {
             const baseSinIva = obtenerBaseSinIVADespuesNotasCredito(f);
             const retencion = baseSinIva * (f.monto_retencion / 100);
@@ -897,7 +946,7 @@ const [saldosSeleccionados, setSaldosSeleccionados] = useState<{[saldoId: string
     currentY += 15;
 
     // Tabla detallada de facturas
-    const tableData = facturas.map((factura, index) => {
+    const tableData = facturasParaPDF.map((factura, index) => {
       const detalles = calcularDetallesFactura(factura);
       const rows: any[] = [];
 
@@ -1057,7 +1106,7 @@ const [saldosSeleccionados, setSaldosSeleccionados] = useState<{[saldoId: string
         if (saldoInfo.monto > 0) {
           const saldo = saldosPorProveedor[saldoInfo.proveedorNit]?.find(s => s.id === saldoId);
           if (saldo) {
-            const proveedor = facturas.find(f => f.emisor_nit === saldoInfo.proveedorNit);
+            const proveedor = facturasParaPDF.find(f => f.emisor_nit === saldoInfo.proveedorNit);
             const origen = saldo.numero_factura_origen
               ? `${proveedor?.emisor_nombre} - Factura: ${saldo.numero_factura_origen}`
               : `${proveedor?.emisor_nombre} - ${saldo.motivo}`;
@@ -1255,7 +1304,7 @@ const [saldosSeleccionados, setSaldosSeleccionados] = useState<{[saldoId: string
         .substring(0, 40); // Limitar longitud
       fileName = `Pago_${nombreLimpio}_${timestamp}.pdf`;
     } else {
-      fileName = `Pago_Multiple_${timestamp}_${facturas.length}_facturas.pdf`;
+      fileName = `Pago_Multiple_${timestamp}_${facturasParaPDF.length}_facturas.pdf`;
     }
 
     // Descargar PDF inmediatamente
@@ -1264,7 +1313,7 @@ const [saldosSeleccionados, setSaldosSeleccionados] = useState<{[saldoId: string
 
     // Guardar el PDF en Supabase Storage
     try {
-      console.log('💾 Iniciando guardado de comprobante múltiple para', facturas.length, 'facturas');
+      console.log('💾 Iniciando guardado de comprobante múltiple para', facturasParaPDF.length, 'facturas');
 
       if (soporteFile) {
         const soporteFileName = sanitizeFileName(soporteFile.name);
@@ -1305,8 +1354,8 @@ const [saldosSeleccionados, setSaldosSeleccionados] = useState<{[saldoId: string
       console.log('✅ PDF subido correctamente:', uploadData);
 
       // Calcular resumen de totales
-      const totalOriginal = facturas.reduce((sum, f) => sum + obtenerTotalOriginalFactura(f), 0);
-      const totalPagado = facturas.reduce((sum, f) => {
+      const totalOriginal = facturasParaPDF.reduce((sum, f) => sum + obtenerTotalOriginalFactura(f), 0);
+      const totalPagado = facturasParaPDF.reduce((sum, f) => {
         const detalles = calcularDetallesFactura(f);
         return sum + detalles.valorReal;
       }, 0);
@@ -1317,7 +1366,7 @@ const [saldosSeleccionados, setSaldosSeleccionados] = useState<{[saldoId: string
 
       console.log('👤 User ID:', userId);
 
-      const facturasIds = facturas.map(f => f.id);
+      const facturasIds = facturasParaPDF.map(f => f.id);
       console.log('📋 IDs de facturas:', facturasIds);
 
       // Convertir la fecha correctamente
@@ -1342,7 +1391,7 @@ const [saldosSeleccionados, setSaldosSeleccionados] = useState<{[saldoId: string
               .filter(([_, saldoInfo]) => saldoInfo.monto > 0)
               .map(([saldoId, saldoInfo]) => {
                 const saldo = saldosPorProveedor[saldoInfo.proveedorNit]?.find(s => s.id === saldoId);
-                const proveedor = facturas.find(f => f.emisor_nit === saldoInfo.proveedorNit);
+                const proveedor = facturasParaPDF.find(f => f.emisor_nit === saldoInfo.proveedorNit);
                 return {
                   saldo_id: saldoId,
                   monto: saldoInfo.monto,
@@ -1381,7 +1430,7 @@ const [saldosSeleccionados, setSaldosSeleccionados] = useState<{[saldoId: string
         metodo_pago: metodoPagoFinal,
         fecha_pago: fechaPagoComprobante,
         total_pagado: totalPagado,
-        cantidad_facturas: facturas.length,
+        cantidad_facturas: facturasParaPDF.length,
         pdf_file_path: storagePath,
         soporte_pago_file_path: soportePagoPath,
         facturas_ids: facturasIds,
@@ -1399,7 +1448,7 @@ const [saldosSeleccionados, setSaldosSeleccionados] = useState<{[saldoId: string
             tipo: soporteFile?.type || null
           } : null,
           total_notas_credito: totalNotasCreditoAplicadas,
-          facturas: facturas.map(f => {
+          facturas: facturasParaPDF.map(f => {
             const detalles = calcularDetallesFactura(f);
             return {
               id: f.id,

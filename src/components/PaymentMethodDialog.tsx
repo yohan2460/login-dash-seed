@@ -91,6 +91,10 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
   const [soporteFile, setSoporteFile] = useState<File | null>(null);
   const soporteInputRef = useRef<HTMLInputElement | null>(null);
 
+  // Estado para factura actualizada desde BD (para asegurar datos frescos con NC)
+  const [facturaActualizada, setFacturaActualizada] = useState<Factura | null>(null);
+  const [cargandoFactura, setCargandoFactura] = useState(false);
+
   const { toast } = useToast();
 
   const formatCurrency = (amount: number) => {
@@ -216,9 +220,45 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
     }
   }, [factura, isOpen]);
 
+  // Recargar factura desde BD cuando se abre el diálogo para asegurar datos frescos (incluye NC aplicadas)
+  useEffect(() => {
+    const recargarFacturaDesdeDB = async () => {
+      if (!factura?.id || !isOpen) {
+        setFacturaActualizada(null);
+        return;
+      }
+
+      setCargandoFactura(true);
+      try {
+        const { data, error } = await supabase
+          .from('facturas')
+          .select('*')
+          .eq('id', factura.id)
+          .single();
+
+        if (error) {
+          console.error('Error al recargar factura:', error);
+          setFacturaActualizada(null);
+        } else if (data) {
+          console.log('✅ Factura recargada desde BD:', data.numero_factura);
+          console.log('📝 Campo notas:', data.notas);
+          setFacturaActualizada(data as Factura);
+        }
+      } catch (error) {
+        console.error('Error al recargar factura:', error);
+        setFacturaActualizada(null);
+      } finally {
+        setCargandoFactura(false);
+      }
+    };
+
+    recargarFacturaDesdeDB();
+  }, [factura?.id, isOpen]);
+
   useEffect(() => {
     if (!isOpen) {
       setSoporteFile(null);
+      setFacturaActualizada(null);
       if (soporteInputRef.current) {
         soporteInputRef.current.value = '';
       }
@@ -425,7 +465,12 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
 
   // Función auxiliar para generar y guardar el PDF del comprobante
   const generarYGuardarComprobantePDF = async () => {
-    if (!factura) return null;
+    // Usar factura actualizada desde BD si está disponible (incluye NC aplicadas)
+    const facturaParaPDF = facturaActualizada || factura;
+    if (!facturaParaPDF) return null;
+
+    console.log('📄 Generando PDF con factura:', facturaParaPDF.numero_factura);
+    console.log('📝 Campo notas en factura para PDF:', facturaParaPDF.notas);
 
     const doc = new jsPDF();
     const pageWidth = doc.internal.pageSize.width;
@@ -459,7 +504,7 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
             medio_pago
           )
         `)
-          .eq('factura_destino_id', factura.id);
+          .eq('factura_destino_id', facturaParaPDF.id);
 
         if (!error && aplicaciones) {
           saldosAplicadosDesdeDB = aplicaciones;
@@ -471,32 +516,32 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
     }
 
     // Calcular valores
-    const valoresOriginales = obtenerValoresOriginales(factura);
-    const totalOriginalDisplay = valoresOriginales.totalOriginal ?? factura.total_a_pagar;
-    const totalSinIvaAjustado = obtenerBaseSinIVADespuesNotasCredito(factura);
-    const totalSinIvaOriginal = valoresOriginales.totalSinIvaOriginal ?? obtenerBaseSinIVAOriginal(factura);
-    const retencion = factura.tiene_retencion && factura.monto_retencion
-      ? totalSinIvaAjustado * ((factura.monto_retencion || 0) / 100)
+    const valoresOriginales = obtenerValoresOriginales(facturaParaPDF);
+    const totalOriginalDisplay = valoresOriginales.totalOriginal ?? facturaParaPDF.total_a_pagar;
+    const totalSinIvaAjustado = obtenerBaseSinIVADespuesNotasCredito(facturaParaPDF);
+    const totalSinIvaOriginal = valoresOriginales.totalSinIvaOriginal ?? obtenerBaseSinIVAOriginal(facturaParaPDF);
+    const retencion = facturaParaPDF.tiene_retencion && facturaParaPDF.monto_retencion
+      ? totalSinIvaAjustado * ((facturaParaPDF.monto_retencion || 0) / 100)
       : 0;
-    const valorFinal = obtenerValorFinal(factura);
+    const valorFinal = obtenerValorFinal(facturaParaPDF);
 
     // Para pago partido, siempre aplicar pronto pago si está disponible
     // Para pago normal, respetar la decisión del usuario
     const aplicarProntoPago = usarPagoPartido
-      ? factura.porcentaje_pronto_pago && factura.porcentaje_pronto_pago > 0
-      : usedProntoPago === 'yes' && factura.porcentaje_pronto_pago;
+      ? facturaParaPDF.porcentaje_pronto_pago && facturaParaPDF.porcentaje_pronto_pago > 0
+      : usedProntoPago === 'yes' && facturaParaPDF.porcentaje_pronto_pago;
 
     const prontoPago = aplicarProntoPago
-      ? totalSinIvaOriginal * ((factura.porcentaje_pronto_pago || 0) / 100)
+      ? totalSinIvaOriginal * ((facturaParaPDF.porcentaje_pronto_pago || 0) / 100)
       : 0;
     const totalDescuentosResumen = Math.max(0, totalOriginalDisplay - valorFinal);
 
     // Calcular descuentos adicionales antes de IVA
     let descuentosAdicionales: any[] = [];
     let totalDescuentosAdicionales = 0;
-    if (factura.descuentos_antes_iva) {
+    if (facturaParaPDF.descuentos_antes_iva) {
       try {
-        descuentosAdicionales = JSON.parse(factura.descuentos_antes_iva);
+        descuentosAdicionales = JSON.parse(facturaParaPDF.descuentos_antes_iva);
         totalDescuentosAdicionales = descuentosAdicionales.reduce((sum, desc) => {
           if (desc.tipo === 'porcentaje') {
             return sum + (totalSinIvaOriginal * desc.valor / 100);
@@ -507,7 +552,7 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
         console.error('Error parsing descuentos_antes_iva:', error);
       }
     }
-    const { notasCredito, totalNotasCredito } = obtenerNotasCreditoAplicadas(factura);
+    const { notasCredito, totalNotasCredito } = obtenerNotasCreditoAplicadas(facturaParaPDF);
 
     // ========== ENCABEZADO ==========
     doc.setFillColor(59, 130, 246);
@@ -516,14 +561,14 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
     doc.setTextColor(255, 255, 255);
     doc.setFontSize(22);
     doc.setFont('helvetica', 'bold');
-    const nombreProveedor = factura.emisor_nombre.length > 35
-      ? factura.emisor_nombre.substring(0, 32) + '...'
-      : factura.emisor_nombre;
+    const nombreProveedor = facturaParaPDF.emisor_nombre.length > 35
+      ? facturaParaPDF.emisor_nombre.substring(0, 32) + '...'
+      : facturaParaPDF.emisor_nombre;
     doc.text(`PAGO - ${nombreProveedor}`, pageWidth / 2, 20, { align: 'center' });
 
     doc.setFontSize(11);
     doc.setFont('helvetica', 'normal');
-    doc.text(`Factura #${factura.numero_factura}`, pageWidth / 2, 28, { align: 'center' });
+    doc.text(`Factura #${facturaParaPDF.numero_factura}`, pageWidth / 2, 28, { align: 'center' });
 
     doc.setDrawColor(255, 255, 255);
     doc.setLineWidth(0.5);
@@ -595,7 +640,7 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
 
       if (prontoPago > 0) {
         descuentosData.push([
-          `Descuento Pronto Pago (${factura.porcentaje_pronto_pago}%)`,
+          `Descuento Pronto Pago (${facturaParaPDF.porcentaje_pronto_pago}%)`,
           `-${formatCurrency(prontoPago)}`,
           'Descuento'
         ]);
@@ -629,7 +674,7 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
 
       if (retencion > 0) {
         descuentosData.push([
-          `Retención en la Fuente (${factura.monto_retencion}%)`,
+          `Retención en la Fuente (${facturaParaPDF.monto_retencion}%)`,
           `-${formatCurrency(retencion)}`,
           'Retención'
         ]);
@@ -688,11 +733,11 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
     // Tabla de información básica (sin descuentos, ya están en la sección anterior)
     const tableData: any[] = [];
 
-    tableData.push(['N° Factura', factura.numero_factura]);
-    tableData.push(['Proveedor', factura.emisor_nombre]);
-    tableData.push(['NIT', factura.emisor_nit]);
-    tableData.push(['Clasificación', factura.clasificacion === 'mercancia' ? 'Mercancía' : 'Gasto']);
-    tableData.push(['Fecha de Emisión', new Date(factura.created_at).toLocaleDateString('es-CO')]);
+    tableData.push(['N° Factura', facturaParaPDF.numero_factura]);
+    tableData.push(['Proveedor', facturaParaPDF.emisor_nombre]);
+    tableData.push(['NIT', facturaParaPDF.emisor_nit]);
+    tableData.push(['Clasificación', facturaParaPDF.clasificacion === 'mercancia' ? 'Mercancía' : 'Gasto']);
+    tableData.push(['Fecha de Emisión', new Date(facturaParaPDF.created_at).toLocaleDateString('es-CO')]);
 
     autoTable(doc, {
       startY: currentY,
@@ -910,11 +955,11 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
     );
 
     // Nombre del archivo
-    const nombreLimpio = factura.emisor_nombre
+    const nombreLimpio = facturaParaPDF.emisor_nombre
       .replace(/[^a-zA-Z0-9\s]/g, '')
       .replace(/\s+/g, '_')
       .substring(0, 40);
-    const fileName = `Pago_${nombreLimpio}_${factura.numero_factura}_${timestamp}.pdf`;
+    const fileName = `Pago_${nombreLimpio}_${facturaParaPDF.numero_factura}_${timestamp}.pdf`;
 
     // Descargar el PDF inmediatamente
     doc.save(fileName);
@@ -922,7 +967,7 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
 
     // Guardar el PDF en Supabase Storage
     try {
-      console.log('💾 Iniciando guardado de comprobante para factura:', factura.id);
+      console.log('💾 Iniciando guardado de comprobante para factura:', facturaParaPDF.id);
 
       if (soporteFile) {
         const soporteFileName = sanitizeFileName(soporteFile.name);
@@ -1025,11 +1070,11 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
         cantidad_facturas: 1,
         pdf_file_path: storagePath,
         soporte_pago_file_path: soportePagoPath,
-        facturas_ids: [factura.id],
+        facturas_ids: [facturaParaPDF.id],
         detalles: {
-          factura_numero: factura.numero_factura,
-          proveedor: factura.emisor_nombre,
-          nit: factura.emisor_nit,
+          factura_numero: facturaParaPDF.numero_factura,
+          proveedor: facturaParaPDF.emisor_nombre,
+          nit: facturaParaPDF.emisor_nit,
           total_original: totalOriginalDisplay,
           retencion: retencion,
           pronto_pago: prontoPago,

@@ -4,7 +4,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Eye, Tag, CreditCard, Calendar, Clock, AlertTriangle, CheckCircle, Trash2, FileCheck, Download, Minus, Archive, Edit, Percent, Paperclip, Building2, FileText } from 'lucide-react';
+import { Eye, Tag, CreditCard, Calendar, Clock, AlertTriangle, CheckCircle, Trash2, FileCheck, Download, Minus, Archive, Edit, Percent, Paperclip, Building2, FileText, RefreshCw } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
@@ -79,9 +79,11 @@ interface FacturasTableProps {
   showViewButtons?: boolean;
   onViewInfoClick?: (factura: Factura) => void;
   onViewPDFClick?: (factura: Factura) => void;
+  showRegeneratePDF?: boolean;
+  onRegeneratePDFClick?: (factura: Factura) => void;
 }
 
-export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPaymentInfo = false, onDelete, onSistematizarClick, showSistematizarButton = false, allowDelete = true, showOriginalClassification = false, onNotaCreditoClick, refreshData, showActions = true, showClassifyButton = true, showValorRealAPagar = false, showOriginalValueForNC = false, showIngresoSistema = false, onIngresoSistemaClick, showEditButton = false, onEditClick, showMultiplePayment = false, onMultiplePayClick, highlightedId = null, showViewButtons = false, onViewInfoClick, onViewPDFClick }: FacturasTableProps) {
+export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPaymentInfo = false, onDelete, onSistematizarClick, showSistematizarButton = false, allowDelete = true, showOriginalClassification = false, onNotaCreditoClick, refreshData, showActions = true, showClassifyButton = true, showValorRealAPagar = false, showOriginalValueForNC = false, showIngresoSistema = false, onIngresoSistemaClick, showEditButton = false, onEditClick, showMultiplePayment = false, onMultiplePayClick, highlightedId = null, showViewButtons = false, onViewInfoClick, onViewPDFClick, showRegeneratePDF = false, onRegeneratePDFClick }: FacturasTableProps) {
   const { toast } = useToast();
   const { user } = useAuth();
   const [selectedFacturas, setSelectedFacturas] = useState<string[]>([]);
@@ -1134,6 +1136,19 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
                       </Button>
                     )}
 
+                    {/* Botón Regenerar PDF - Para facturas pagadas */}
+                    {showRegeneratePDF && onRegeneratePDFClick && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => onRegeneratePDFClick(factura)}
+                        className="flex-1 border-orange-200 text-orange-700 hover:bg-orange-50"
+                      >
+                        <RefreshCw className="w-4 h-4 mr-1" />
+                        Regenerar PDF
+                      </Button>
+                    )}
+
                     {/* Botón Editar */}
                     {showEditButton && onEditClick && (
                       <Button
@@ -1473,6 +1488,19 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
                           title="Nota Crédito"
                         >
                           <Minus className="w-3 h-3 text-red-600" />
+                        </Button>
+                      )}
+
+                      {/* Botón Regenerar PDF - Para facturas pagadas */}
+                      {showRegeneratePDF && onRegeneratePDFClick && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => onRegeneratePDFClick(factura)}
+                          className="h-7 w-7 p-0 hover:bg-orange-50"
+                          title="Regenerar PDF"
+                        >
+                          <RefreshCw className="w-3 h-3 text-orange-600" />
                         </Button>
                       )}
 

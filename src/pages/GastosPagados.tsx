@@ -14,6 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { ModernStatsCard } from '@/components/ModernStatsCard';
 import { FacturasTable } from '@/components/FacturasTable';
 import { NotaCreditoDialog } from '@/components/NotaCreditoDialog';
+import { RegeneratePDFDialog } from '@/components/RegeneratePDFDialog';
 import { ModernLayout } from '@/components/ModernLayout';
 import { useSupabaseQuery } from '@/hooks/useSupabaseQuery';
 
@@ -87,6 +88,8 @@ export function GastosPagados() {
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
   const [selectedFacturaForNotaCredito, setSelectedFacturaForNotaCredito] = useState<Factura | null>(null);
   const [isNotaCreditoDialogOpen, setIsNotaCreditoDialogOpen] = useState(false);
+  const [selectedFacturaForRegeneratePDF, setSelectedFacturaForRegeneratePDF] = useState<Factura | null>(null);
+  const [isRegeneratePDFDialogOpen, setIsRegeneratePDFDialogOpen] = useState(false);
 
   useEffect(() => {
     const highlightId = searchParams.get('highlight');
@@ -118,6 +121,16 @@ export function GastosPagados() {
     refetch();
     setIsNotaCreditoDialogOpen(false);
     setSelectedFacturaForNotaCredito(null);
+  };
+
+  const handleRegeneratePDF = (factura: Factura) => {
+    setSelectedFacturaForRegeneratePDF(factura);
+    setIsRegeneratePDFDialogOpen(true);
+  };
+
+  const handlePDFRegenerated = () => {
+    setIsRegeneratePDFDialogOpen(false);
+    setSelectedFacturaForRegeneratePDF(null);
   };
 
   const formatCurrency = (amount: number) => {
@@ -341,9 +354,11 @@ export function GastosPagados() {
                 facturas={filteredFacturas}
                 onClassifyClick={() => {}}
                 refreshData={refetch}
-                showActions={false}
+                showActions={true}
                 showClassifyButton={false}
                 onNotaCreditoClick={handleNotaCredito}
+                showRegeneratePDF={true}
+                onRegeneratePDFClick={handleRegeneratePDF}
                 highlightedId={highlightedId}
               />
             )}
@@ -359,6 +374,17 @@ export function GastosPagados() {
             setSelectedFacturaForNotaCredito(null);
           }}
           onNotaCreditoCreated={handleNotaCreditoCreated}
+        />
+
+        {/* Regenerar PDF Dialog */}
+        <RegeneratePDFDialog
+          factura={selectedFacturaForRegeneratePDF}
+          isOpen={isRegeneratePDFDialogOpen}
+          onClose={() => {
+            setIsRegeneratePDFDialogOpen(false);
+            setSelectedFacturaForRegeneratePDF(null);
+          }}
+          onPDFRegenerated={handlePDFRegenerated}
         />
       </div>
     </ModernLayout>

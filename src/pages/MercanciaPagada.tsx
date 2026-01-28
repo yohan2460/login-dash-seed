@@ -14,6 +14,7 @@ import { Package, DollarSign, CalendarIcon, Banknote, Search, SortAsc } from 'lu
 import { ModernStatsCard } from '@/components/ModernStatsCard';
 import { FacturasTable } from '@/components/FacturasTable';
 import { NotaCreditoDialog } from '@/components/NotaCreditoDialog';
+import { RegeneratePDFDialog } from '@/components/RegeneratePDFDialog';
 import { ModernLayout } from '@/components/ModernLayout';
 import { useToast } from '@/hooks/use-toast';
 import { useSupabaseQuery } from '@/hooks/useSupabaseQuery';
@@ -58,6 +59,8 @@ export function MercanciaPagada() {
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
   const [selectedFacturaForNotaCredito, setSelectedFacturaForNotaCredito] = useState<Factura | null>(null);
   const [isNotaCreditoDialogOpen, setIsNotaCreditoDialogOpen] = useState(false);
+  const [selectedFacturaForRegeneratePDF, setSelectedFacturaForRegeneratePDF] = useState<Factura | null>(null);
+  const [isRegeneratePDFDialogOpen, setIsRegeneratePDFDialogOpen] = useState(false);
 
   const { data: queryData, isLoading, refetch } = useSupabaseQuery(
     ['facturas', 'mercancia', 'pagada'],
@@ -287,6 +290,15 @@ export function MercanciaPagada() {
     setSelectedFacturaForNotaCredito(null);
   };
 
+  const handleRegeneratePDF = (factura: Factura) => {
+    setSelectedFacturaForRegeneratePDF(factura);
+    setIsRegeneratePDFDialogOpen(true);
+  };
+
+  const handlePDFRegenerated = () => {
+    setIsRegeneratePDFDialogOpen(false);
+    setSelectedFacturaForRegeneratePDF(null);
+  };
 
   if (loading) {
     return <div>Cargando...</div>;
@@ -488,6 +500,8 @@ export function MercanciaPagada() {
                 showIngresoSistema={true}
                 onIngresoSistemaClick={handleIngresoSistema}
                 onNotaCreditoClick={handleNotaCredito}
+                showRegeneratePDF={true}
+                onRegeneratePDFClick={handleRegeneratePDF}
                 highlightedId={highlightedId}
               />
             )}
@@ -503,6 +517,17 @@ export function MercanciaPagada() {
             setSelectedFacturaForNotaCredito(null);
           }}
           onNotaCreditoCreated={handleNotaCreditoCreated}
+        />
+
+        {/* Regenerar PDF Dialog */}
+        <RegeneratePDFDialog
+          factura={selectedFacturaForRegeneratePDF}
+          isOpen={isRegeneratePDFDialogOpen}
+          onClose={() => {
+            setIsRegeneratePDFDialogOpen(false);
+            setSelectedFacturaForRegeneratePDF(null);
+          }}
+          onPDFRegenerated={handlePDFRegenerated}
         />
       </div>
     </ModernLayout>
