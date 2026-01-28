@@ -248,9 +248,33 @@ export function RegeneratePDFDialog({ factura, isOpen, onClose, onPDFRegenerated
         }
       };
 
-      // Calcular valores
+      // Obtener las notas de crédito (para mostrar en el desglose)
+      const { notasCredito, totalNotasCredito } = obtenerNotasCreditoAplicadas(facturaParaPDF, notasCreditoRelacionadas);
+
+      console.log('📊 Notas de crédito encontradas:', notasCredito);
+      console.log('📊 Total notas de crédito:', totalNotasCredito);
+
+      // Calcular valores originales
       const valoresOriginales = obtenerValoresOriginales(facturaParaPDF);
-      const totalOriginalDisplay = valoresOriginales.totalOriginal ?? facturaParaPDF.total_a_pagar;
+
+      // El total original es el valor ANTES de cualquier nota de crédito
+      // IMPORTANTE: Si notas.total_original no existe, RECONSTRUIR sumando las NC al total actual
+      // porque total_a_pagar YA tiene las NC descontadas
+      let totalOriginalDisplay = valoresOriginales.totalOriginal;
+
+      if (!totalOriginalDisplay) {
+        // No hay total_original guardado, reconstruir
+        if (totalNotasCredito > 0) {
+          // El total_a_pagar actual YA tiene las NC restadas, sumamos para obtener el original
+          totalOriginalDisplay = facturaParaPDF.total_a_pagar + totalNotasCredito;
+          console.log('📊 Reconstruyendo total original:', facturaParaPDF.total_a_pagar, '+', totalNotasCredito, '=', totalOriginalDisplay);
+        } else {
+          totalOriginalDisplay = facturaParaPDF.total_a_pagar;
+        }
+      }
+
+      console.log('📊 Total original a mostrar:', totalOriginalDisplay);
+
       const totalSinIvaAjustado = obtenerBaseSinIVADespuesNotasCredito(facturaParaPDF);
       const totalSinIvaOriginal = valoresOriginales.totalSinIvaOriginal ?? obtenerBaseSinIVAOriginal(facturaParaPDF);
 
@@ -258,7 +282,11 @@ export function RegeneratePDFDialog({ factura, isOpen, onClose, onPDFRegenerated
         ? totalSinIvaAjustado * ((facturaParaPDF.monto_retencion || 0) / 100)
         : 0;
 
+      // IMPORTANTE: El valor_real_a_pagar YA tiene las NC aplicadas (NotaCreditoDialog lo actualizó)
+      // NO debemos restar las NC de nuevo, solo usarlas para el desglose
       const valorFinal = facturaParaPDF.valor_real_a_pagar ?? calcularValorRealAPagar(facturaParaPDF);
+
+      console.log('📊 Total original:', totalOriginalDisplay, '-> Valor final:', valorFinal);
 
       const aplicarProntoPago = facturaParaPDF.uso_pronto_pago && facturaParaPDF.porcentaje_pronto_pago && facturaParaPDF.porcentaje_pronto_pago > 0;
 
@@ -284,8 +312,6 @@ export function RegeneratePDFDialog({ factura, isOpen, onClose, onPDFRegenerated
           console.error('Error parsing descuentos_antes_iva:', error);
         }
       }
-
-      const { notasCredito, totalNotasCredito } = obtenerNotasCreditoAplicadas(facturaParaPDF, notasCreditoRelacionadas);
 
       // ========== ENCABEZADO ==========
       doc.setFillColor(59, 130, 246);
@@ -607,6 +633,22 @@ export function RegeneratePDFDialog({ factura, isOpen, onClose, onPDFRegenerated
   const valoresOriginales = obtenerValoresOriginales(facturaParaMostrar);
   const tieneNotasCredito = notasCredito.length > 0;
 
+  // Total original (antes de NC)
+  // Si no hay total_original guardado, RECONSTRUIR sumando NC al total actual
+  let totalOriginalParaMostrar = valoresOriginales.totalOriginal;
+  if (!totalOriginalParaMostrar) {
+    if (totalNotasCredito > 0) {
+      // total_a_pagar ya tiene NC restadas, sumar para obtener original
+      totalOriginalParaMostrar = facturaParaMostrar.total_a_pagar + totalNotasCredito;
+    } else {
+      totalOriginalParaMostrar = facturaParaMostrar.total_a_pagar;
+    }
+  }
+
+  // El valor final YA tiene las NC aplicadas (NotaCreditoDialog lo actualizó)
+  // NO restar de nuevo
+  const valorFinalParaMostrar = facturaParaMostrar.valor_real_a_pagar ?? facturaParaMostrar.total_a_pagar;
+
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="max-w-lg">
@@ -635,11 +677,17 @@ export function RegeneratePDFDialog({ factura, isOpen, onClose, onPDFRegenerated
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Total Original:</span>
-                  <span className="font-medium">{formatCurrency(valoresOriginales.totalOriginal ?? facturaParaMostrar.total_a_pagar)}</span>
+                  <span className="font-medium">{formatCurrency(totalOriginalParaMostrar)}</span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Valor Pagado:</span>
-                  <span className="font-medium text-green-600">{formatCurrency(facturaParaMostrar.valor_real_a_pagar ?? facturaParaMostrar.total_a_pagar)}</span>
+                {tieneNotasCredito && (
+                  <div className="flex justify-between text-red-600">
+                    <span>Notas de Crédito:</span>
+                    <span className="font-medium">-{formatCurrency(totalNotasCredito)}</span>
+                  </div>
+                )}
+                <div className="flex justify-between border-t pt-2 mt-2">
+                  <span className="font-medium">Valor Final a Pagar:</span>
+                  <span className="font-bold text-green-600">{formatCurrency(valorFinalParaMostrar)}</span>
                 </div>
               </div>
             </CardContent>

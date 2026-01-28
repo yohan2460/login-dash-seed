@@ -95,6 +95,14 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
   const [facturaActualizada, setFacturaActualizada] = useState<Factura | null>(null);
   const [cargandoFactura, setCargandoFactura] = useState(false);
 
+  // Estado para notas de crédito relacionadas encontradas en BD
+  const [notasCreditoRelacionadas, setNotasCreditoRelacionadas] = useState<{
+    id: string;
+    numero_factura: string;
+    total_a_pagar: number;
+    fecha_aplicacion?: string;
+  }[]>([]);
+
   const { toast } = useToast();
 
   const formatCurrency = (amount: number) => {
@@ -225,11 +233,13 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
     const recargarFacturaDesdeDB = async () => {
       if (!factura?.id || !isOpen) {
         setFacturaActualizada(null);
+        setNotasCreditoRelacionadas([]);
         return;
       }
 
       setCargandoFactura(true);
       try {
+        // 1. Recargar la factura actual
         const { data, error } = await supabase
           .from('facturas')
           .select('*')
@@ -244,9 +254,48 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
           console.log('📝 Campo notas:', data.notas);
           setFacturaActualizada(data as Factura);
         }
+
+        // 2. Buscar notas de crédito relacionadas en la BD
+        const { data: notasCredito, error: errorNC } = await supabase
+          .from('facturas')
+          .select('id, numero_factura, total_a_pagar, notas, created_at')
+          .eq('clasificacion', 'nota_credito')
+          .eq('estado_nota_credito', 'aplicada');
+
+        if (errorNC) {
+          console.error('Error buscando notas de crédito:', errorNC);
+        } else if (notasCredito && notasCredito.length > 0) {
+          // Filtrar las que aplican a esta factura
+          const ncRelacionadas: typeof notasCreditoRelacionadas = [];
+
+          for (const nc of notasCredito) {
+            if (nc.notas) {
+              try {
+                const notasData = JSON.parse(nc.notas);
+                if (notasData.factura_aplicada_id === factura.id) {
+                  console.log('✅ NC relacionada encontrada:', nc.numero_factura);
+                  ncRelacionadas.push({
+                    id: nc.id,
+                    numero_factura: nc.numero_factura,
+                    total_a_pagar: notasData.valor_aplicado || nc.total_a_pagar,
+                    fecha_aplicacion: notasData.fecha_aplicacion
+                  });
+                }
+              } catch (parseError) {
+                console.error('Error parseando notas de NC:', parseError);
+              }
+            }
+          }
+
+          console.log('📊 Notas de crédito relacionadas:', ncRelacionadas);
+          setNotasCreditoRelacionadas(ncRelacionadas);
+        } else {
+          setNotasCreditoRelacionadas([]);
+        }
       } catch (error) {
         console.error('Error al recargar factura:', error);
         setFacturaActualizada(null);
+        setNotasCreditoRelacionadas([]);
       } finally {
         setCargandoFactura(false);
       }
@@ -1494,6 +1543,57 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
                   <span>Total con IVA:</span>
                   <span>{formatCurrency(factura.total_a_pagar)}</span>
                 </div>
+
+                {/* Mostrar Notas de Crédito si existen */}
+                {(() => {
+                  // Obtener NC del campo notas
+                  const { notasCredito: ncDeNotas } = obtenerNotasCreditoAplicadas(facturaActualizada || factura);
+
+                  // Combinar con NC de la BD (evitando duplicados)
+                  const todasLasNC: { numero: string; valor: number }[] = [...ncDeNotas];
+
+                  notasCreditoRelacionadas.forEach(ncBD => {
+                    const yaExiste = todasLasNC.some(nc => nc.numero === ncBD.numero_factura);
+                    if (!yaExiste) {
+                      todasLasNC.push({
+                        numero: ncBD.numero_factura,
+                        valor: ncBD.total_a_pagar
+                      });
+                    }
+                  });
+
+                  if (todasLasNC.length === 0) return null;
+
+                  const totalNC = todasLasNC.reduce((sum, nc) => sum + nc.valor, 0);
+
+                  // Calcular el total original (antes de NC)
+                  const valoresOrig = obtenerValoresOriginales(facturaActualizada || factura);
+                  const totalOriginal = valoresOrig.totalOriginal || (factura.total_a_pagar + totalNC);
+
+                  return (
+                    <div className="mt-3 p-3 bg-purple-50 dark:bg-purple-900/20 rounded-lg border-l-4 border-purple-500">
+                      <p className="text-sm font-semibold text-purple-700 dark:text-purple-300 mb-2">
+                        Notas de Crédito Aplicadas:
+                      </p>
+                      <div className="space-y-1">
+                        <div className="flex justify-between text-sm text-purple-600">
+                          <span>Total Original (antes de NC):</span>
+                          <span className="font-medium">{formatCurrency(totalOriginal)}</span>
+                        </div>
+                        {todasLasNC.map((nc, idx) => (
+                          <div key={idx} className="flex justify-between text-sm text-purple-600">
+                            <span>NC #{nc.numero}:</span>
+                            <span className="font-medium">-{formatCurrency(nc.valor)}</span>
+                          </div>
+                        ))}
+                        <div className="flex justify-between text-sm font-bold text-purple-700 pt-1 border-t border-purple-200">
+                          <span>Total Descuento NC:</span>
+                          <span>-{formatCurrency(totalNC)}</span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 {factura.tiene_retencion && factura.monto_retencion && (
                   <div className="text-orange-600 text-sm pt-2 border-t">
