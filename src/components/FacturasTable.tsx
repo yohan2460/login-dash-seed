@@ -195,14 +195,13 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
   };
 
   // Función para descargar comprobante de pago
-  // Prioriza comprobante individual sobre grupal para evitar mostrar facturas que no corresponden
-  const obtenerComprobantePago = async (facturaId: string) => {
-    console.log('🔍 Buscando comprobante para factura ID:', facturaId);
+  const obtenerComprobantePago = async (factura: Pick<Factura, 'id' | 'fecha_pago'>) => {
+    console.log('🔍 Buscando comprobante para factura ID:', factura.id);
 
     const { data: comprobantes, error } = await supabase
       .from('comprobantes_pago')
       .select('*')
-      .filter('facturas_ids', 'cs', `{${facturaId}}`)
+      .filter('facturas_ids', 'cs', `{${factura.id}}`)
       .order('created_at', { ascending: false });
 
     if (error) {
@@ -216,13 +215,19 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
       return null;
     }
 
-    // Prioridad: comprobante individual > comprobante grupal (más reciente)
-    // Si existe un comprobante individual para esta factura, usarlo
-    // Si solo hay grupal, usarlo como fallback
-    const comprobanteIndividual = comprobantes.find(
-      c => c.tipo_comprobante === 'pago_individual' || c.cantidad_facturas === 1
-    );
-    const comprobante = comprobanteIndividual || comprobantes[0];
+    const pickComprobantePreferMultiple = (list: any[]) => {
+      return (
+        list.find(c => c.tipo_comprobante === 'pago_multiple' && (c.cantidad_facturas ?? 0) > 1) ||
+        list.find(c => c.tipo_comprobante === 'pago_individual' || c.cantidad_facturas === 1) ||
+        list[0]
+      );
+    };
+
+    const targetDate = factura.fecha_pago ? factura.fecha_pago.split('T')[0] : null;
+    const comprobantesMismoDia = targetDate
+      ? comprobantes.filter(c => typeof c.fecha_pago === 'string' && c.fecha_pago.split('T')[0] === targetDate)
+      : [];
+    const comprobante = pickComprobantePreferMultiple(comprobantesMismoDia.length > 0 ? comprobantesMismoDia : comprobantes);
 
     console.log('📄 Comprobante seleccionado:', comprobante?.id, 'tipo:', comprobante?.tipo_comprobante);
 
@@ -230,10 +235,10 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
     return detallesParsed ? { ...comprobante, detalles: detallesParsed } : comprobante;
   };
 
-  const descargarComprobante = async (facturaId: string) => {
+  const descargarComprobante = async (factura: Pick<Factura, 'id' | 'fecha_pago'>) => {
     try {
-      console.log('📥 Iniciando descarga de comprobante para factura:', facturaId);
-      const comprobante = await obtenerComprobantePago(facturaId);
+      console.log('📥 Iniciando descarga de comprobante para factura:', factura.id);
+      const comprobante = await obtenerComprobantePago(factura);
 
       if (!comprobante) {
         console.warn('⚠️ No se encontró comprobante');
@@ -303,9 +308,9 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
     }
   };
 
-  const descargarSoportePago = async (facturaId: string) => {
+  const descargarSoportePago = async (factura: Pick<Factura, 'id' | 'fecha_pago'>) => {
     try {
-      const comprobante = await obtenerComprobantePago(facturaId);
+      const comprobante = await obtenerComprobantePago(factura);
 
       const detalles = parseDetalles(comprobante?.detalles);
       const soportePath =
@@ -952,8 +957,8 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
                   {getNotasCreditoInfo(factura) && (
                     <div className="text-sm p-2 bg-green-50 dark:bg-green-900/20 rounded border-l-2 border-green-500">
                       <span className="font-medium text-green-700 dark:text-green-300">Notas de Crédito Aplicadas:</span>
-                      {getNotasCreditoInfo(factura)?.map((nota: any, index: number) => (
-                        <div key={index} className="text-green-600 dark:text-green-400 text-xs">
+                      {getNotasCreditoInfo(factura)?.map((nota: any) => (
+                        <div key={nota.factura_id ?? nota.numero_factura ?? `${factura.id}-${nota.fecha_aplicacion ?? ''}`} className="text-green-600 dark:text-green-400 text-xs">
                           • #{nota.numero_factura}: {formatCurrency(nota.valor_descuento)}
                         </div>
                       ))}
@@ -1545,7 +1550,7 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
                               <Button
                                 variant="ghost"
                                 size="sm"
-                                onClick={() => descargarComprobante(factura.id)}
+                                onClick={() => descargarComprobante(factura)}
                                 className="h-7 w-7 p-0 hover:bg-green-50"
                               >
                                 <Download className="w-3 h-3 text-green-600" />
@@ -1565,7 +1570,7 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
                               <Button
                                 variant="ghost"
                                 size="sm"
-                                onClick={() => descargarSoportePago(factura.id)}
+                                onClick={() => descargarSoportePago(factura)}
                                 className="h-7 w-7 p-0 hover:bg-amber-50"
                               >
                                 <Paperclip className="w-3 h-3 text-amber-600" />

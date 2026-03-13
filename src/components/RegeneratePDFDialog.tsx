@@ -227,12 +227,280 @@ export function RegeneratePDFDialog({ factura, isOpen, onClose, onPDFRegenerated
     }
   };
 
+  const obtenerTotalOriginalDisplay = (facturaActual: Factura, totalNotasCredito: number) => {
+    const valoresOriginales = obtenerValoresOriginales(facturaActual);
+    if (valoresOriginales.totalOriginal) return valoresOriginales.totalOriginal;
+    if (totalNotasCredito > 0) return facturaActual.total_a_pagar + totalNotasCredito;
+    return facturaActual.total_a_pagar;
+  };
+
+  const parseDetalles = (detalles: any) => {
+    if (!detalles) return null;
+    if (typeof detalles === 'string') {
+      try {
+        return JSON.parse(detalles);
+      } catch {
+        return null;
+      }
+    }
+    return detalles;
+  };
+
+  const regenerarComprobanteGrupalSiExiste = async (facturaId: string) => {
+    const { data: comprobanteGrupal, error: errorComprobante } = await supabase
+      .from('comprobantes_pago')
+      .select('id, facturas_ids, pdf_file_path, metodo_pago, fecha_pago, detalles, cantidad_facturas, tipo_comprobante')
+      .contains('facturas_ids', [facturaId])
+      .eq('tipo_comprobante', 'pago_multiple')
+      .gt('cantidad_facturas', 1)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (errorComprobante || !comprobanteGrupal) return null;
+
+    const facturasIds = Array.isArray((comprobanteGrupal as any).facturas_ids)
+      ? ((comprobanteGrupal as any).facturas_ids as string[])
+      : [];
+
+    if (facturasIds.length === 0) return null;
+
+    const { data: facturas, error: errorFacturas } = await supabase
+      .from('facturas')
+      .select('*')
+      .in('id', facturasIds);
+
+    if (errorFacturas || !facturas || facturas.length === 0) return null;
+
+    const facturasOrdenadas = facturasIds
+      .map((id) => facturas.find((f) => f.id === id))
+      .filter(Boolean) as Factura[];
+
+    const doc = new jsPDF();
+    const pageWidth = doc.internal.pageSize.width;
+    const pageHeight = doc.internal.pageSize.height;
+    const topMargin = 20;
+    const bottomMargin = 30;
+    let currentY = 15;
+    const timestamp = Date.now();
+
+    const ensureSpace = (height: number) => {
+      if (currentY + height > pageHeight - bottomMargin) {
+        doc.addPage();
+        currentY = topMargin;
+      }
+    };
+
+    const proveedoresUnicos = [...new Set(facturasOrdenadas.map((f) => f.emisor_nombre))];
+    const esProveedorUnico = proveedoresUnicos.length === 1;
+
+    const totalOriginal = facturasOrdenadas.reduce((sum, f) => {
+      const { totalNotasCredito } = obtenerNotasCreditoAplicadas(f, []);
+      return sum + obtenerTotalOriginalDisplay(f, totalNotasCredito);
+    }, 0);
+
+    const totalPagado = facturasOrdenadas.reduce((sum, f) => {
+      const valor = f.valor_real_a_pagar ?? calcularValorRealAPagar(f);
+      return sum + (valor || 0);
+    }, 0);
+
+    doc.setFillColor(59, 130, 246);
+    doc.rect(0, 0, pageWidth, 45, 'F');
+
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(22);
+    doc.setFont('helvetica', 'bold');
+    if (esProveedorUnico) {
+      const nombre = proveedoresUnicos[0].length > 35 ? `${proveedoresUnicos[0].substring(0, 32)}...` : proveedoresUnicos[0];
+      doc.text(`PAGO - ${nombre}`, pageWidth / 2, 20, { align: 'center' });
+      doc.setFontSize(11);
+      doc.setFont('helvetica', 'normal');
+      doc.text(`${facturasOrdenadas.length} ${facturasOrdenadas.length === 1 ? 'Factura' : 'Facturas'}`, pageWidth / 2, 28, { align: 'center' });
+    } else {
+      doc.text('PAGO MULTIPLE', pageWidth / 2, 20, { align: 'center' });
+      doc.setFontSize(11);
+      doc.setFont('helvetica', 'normal');
+      doc.text(`${facturasOrdenadas.length} Facturas - ${proveedoresUnicos.length} Proveedores`, pageWidth / 2, 28, { align: 'center' });
+    }
+
+    doc.setFontSize(9);
+    doc.text('(PDF Regenerado)', pageWidth / 2, 36, { align: 'center' });
+    doc.setDrawColor(255, 255, 255);
+    doc.setLineWidth(0.5);
+    doc.line(pageWidth / 2 - 30, 40, pageWidth / 2 + 30, 40);
+
+    currentY = 50;
+
+    doc.setTextColor(0, 0, 0);
+    doc.setFillColor(245, 247, 250);
+    doc.roundedRect(14, currentY, pageWidth - 28, 10, 2, 2, 'F');
+    doc.setFontSize(11);
+    doc.setFont('helvetica', 'bold');
+    doc.text('RESUMEN DEL PAGO', 18, currentY + 7);
+    currentY += 15;
+
+    doc.setDrawColor(229, 231, 235);
+    doc.setLineWidth(0.5);
+    doc.roundedRect(14, currentY, pageWidth - 28, 35, 3, 3, 'S');
+
+    const colWidth = (pageWidth - 28) / 3;
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(107, 114, 128);
+    doc.text('Total Original', 14 + colWidth / 2, currentY + 8, { align: 'center' });
+    doc.setFontSize(11);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(0, 0, 0);
+    doc.text(formatCurrency(totalOriginal), 14 + colWidth / 2, currentY + 18, { align: 'center' });
+
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(107, 114, 128);
+    doc.text('Total a Pagar', 14 + colWidth * 1.5, currentY + 8, { align: 'center' });
+    doc.setFontSize(14);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(34, 197, 94);
+    doc.text(formatCurrency(totalPagado), 14 + colWidth * 1.5, currentY + 18, { align: 'center' });
+
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(107, 114, 128);
+    doc.text('Total Descuentos', 14 + colWidth * 2.5, currentY + 8, { align: 'center' });
+    doc.setFontSize(11);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(34, 197, 94);
+    doc.text(formatCurrency(Math.max(0, totalOriginal - totalPagado)), 14 + colWidth * 2.5, currentY + 18, { align: 'center' });
+
+    currentY += 45;
+
+    ensureSpace(20);
+    doc.setFillColor(245, 247, 250);
+    doc.roundedRect(14, currentY, pageWidth - 28, 10, 2, 2, 'F');
+    doc.setFontSize(11);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(0, 0, 0);
+    doc.text('FACTURAS SELECCIONADAS', 18, currentY + 7);
+    currentY += 15;
+
+    const tableRows = facturasOrdenadas.map((f) => {
+      const { notasCredito, totalNotasCredito } = obtenerNotasCreditoAplicadas(f, []);
+      const totalOriginalFactura = obtenerTotalOriginalDisplay(f, totalNotasCredito);
+      const valor = f.valor_real_a_pagar ?? calcularValorRealAPagar(f);
+      const tipo = f.clasificacion === 'mercancia' ? 'Mercancía' : 'Gasto';
+      const notasText = notasCredito.length > 0
+        ? notasCredito.map((nc) => `${nc.numero}: -${formatCurrency(nc.valor || 0)}`).join('  |  ')
+        : '';
+
+      const mainRow = [
+        { content: `#${f.numero_factura}`, styles: { fontStyle: 'bold', fontSize: 9 } },
+        { content: f.emisor_nombre, styles: { fontSize: 8 } },
+        { content: tipo, styles: { fontSize: 7, halign: 'center', fillColor: [243, 244, 246] } },
+        { content: formatCurrency(totalOriginalFactura), styles: { halign: 'right', fontSize: 9 } },
+        { content: formatCurrency(valor || 0), styles: { halign: 'right', fontStyle: 'bold', fontSize: 9, textColor: [34, 197, 94] } }
+      ];
+
+      const detailRow = notasText
+        ? [{ content: `Notas de Crédito: ${notasText}`, colSpan: 5, styles: { fontSize: 7, textColor: [107, 114, 128], fillColor: [249, 250, 251] } }]
+        : null;
+
+      return detailRow ? [mainRow, detailRow] : [mainRow];
+    }).flat();
+
+    autoTable(doc, {
+      startY: currentY,
+      head: [[
+        { content: 'N° Factura', styles: { halign: 'left' } },
+        'Proveedor',
+        'Tipo',
+        { content: 'Total', styles: { halign: 'right' } },
+        { content: 'A Pagar', styles: { halign: 'right' } }
+      ]],
+      body: tableRows as any,
+      theme: 'striped',
+      styles: {
+        fontSize: 8,
+        cellPadding: 4,
+        lineColor: [229, 231, 235],
+        lineWidth: 0.1
+      },
+      headStyles: {
+        fillColor: [59, 130, 246],
+        textColor: 255,
+        fontStyle: 'bold',
+        fontSize: 9,
+        cellPadding: 5
+      },
+      alternateRowStyles: {
+        fillColor: [249, 250, 251]
+      },
+      columnStyles: {
+        0: { cellWidth: 40 },
+        1: { cellWidth: 60 },
+        2: { cellWidth: 20 },
+        3: { cellWidth: 30 },
+        4: { cellWidth: 32 }
+      },
+      margin: { left: 14, right: 14 }
+    });
+
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(107, 114, 128);
+    doc.text(
+      `Regenerado el ${new Date().toLocaleDateString('es-CO')} a las ${new Date().toLocaleTimeString('es-CO')}`,
+      14,
+      285
+    );
+
+    const fileName = `Pago_Multiple_regenerado_${timestamp}.pdf`;
+    const pdfBlob = doc.output('blob');
+    const storagePath = `comprobantes-pago/${fileName}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from('facturas-pdf')
+      .upload(storagePath, pdfBlob, { contentType: 'application/pdf', upsert: false });
+
+    if (uploadError) throw uploadError;
+
+    const oldPdfPath = (comprobanteGrupal as any).pdf_file_path as string | null;
+    const { error: updateError } = await supabase
+      .from('comprobantes_pago')
+      .update({ pdf_file_path: storagePath })
+      .eq('id', (comprobanteGrupal as any).id);
+
+    if (updateError) throw updateError;
+
+    if (oldPdfPath && oldPdfPath !== storagePath) {
+      await supabase.storage.from('facturas-pdf').remove([oldPdfPath]);
+    }
+
+    doc.save(fileName);
+
+    return {
+      comprobanteId: (comprobanteGrupal as any).id as string,
+      fileName,
+      storagePath,
+      detalles: parseDetalles((comprobanteGrupal as any).detalles)
+    };
+  };
+
   const regenerarPDF = async () => {
     const facturaParaPDF = facturaActualizada || factura;
     if (!facturaParaPDF) return;
 
     setProcessing(true);
     try {
+      const regeneradoGrupal = await regenerarComprobanteGrupalSiExiste(facturaParaPDF.id);
+      if (regeneradoGrupal) {
+        toast({
+          title: 'PDF Regenerado y Guardado',
+          description: 'Se actualizó el comprobante de pago multiple con la información actual.'
+        });
+        if (onPDFRegenerated) onPDFRegenerated();
+        onClose();
+        return;
+      }
+
       const doc = new jsPDF();
       const pageWidth = doc.internal.pageSize.width;
       const pageHeight = doc.internal.pageSize.height;
@@ -254,27 +522,11 @@ export function RegeneratePDFDialog({ factura, isOpen, onClose, onPDFRegenerated
       console.log('📊 Notas de crédito encontradas:', notasCredito);
       console.log('📊 Total notas de crédito:', totalNotasCredito);
 
-      // Calcular valores originales
-      const valoresOriginales = obtenerValoresOriginales(facturaParaPDF);
-
-      // El total original es el valor ANTES de cualquier nota de crédito
-      // IMPORTANTE: Si notas.total_original no existe, RECONSTRUIR sumando las NC al total actual
-      // porque total_a_pagar YA tiene las NC descontadas
-      let totalOriginalDisplay = valoresOriginales.totalOriginal;
-
-      if (!totalOriginalDisplay) {
-        // No hay total_original guardado, reconstruir
-        if (totalNotasCredito > 0) {
-          // El total_a_pagar actual YA tiene las NC restadas, sumamos para obtener el original
-          totalOriginalDisplay = facturaParaPDF.total_a_pagar + totalNotasCredito;
-          console.log('📊 Reconstruyendo total original:', facturaParaPDF.total_a_pagar, '+', totalNotasCredito, '=', totalOriginalDisplay);
-        } else {
-          totalOriginalDisplay = facturaParaPDF.total_a_pagar;
-        }
-      }
+      const totalOriginalDisplay = obtenerTotalOriginalDisplay(facturaParaPDF, totalNotasCredito);
 
       console.log('📊 Total original a mostrar:', totalOriginalDisplay);
 
+      const valoresOriginales = obtenerValoresOriginales(facturaParaPDF);
       const totalSinIvaAjustado = obtenerBaseSinIVADespuesNotasCredito(facturaParaPDF);
       const totalSinIvaOriginal = valoresOriginales.totalSinIvaOriginal ?? obtenerBaseSinIVAOriginal(facturaParaPDF);
 
@@ -607,33 +859,37 @@ export function RegeneratePDFDialog({ factura, isOpen, onClose, onPDFRegenerated
           }
 
           console.log('✅ Comprobante individual actualizado con nuevo PDF');
-        } else if (comprobanteGrupal) {
-          // Solo existe comprobante grupal — NO sobreescribirlo
-          // Crear un nuevo comprobante individual para esta factura
-          console.log('📝 Comprobante grupal encontrado, creando comprobante individual nuevo...');
+           } else if (comprobanteGrupal) {
+             // Solo existe comprobante grupal — NO sobreescribirlo
+             // Crear un nuevo comprobante individual para esta factura
+             console.log('📝 Comprobante grupal encontrado, creando comprobante individual nuevo...');
 
           const { data: userData } = await supabase.auth.getUser();
           const userId = userData?.user?.id;
 
-          if (userId) {
-            const { error: insertError } = await supabase
-              .from('comprobantes_pago')
-              .insert({
-                user_id: userId,
-                tipo_comprobante: 'pago_individual',
-                metodo_pago: comprobanteGrupal.tipo_comprobante === 'pago_multiple' ? 'Pago Banco' : 'Pago Banco',
-                fecha_pago: new Date().toISOString(),
-                total_pagado: facturaParaPDF.valor_real_a_pagar || facturaParaPDF.monto_pagado || facturaParaPDF.total_a_pagar,
-                cantidad_facturas: 1,
-                pdf_file_path: storagePath,
-                facturas_ids: [facturaParaPDF.id],
-                detalles: {
-                  factura_numero: facturaParaPDF.numero_factura,
-                  proveedor: facturaParaPDF.emisor_nombre,
-                  nit: facturaParaPDF.emisor_nit,
-                  regenerado_desde_grupal: comprobanteGrupal.id
-                }
-              });
+           if (userId) {
+             const fechaPagoComprobante = facturaParaPDF.fecha_pago || new Date().toISOString();
+             const metodoPagoComprobante = facturaParaPDF.metodo_pago || null;
+             const totalPagadoComprobante = facturaParaPDF.valor_real_a_pagar ?? calcularValorRealAPagar(facturaParaPDF);
+
+             const { error: insertError } = await supabase
+               .from('comprobantes_pago')
+               .insert({
+                 user_id: userId,
+                 tipo_comprobante: 'pago_individual',
+                 metodo_pago: metodoPagoComprobante,
+                 fecha_pago: fechaPagoComprobante,
+                 total_pagado: totalPagadoComprobante,
+                 cantidad_facturas: 1,
+                 pdf_file_path: storagePath,
+                 facturas_ids: [facturaParaPDF.id],
+                 detalles: {
+                   factura_numero: facturaParaPDF.numero_factura,
+                   proveedor: facturaParaPDF.emisor_nombre,
+                   nit: facturaParaPDF.emisor_nit,
+                   regenerado_desde_grupal: comprobanteGrupal.id
+                 }
+               });
 
             if (insertError) {
               console.error('❌ Error creando comprobante individual:', insertError);
@@ -755,13 +1011,13 @@ export function RegeneratePDFDialog({ factura, isOpen, onClose, onPDFRegenerated
                     <p className="text-sm text-green-700 mt-1">
                       Se incluiran {notasCredito.length} nota(s) de credito en el nuevo PDF:
                     </p>
-                    <ul className="mt-2 space-y-1">
-                      {notasCredito.map((nc, idx) => (
-                        <li key={idx} className="text-sm text-green-700">
-                          - {nc.numero}: {formatCurrency(nc.valor)}
-                        </li>
-                      ))}
-                    </ul>
+                      <ul className="mt-2 space-y-1">
+                       {notasCredito.map((nc) => (
+                         <li key={`${nc.numero}-${nc.fecha ?? ''}`} className="text-sm text-green-700">
+                           - {nc.numero}: {formatCurrency(nc.valor)}
+                         </li>
+                       ))}
+                     </ul>
                     <p className="text-sm font-medium text-green-800 mt-2">
                       Total NC: {formatCurrency(totalNotasCredito)}
                     </p>
