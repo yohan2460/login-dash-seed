@@ -373,6 +373,114 @@ export function RegeneratePDFDialog({ factura, isOpen, onClose, onPDFRegenerated
 
     currentY += 45;
 
+    const descuentosData: any[] = [];
+    let totalProntoPago = 0;
+    let totalRetenciones = 0;
+    let totalDescuentosAdicionales = 0;
+    let totalNotasCreditoAplicadas = 0;
+
+    facturasOrdenadas.forEach((f) => {
+      const baseSinIvaOriginal = obtenerBaseSinIVAOriginal(f);
+      const baseSinIvaAjustado = obtenerBaseSinIVADespuesNotasCredito(f);
+
+      const retencion = f.tiene_retencion && f.monto_retencion
+        ? baseSinIvaAjustado * (f.monto_retencion / 100)
+        : 0;
+      if (retencion > 0) {
+        totalRetenciones += retencion;
+        descuentosData.push([
+          `Retencion (${f.monto_retencion}%) - Fact. ${f.numero_factura}`,
+          `-${formatCurrency(retencion)}`,
+          'Retencion'
+        ]);
+      }
+
+      const prontoPago = f.uso_pronto_pago && f.porcentaje_pronto_pago && f.porcentaje_pronto_pago > 0
+        ? baseSinIvaOriginal * (f.porcentaje_pronto_pago / 100)
+        : 0;
+      if (prontoPago > 0) {
+        totalProntoPago += prontoPago;
+        descuentosData.push([
+          `Pronto Pago - Fact. ${f.numero_factura} (${f.porcentaje_pronto_pago}%)`,
+          `-${formatCurrency(prontoPago)}`,
+          'Descuento'
+        ]);
+      }
+
+      if (f.descuentos_antes_iva) {
+        try {
+          const descuentos = JSON.parse(f.descuentos_antes_iva);
+          descuentos.forEach((desc: any) => {
+            const valorDescuento = desc.tipo === 'porcentaje'
+              ? baseSinIvaOriginal * (desc.valor / 100)
+              : desc.valor;
+            totalDescuentosAdicionales += valorDescuento;
+            const texto = desc.tipo === 'porcentaje'
+              ? `${desc.concepto ?? 'Descuento'} (${desc.valor}%) - Fact. ${f.numero_factura}`
+              : `${desc.concepto ?? 'Descuento'} - Fact. ${f.numero_factura}`;
+            descuentosData.push([
+              texto,
+              `-${formatCurrency(valorDescuento)}`,
+              'Descuento'
+            ]);
+          });
+        } catch {}
+      }
+
+      const { notasCredito } = obtenerNotasCreditoAplicadas(f, []);
+      notasCredito.forEach((nc) => {
+        const valorNc = nc.valor || 0;
+        totalNotasCreditoAplicadas += valorNc;
+        descuentosData.push([
+          `Nota Credito ${nc.numero} - Fact. ${f.numero_factura}`,
+          `-${formatCurrency(valorNc)}`,
+          'Nota Credito'
+        ]);
+      });
+    });
+
+    const totalDescuentosGlobal = totalProntoPago + totalRetenciones + totalDescuentosAdicionales + totalNotasCreditoAplicadas;
+    if (totalDescuentosGlobal > 0 && descuentosData.length > 0) {
+      ensureSpace(50);
+      doc.setFillColor(240, 253, 244);
+      doc.roundedRect(14, currentY, pageWidth - 28, 10, 2, 2, 'F');
+      doc.setFontSize(11);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(22, 163, 74);
+      doc.text('DESGLOSE DETALLADO DE DESCUENTOS Y AJUSTES', 18, currentY + 7);
+      currentY += 15;
+
+      autoTable(doc, {
+        startY: currentY,
+        head: [['Concepto', 'Monto', 'Tipo']],
+        body: descuentosData,
+        theme: 'striped',
+        headStyles: {
+          fillColor: [34, 197, 94],
+          textColor: [255, 255, 255],
+          fontStyle: 'bold',
+          fontSize: 9
+        },
+        styles: {
+          fontSize: 8,
+          cellPadding: 2
+        },
+        columnStyles: {
+          0: { cellWidth: 110 },
+          1: { cellWidth: 42, halign: 'right', fontStyle: 'bold' },
+          2: { cellWidth: 30, halign: 'center' }
+        }
+      });
+
+      currentY = (doc as any).lastAutoTable.finalY + 6;
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(22, 163, 74);
+      doc.text('TOTAL DESCUENTOS Y AJUSTES:', pageWidth - 100, currentY);
+      doc.text(`-${formatCurrency(totalDescuentosGlobal)}`, pageWidth - 14, currentY, { align: 'right' });
+      currentY += 15;
+    }
+
     ensureSpace(20);
     doc.setFillColor(245, 247, 250);
     doc.roundedRect(14, currentY, pageWidth - 28, 10, 2, 2, 'F');
