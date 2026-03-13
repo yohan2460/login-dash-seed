@@ -385,22 +385,91 @@ export function RegeneratePDFDialog({ factura, isOpen, onClose, onPDFRegenerated
     const tableRows = facturasOrdenadas.map((f) => {
       const { notasCredito, totalNotasCredito } = obtenerNotasCreditoAplicadas(f, []);
       const totalOriginalFactura = obtenerTotalOriginalDisplay(f, totalNotasCredito);
-      const valor = f.valor_real_a_pagar ?? calcularValorRealAPagar(f);
+      const baseSinIvaOriginal = obtenerBaseSinIVAOriginal(f);
+      const baseSinIvaAjustado = obtenerBaseSinIVADespuesNotasCredito(f);
+
+      const retencion = f.tiene_retencion && f.monto_retencion
+        ? baseSinIvaAjustado * (f.monto_retencion / 100)
+        : 0;
+
+      const prontoPago = f.uso_pronto_pago && f.porcentaje_pronto_pago && f.porcentaje_pronto_pago > 0
+        ? baseSinIvaOriginal * (f.porcentaje_pronto_pago / 100)
+        : 0;
+
+      let descuentosAdicionales: any[] = [];
+      let totalDescuentosAdicionales = 0;
+      if (f.descuentos_antes_iva) {
+        try {
+          descuentosAdicionales = JSON.parse(f.descuentos_antes_iva);
+          totalDescuentosAdicionales = descuentosAdicionales.reduce((sum, desc) => {
+            if (desc.tipo === 'porcentaje') {
+              return sum + (baseSinIvaOriginal * desc.valor / 100);
+            }
+            return sum + desc.valor;
+          }, 0);
+        } catch {
+          descuentosAdicionales = [];
+          totalDescuentosAdicionales = 0;
+        }
+      }
+
+      const valorFinal =
+        f.valor_real_a_pagar ??
+        Math.max(
+          0,
+          totalOriginalFactura - totalNotasCredito - retencion - prontoPago - totalDescuentosAdicionales
+        );
+      const totalDescuento = Math.max(0, totalOriginalFactura - valorFinal);
       const tipo = f.clasificacion === 'mercancia' ? 'Mercancía' : 'Gasto';
-      const notasText = notasCredito.length > 0
-        ? notasCredito.map((nc) => `${nc.numero}: -${formatCurrency(nc.valor || 0)}`).join('  |  ')
-        : '';
 
       const mainRow = [
         { content: `#${f.numero_factura}`, styles: { fontStyle: 'bold', fontSize: 9 } },
         { content: f.emisor_nombre, styles: { fontSize: 8 } },
         { content: tipo, styles: { fontSize: 7, halign: 'center', fillColor: [243, 244, 246] } },
         { content: formatCurrency(totalOriginalFactura), styles: { halign: 'right', fontSize: 9 } },
-        { content: formatCurrency(valor || 0), styles: { halign: 'right', fontStyle: 'bold', fontSize: 9, textColor: [34, 197, 94] } }
+        { content: formatCurrency(valorFinal || 0), styles: { halign: 'right', fontStyle: 'bold', fontSize: 9, textColor: [34, 197, 94] } }
       ];
 
-      const detailRow = notasText
-        ? [{ content: `Notas de Crédito: ${notasText}`, colSpan: 5, styles: { fontSize: 7, textColor: [107, 114, 128], fillColor: [249, 250, 251] } }]
+      let detallesText = '';
+
+      if (descuentosAdicionales.length > 0) {
+        const descuentosTexto = descuentosAdicionales.map((desc: any) => {
+          const valorDesc = desc.tipo === 'porcentaje'
+            ? baseSinIvaOriginal * (desc.valor / 100)
+            : desc.valor;
+          return `${desc.concepto ?? 'Descuento'} (${desc.tipo === 'porcentaje' ? `${desc.valor}%` : formatCurrency(desc.valor)}): -${formatCurrency(valorDesc)}`;
+        }).join('  |  ');
+        detallesText += descuentosTexto;
+      }
+
+      if (retencion > 0) {
+        if (detallesText) detallesText += '  |  ';
+        detallesText += `Retencion (${f.monto_retencion}%): -${formatCurrency(retencion)}`;
+      }
+
+      if (prontoPago > 0) {
+        if (detallesText) detallesText += '  |  ';
+        detallesText += `Pronto Pago (${f.porcentaje_pronto_pago}%): -${formatCurrency(prontoPago)}`;
+      }
+
+      if (notasCredito.length > 0) {
+        const notasTexto = notasCredito
+          .map((nc) => {
+            const etiqueta = nc.numero ? `Nota Credito ${nc.numero}` : 'Nota Credito';
+            return `${etiqueta}: -${formatCurrency(nc.valor || 0)}`;
+          })
+          .join('  |  ');
+        if (detallesText) detallesText += '  |  ';
+        detallesText += notasTexto;
+      }
+
+      if (totalDescuento > 0) {
+        if (detallesText) detallesText += '  |  ';
+        detallesText += `Total Descuento: -${formatCurrency(totalDescuento)}`;
+      }
+
+      const detailRow = detallesText
+        ? [{ content: detallesText, colSpan: 5, styles: { fontSize: 7, textColor: [107, 114, 128], fillColor: [249, 250, 251] } }]
         : null;
 
       return detailRow ? [mainRow, detailRow] : [mainRow];
