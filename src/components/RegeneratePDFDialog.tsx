@@ -557,46 +557,93 @@ export function RegeneratePDFDialog({ factura, isOpen, onClose, onPDFRegenerated
       console.log('✅ PDF subido correctamente:', uploadData);
 
       // Buscar el comprobante de pago existente para esta factura
+      // IMPORTANTE: Buscar primero un comprobante individual, y si solo hay grupal, crear uno nuevo
       const { data: comprobantes, error: comprobanteError } = await supabase
         .from('comprobantes_pago')
-        .select('id, pdf_file_path')
-        .contains('facturas_ids', [facturaParaPDF.id]);
+        .select('id, pdf_file_path, tipo_comprobante, cantidad_facturas')
+        .contains('facturas_ids', [facturaParaPDF.id])
+        .order('created_at', { ascending: false });
 
       if (comprobanteError) {
         console.error('Error buscando comprobante:', comprobanteError);
       }
 
       if (comprobantes && comprobantes.length > 0) {
-        // Actualizar el comprobante existente con la nueva ruta del PDF
-        const comprobanteId = comprobantes[0].id;
-        const oldPdfPath = comprobantes[0].pdf_file_path;
+        // Buscar primero un comprobante individual (1 sola factura)
+        const comprobanteIndividual = comprobantes.find(
+          c => c.tipo_comprobante === 'pago_individual' || c.cantidad_facturas === 1
+        );
+        // Si existe un comprobante individual, actualizar ese
+        // Si solo hay un comprobante grupal, NO sobreescribirlo (crearíamos uno nuevo)
+        const comprobanteGrupal = comprobantes.find(
+          c => c.tipo_comprobante === 'pago_multiple' && (c.cantidad_facturas ?? 0) > 1
+        );
 
-        console.log('📝 Actualizando comprobante:', comprobanteId);
+        if (comprobanteIndividual) {
+          // Actualizar el comprobante individual existente
+          const oldPdfPath = comprobanteIndividual.pdf_file_path;
+          console.log('📝 Actualizando comprobante individual:', comprobanteIndividual.id);
 
-        const { error: updateError } = await supabase
-          .from('comprobantes_pago')
-          .update({ pdf_file_path: storagePath })
-          .eq('id', comprobanteId);
+          const { error: updateError } = await supabase
+            .from('comprobantes_pago')
+            .update({ pdf_file_path: storagePath })
+            .eq('id', comprobanteIndividual.id);
 
-        if (updateError) {
-          console.error('❌ Error actualizando comprobante:', updateError);
-          throw updateError;
-        }
+          if (updateError) {
+            console.error('❌ Error actualizando comprobante:', updateError);
+            throw updateError;
+          }
 
-        // Intentar eliminar el PDF anterior del storage (opcional, no falla si no existe)
-        if (oldPdfPath && oldPdfPath !== storagePath) {
-          const { error: deleteError } = await supabase.storage
-            .from('facturas-pdf')
-            .remove([oldPdfPath]);
+          // Intentar eliminar el PDF anterior del storage
+          if (oldPdfPath && oldPdfPath !== storagePath) {
+            const { error: deleteError } = await supabase.storage
+              .from('facturas-pdf')
+              .remove([oldPdfPath]);
+            if (deleteError) {
+              console.warn('⚠️ No se pudo eliminar PDF anterior:', deleteError);
+            } else {
+              console.log('🗑️ PDF anterior eliminado:', oldPdfPath);
+            }
+          }
 
-          if (deleteError) {
-            console.warn('⚠️ No se pudo eliminar PDF anterior:', deleteError);
+          console.log('✅ Comprobante individual actualizado con nuevo PDF');
+        } else if (comprobanteGrupal) {
+          // Solo existe comprobante grupal — NO sobreescribirlo
+          // Crear un nuevo comprobante individual para esta factura
+          console.log('📝 Comprobante grupal encontrado, creando comprobante individual nuevo...');
+
+          const { data: userData } = await supabase.auth.getUser();
+          const userId = userData?.user?.id;
+
+          if (userId) {
+            const { error: insertError } = await supabase
+              .from('comprobantes_pago')
+              .insert({
+                user_id: userId,
+                tipo_comprobante: 'pago_individual',
+                metodo_pago: comprobanteGrupal.tipo_comprobante === 'pago_multiple' ? 'Pago Banco' : 'Pago Banco',
+                fecha_pago: new Date().toISOString(),
+                total_pagado: facturaParaPDF.valor_real_a_pagar || facturaParaPDF.monto_pagado || facturaParaPDF.total_a_pagar,
+                cantidad_facturas: 1,
+                pdf_file_path: storagePath,
+                facturas_ids: [facturaParaPDF.id],
+                detalles: {
+                  factura_numero: facturaParaPDF.numero_factura,
+                  proveedor: facturaParaPDF.emisor_nombre,
+                  nit: facturaParaPDF.emisor_nit,
+                  regenerado_desde_grupal: comprobanteGrupal.id
+                }
+              });
+
+            if (insertError) {
+              console.error('❌ Error creando comprobante individual:', insertError);
+              throw insertError;
+            }
+            console.log('✅ Nuevo comprobante individual creado (sin tocar el grupal)');
           } else {
-            console.log('🗑️ PDF anterior eliminado:', oldPdfPath);
+            console.error('❌ No se pudo obtener el usuario para crear comprobante');
           }
         }
-
-        console.log('✅ Comprobante actualizado con nuevo PDF');
       } else {
         console.warn('⚠️ No se encontró comprobante de pago para esta factura');
       }

@@ -195,6 +195,7 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
   };
 
   // Función para descargar comprobante de pago
+  // Prioriza comprobante individual sobre grupal para evitar mostrar facturas que no corresponden
   const obtenerComprobantePago = async (facturaId: string) => {
     console.log('🔍 Buscando comprobante para factura ID:', facturaId);
 
@@ -202,22 +203,29 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
       .from('comprobantes_pago')
       .select('*')
       .filter('facturas_ids', 'cs', `{${facturaId}}`)
-      .order('created_at', { ascending: false })
-      .limit(1);
+      .order('created_at', { ascending: false });
 
     if (error) {
       console.error('❌ Error en query de comprobantes:', error);
       throw error;
     }
 
-    console.log('📄 Comprobantes encontrados:', comprobantes);
-    console.log('📄 Primer comprobante:', comprobantes?.[0]);
+    console.log('📄 Comprobantes encontrados:', comprobantes?.length);
 
     if (!comprobantes || comprobantes.length === 0) {
       return null;
     }
 
-    const comprobante = comprobantes[0];
+    // Prioridad: comprobante individual > comprobante grupal (más reciente)
+    // Si existe un comprobante individual para esta factura, usarlo
+    // Si solo hay grupal, usarlo como fallback
+    const comprobanteIndividual = comprobantes.find(
+      c => c.tipo_comprobante === 'pago_individual' || c.cantidad_facturas === 1
+    );
+    const comprobante = comprobanteIndividual || comprobantes[0];
+
+    console.log('📄 Comprobante seleccionado:', comprobante?.id, 'tipo:', comprobante?.tipo_comprobante);
+
     const detallesParsed = parseDetalles(comprobante.detalles);
     return detallesParsed ? { ...comprobante, detalles: detallesParsed } : comprobante;
   };
@@ -352,9 +360,9 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
     const notasData = notasCache.get(factura.id);
     if (notasData && notasData.tipo === 'nota_credito') {
       return {
-        numero_factura_original: notasData.numero_factura_original,
-        emisor_original: notasData.emisor_original,
-        valor_descuento: notasData.valor_descuento
+        numero_factura_original: notasData.numero_factura_aplicada,
+        emisor_original: notasData.emisor_aplicada,
+        valor_descuento: notasData.valor_aplicado
       };
     }
     return null;
