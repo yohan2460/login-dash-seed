@@ -12,7 +12,9 @@ const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       staleTime: 60 * 1000,
-      cacheTime: 5 * 60 * 1000,
+      // `cacheTime` es de react-query v4. Acá estamos en v5, donde la opción
+      // se llama `gcTime`: el nombre viejo se ignoraba en silencio.
+      gcTime: 5 * 60 * 1000,
       refetchOnWindowFocus: false,
     }
   }
