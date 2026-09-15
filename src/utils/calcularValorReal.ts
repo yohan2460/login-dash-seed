@@ -10,7 +10,22 @@ export interface FacturaData {
   notas?: string | null;
   clasificacion?: string | null;
   descuentos_antes_iva?: string | null;
+  uso_pronto_pago?: boolean | null;
   estado_nota_credito?: 'pendiente' | 'aplicada' | 'anulada' | null;
+}
+
+/**
+ * Redondeo único para montos de dinero.
+ *
+ * Las columnas de la base son DECIMAL(x,2). Antes cada flujo de pago
+ * redondeaba distinto — NotaCreditoDialog con Math.round, PaymentMethodDialog
+ * y MultiplePaymentDialog escribían el float crudo — y convivían registros en
+ * pesos enteros con registros con centavos residuales. Eso hacía fallar las
+ * comparaciones `===` entre valores que deberían ser iguales.
+ */
+export function redondearMonto(valor: number): number {
+  if (!Number.isFinite(valor)) return 0;
+  return Math.round(valor * 100) / 100;
 }
 
 interface NotasCreditoTotales {
@@ -123,7 +138,46 @@ export function obtenerBaseSinIVADespuesNotasCredito(factura: FacturaData): numb
   return Math.max(0, baseOriginal - totalNotasCreditoSinIVA);
 }
 
+/**
+ * Descuentos de `descuentos_antes_iva`, calculados SIEMPRE sobre la base SIN IVA.
+ *
+ * FUENTE ÚNICA DE VERDAD. Antes esta lógica estaba duplicada en
+ * calcularValorRealAPagar (que usaba total_a_pagar, o sea CON IVA) y en
+ * calcularTotalReal (que usaba la base SIN IVA). Sobre una factura de
+ * $1.000.000 + IVA 19% con 10% de descuento, una restaba $119.000 y la otra
+ * $100.000: se guardaba un número y se le mostraba otro al proveedor.
+ *
+ * La base correcta es SIN IVA — es lo que dice el nombre del campo y lo que
+ * ya venían mostrando los comprobantes y PDFs.
+ */
+function calcularDescuentosAntesIVA(factura: FacturaData): number {
+  if (!factura.descuentos_antes_iva) return 0;
+
+  try {
+    const descuentos = JSON.parse(factura.descuentos_antes_iva);
+    if (!Array.isArray(descuentos)) return 0;
+
+    const baseSinIVA = calcularValorOriginalAntesIVA(factura);
+
+    return descuentos.reduce((sum: number, desc: any) => {
+      const valor = Number(desc?.valor) || 0;
+      if (desc?.tipo === 'porcentaje') {
+        return sum + (baseSinIVA * valor / 100);
+      }
+      return sum + valor;
+    }, 0);
+  } catch (error) {
+    console.error('Error parsing descuentos_antes_iva:', error);
+    return 0;
+  }
+}
+
 export function calcularMontoRetencionReal(factura: FacturaData): number {
+  // El guard de `tiene_retencion` vive acá adentro a propósito: GastosPendientes,
+  // MercanciaPendiente y ModernDashboard llamaban a esta función sin chequearlo,
+  // así que una factura con monto_retencion residual y tiene_retencion=false
+  // inflaba el KPI "Total Retenciones" por encima de lo que mostraba el detalle.
+  if (!factura.tiene_retencion) return 0;
   if (!factura.monto_retencion || factura.monto_retencion === 0) return 0;
   const baseParaRetencion = obtenerBaseSinIVADespuesNotasCredito(factura);
   return baseParaRetencion * (factura.monto_retencion / 100);
@@ -134,38 +188,27 @@ export function calcularValorRealAPagar(factura: FacturaData): number {
   // Debemos restar: descuentos + retención + pronto pago
   let valorReal = factura.total_a_pagar;
 
-  // 1. Restar descuentos antes de IVA si existen
-  if (factura.descuentos_antes_iva) {
-    try {
-      const descuentos = JSON.parse(factura.descuentos_antes_iva);
-      const totalDescuentos = descuentos.reduce((sum: number, desc: any) => {
-        if (desc.tipo === 'porcentaje') {
-          // Los descuentos porcentuales se aplican sobre total_a_pagar
-          return sum + (factura.total_a_pagar * desc.valor / 100);
-        }
-        return sum + desc.valor;
-      }, 0);
-      valorReal -= totalDescuentos;
-    } catch (error) {
-      console.error('Error parsing descuentos_antes_iva:', error);
-    }
-  }
+  // 1. Restar descuentos antes de IVA (base SIN IVA, igual que calcularTotalReal)
+  valorReal -= calcularDescuentosAntesIVA(factura);
 
   // 2. Restar retención si aplica
   // La retención se recalcula considerando notas de crédito aplicadas
-  if (factura.tiene_retencion && factura.monto_retencion) {
-    valorReal -= calcularMontoRetencionReal(factura);
-  }
+  valorReal -= calcularMontoRetencionReal(factura);
 
-  // 3. Restar descuento por pronto pago si está disponible
-  // El pronto pago se calcula sobre la base original sin IVA (no se afecta con notas de crédito)
-  if (factura.porcentaje_pronto_pago && factura.porcentaje_pronto_pago > 0) {
+  // 3. Restar pronto pago SOLO si realmente se usó.
+  // Antes acá alcanzaba con que existiera el porcentaje, sin mirar
+  // uso_pronto_pago: una factura pendiente mostraba un total ya rebajado por
+  // un descuento que todavía no se había ganado. El resto del sistema
+  // (Informes, RegeneratePDFDialog, ModernDashboard) ya exigía este flag, y
+  // la propia UI etiqueta el badge como "(disp.)" cuando está en false.
+  if (factura.uso_pronto_pago && factura.porcentaje_pronto_pago && factura.porcentaje_pronto_pago > 0) {
     const baseParaDescuento = calcularValorOriginalAntesIVA(factura);
-    const descuento = baseParaDescuento * (factura.porcentaje_pronto_pago / 100);
-    valorReal -= descuento;
+    valorReal -= baseParaDescuento * (factura.porcentaje_pronto_pago / 100);
   }
 
-  return valorReal;
+  // Redondeo único y final: todos los flujos que persisten valor_real_a_pagar
+  // pasan por acá, así que ya no hay registros con centavos residuales.
+  return redondearMonto(Math.max(0, valorReal));
 }
 
 export function calcularTotalReal(factura: FacturaData): number {
@@ -186,55 +229,33 @@ export function calcularTotalReal(factura: FacturaData): number {
     }
   }
 
-  // PRIORIDAD 1: Para facturas con notas de crédito aplicadas, usar total_con_descuentos
+  // PRIORIDAD 1: facturas con notas de crédito aplicadas.
+  //
+  // Acá había antes una rama que leía `notasData.total_con_descuentos`
+  // (plural). Esa clave NO se escribe en ningún lado del repo — lo que sí se
+  // persiste es la columna `total_con_descuento` (singular), en
+  // NotaCreditoDialog.tsx:439. La rama era código muerto que nunca se
+  // ejecutaba y ocultaba que el cálculo real caía siempre al fallback.
+  // Se eliminó en vez de "arreglarla": cablear la columna cambiaría los
+  // montos mostrados y es una decisión de negocio aparte.
   if (factura.notas && factura.clasificacion !== 'nota_credito') {
     try {
       const notasData = JSON.parse(factura.notas);
 
-      // Si existe total_con_descuentos, usarlo directamente (YA incluye todo calculado)
-      if (notasData.total_con_descuentos !== undefined && notasData.total_con_descuentos !== null) {
-        console.log('✅ Usando total_con_descuentos:', notasData.total_con_descuentos, 'para factura', factura);
-        return notasData.total_con_descuentos;
-      }
-
-      // FALLBACK: Si no existe total_con_descuentos pero sí array de notas_credito
       if (notasData.notas_credito && notasData.notas_credito.length > 0) {
         const totalDescuentos = notasData.notas_credito.reduce((sum: number, nc: any) => {
-          return sum + (nc.valor_descuento || 0);
+          return sum + (Number(nc.valor_descuento) || 0);
         }, 0);
-        const resultado = factura.total_a_pagar - totalDescuentos;
-        console.log('✅ Calculando total con NC:', {
-          total_original: factura.total_a_pagar,
-          descuentos: totalDescuentos,
-          resultado
-        });
-        return resultado;
+        return redondearMonto(factura.total_a_pagar - totalDescuentos);
       }
     } catch (error) {
       console.error('Error parsing notas:', error);
     }
   }
 
-  // PRIORIDAD 2: Calcular con descuentos antes de IVA
-  let totalReal = factura.total_a_pagar;
-
-  if (factura.descuentos_antes_iva) {
-    try {
-      const descuentos = JSON.parse(factura.descuentos_antes_iva);
-      const totalDescuentos = descuentos.reduce((sum: number, desc: any) => {
-        if (desc.tipo === 'porcentaje') {
-          const base = calcularValorOriginalAntesIVA(factura);
-          return sum + (base * desc.valor / 100);
-        }
-        return sum + desc.valor;
-      }, 0);
-      totalReal -= totalDescuentos;
-    } catch (error) {
-      console.error('Error parsing descuentos_antes_iva:', error);
-    }
-  }
-
-  return totalReal;
+  // PRIORIDAD 2: descuentos antes de IVA, con la MISMA fórmula que usa
+  // calcularValorRealAPagar para persistir. Antes divergían.
+  return redondearMonto(factura.total_a_pagar - calcularDescuentosAntesIVA(factura));
 }
 
 export function obtenerBaseSinIVAOriginal(factura: FacturaData): number {
