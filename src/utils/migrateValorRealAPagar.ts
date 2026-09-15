@@ -1,5 +1,6 @@
 import { supabase } from '@/integrations/supabase/client';
 import { calcularValorRealAPagar, calcularTotalReal } from './calcularValorReal';
+import { fetchAllRows } from '@/integrations/supabase/fetchAll';
 
 interface FacturaDB {
   id: string;
@@ -18,15 +19,18 @@ export async function migrateValorRealAPagar(): Promise<void> {
   console.log('🚀 Iniciando migración de valor_real_a_pagar...');
 
   try {
-    // Obtener todas las facturas que no tienen valor_real_a_pagar o lo tienen en null
-    const { data: facturas, error: fetchError } = await supabase
-      .from('facturas')
-      .select('*')
-      .is('valor_real_a_pagar', null);
-
-    if (fetchError) {
-      throw new Error(`Error al obtener facturas: ${fetchError.message}`);
-    }
+    // Paginado: sin esto solo se migraban las primeras 1000 facturas y el
+    // resto quedaba con valor_real_a_pagar en null, en silencio y reportando
+    // "migración completada".
+    const facturas = await fetchAllRows<FacturaDB>(
+      (from, to) => supabase
+        .from('facturas')
+        .select('*')
+        .is('valor_real_a_pagar', null)
+        .order('id')
+        .range(from, to),
+      { label: 'facturas a migrar' }
+    );
 
     if (!facturas || facturas.length === 0) {
       console.log('✅ No se encontraron facturas para migrar.');
@@ -89,11 +93,22 @@ export async function migrateValorRealAPagar(): Promise<void> {
 
       const results = await Promise.allSettled(updatePromises);
 
-      // Verificar errores
-      const errors = results.filter(result => result.status === 'rejected');
+      // Un update de Supabase que falla NO rechaza la promesa: resuelve con
+      // { error }. Chequear solo `status === 'rejected'` daba por exitosos
+      // todos los updates que la base había rechazado.
+      const errors = results.flatMap((result, idx) => {
+        if (result.status === 'rejected') {
+          return [`${batch[idx].id}: ${result.reason}`];
+        }
+        if (result.value?.error) {
+          return [`${batch[idx].id}: ${result.value.error.message}`];
+        }
+        return [];
+      });
+
       if (errors.length > 0) {
         console.error('❌ Errores en el lote:', errors);
-        throw new Error(`${errors.length} actualizaciones fallaron en el lote`);
+        throw new Error(`${errors.length} actualizaciones fallaron en el lote: ${errors.join('; ')}`);
       }
 
       console.log(`✅ Lote ${Math.floor(i / batchSize) + 1} completado.`);
