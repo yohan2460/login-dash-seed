@@ -3,8 +3,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
+import { resumirSeleccion, sistematizarEnLote } from '@/utils/sistematizarEnLote';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Eye, Tag, CreditCard, Calendar, Clock, AlertTriangle, CheckCircle, Trash2, FileCheck, Download, Minus, Archive, Edit, Percent, Paperclip, Building2, FileText, RefreshCw } from 'lucide-react';
+import { Eye, Tag, CreditCard, Calendar, Clock, AlertTriangle, CheckCircle, Trash2, FileCheck, Download, Minus, Archive, Edit, Percent, Paperclip, Building2, FileText, RefreshCw, Layers } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
@@ -91,6 +92,67 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
   const [isPDFViewerOpen, setIsPDFViewerOpen] = useState(false);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [selectedFacturaForPDF, setSelectedFacturaForPDF] = useState<Factura | null>(null);
+
+  // --- Sistematización masiva ---
+  const [dialogoSistematizarAbierto, setDialogoSistematizarAbierto] = useState(false);
+  const [sistematizando, setSistematizando] = useState(false);
+  const [progreso, setProgreso] = useState({ hechas: 0, total: 0 });
+  const [resumen, setResumen] = useState<ReturnType<typeof resumirSeleccion> | null>(null);
+
+  const abrirDialogoSistematizar = () => {
+    const seleccionadas = validFacturas.filter(f => selectedFacturas.includes(f.id));
+    // El resumen se calcula ANTES de abrir el diálogo para que el texto diga
+    // cuántas se van a tocar de verdad, no cuántas están tildadas: las que ya
+    // estaban sistematizadas se omiten y el usuario tiene que saberlo antes
+    // de apretar, no después.
+    setResumen(resumirSeleccion(seleccionadas));
+    setProgreso({ hechas: 0, total: 0 });
+    setDialogoSistematizarAbierto(true);
+  };
+
+  const confirmarSistematizar = async () => {
+    const seleccionadas = validFacturas.filter(f => selectedFacturas.includes(f.id));
+
+    setSistematizando(true);
+    setProgreso({ hechas: 0, total: resumen?.aProcesar ?? seleccionadas.length });
+
+    try {
+      const resultado = await sistematizarEnLote(seleccionadas, (hechas, total) =>
+        setProgreso({ hechas, total })
+      );
+
+      if (resultado.fallidas.length > 0) {
+        const noAplicadas = resultado.fallidas.reduce((n, f) => n + f.cantidad, 0);
+        toast({
+          title: 'Sistematización parcial',
+          description:
+            `Se sistematizaron ${resultado.actualizadas} facturas, pero ${noAplicadas} no se pudieron actualizar. ` +
+            `Motivo: ${resultado.fallidas[0].motivo}`,
+          variant: 'destructive',
+        });
+      } else {
+        toast({
+          title: 'Facturas sistematizadas',
+          description:
+            `${resultado.actualizadas} facturas marcadas como sistematizadas` +
+            (resultado.omitidas > 0 ? `. ${resultado.omitidas} ya lo estaban y se omitieron.` : '.'),
+        });
+      }
+
+      setSelectedFacturas([]);
+      setDialogoSistematizarAbierto(false);
+      refreshData?.();
+    } catch (error) {
+      console.error('Error sistematizando en lote:', error);
+      toast({
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'No se pudo completar la sistematización',
+        variant: 'destructive',
+      });
+    } finally {
+      setSistematizando(false);
+    }
+  };
 
   // Validar que facturas sea un array válido con protección contra null (MEMOIZADO)
   const validFacturas = useMemo(() => {
@@ -854,6 +916,18 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
               >
                 <CreditCard className="w-4 h-4" />
                 <span>Pago Múltiple ({selectedFacturas.length})</span>
+              </Button>
+            )}
+            {showSistematizarButton && (
+              <Button
+                onClick={abrirDialogoSistematizar}
+                disabled={selectedFacturas.length === 0 || sistematizando}
+                size="sm"
+                variant="outline"
+                className="flex items-center space-x-2"
+              >
+                <Layers className="w-4 h-4" />
+                <span>Sistematizar ({selectedFacturas.length})</span>
               </Button>
             )}
             <Button
@@ -1751,6 +1825,70 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
         totalAPagar={selectedFacturaForPDF?.total_a_pagar}
         totalSinIva={selectedFacturaForPDF?.total_sin_iva}
       />
+
+      {/* Confirmación de sistematización masiva */}
+      <AlertDialog
+        open={dialogoSistematizarAbierto}
+        onOpenChange={abierto => { if (!sistematizando) setDialogoSistematizarAbierto(abierto); }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              Sistematizar {resumen?.aProcesar ?? 0} factura{resumen?.aProcesar === 1 ? '' : 's'}
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3">
+                <p>
+                  Se van a marcar como <strong>sistematizadas</strong>, guardando su
+                  clasificación actual para poder rastrear de dónde venían.
+                </p>
+
+                {resumen && resumen.porClasificacion.length > 0 && (
+                  <div className="rounded-md border bg-muted/40 p-3 text-sm">
+                    {resumen.porClasificacion.map(({ clasificacion, cantidad }) => (
+                      <div key={clasificacion} className="flex justify-between py-0.5">
+                        <span className="capitalize">{clasificacion}</span>
+                        <span className="font-mono font-medium tabular-nums">{cantidad}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {resumen && resumen.yaSistematizadas > 0 && (
+                  <p className="text-sm">
+                    {resumen.yaSistematizadas} de las seleccionadas ya estaban
+                    sistematizadas y se van a omitir, para no perder el registro de
+                    su clasificación original.
+                  </p>
+                )}
+
+                {sistematizando && progreso.total > 0 && (
+                  <div className="space-y-1.5 pt-1">
+                    <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+                      <div
+                        className="h-full bg-primary transition-all duration-200"
+                        style={{ width: `${Math.round((progreso.hechas / progreso.total) * 100)}%` }}
+                      />
+                    </div>
+                    <p className="text-xs tabular-nums">
+                      {progreso.hechas} de {progreso.total} procesadas
+                    </p>
+                  </div>
+                )}
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={sistematizando}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={event => { event.preventDefault(); confirmarSistematizar(); }}
+              disabled={sistematizando || !resumen?.aProcesar}
+            >
+              {sistematizando ? 'Sistematizando…' : 'Sistematizar'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
