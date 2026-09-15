@@ -3,6 +3,7 @@ import { Navigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { useDashboard } from '@/contexts/DashboardContext';
 import { supabase } from '@/integrations/supabase/client';
+import { fetchAllRows } from '@/integrations/supabase/fetchAll';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Calendar } from '@/components/ui/calendar';
@@ -103,11 +104,17 @@ export default function ModernDashboard() {
 
   const fetchPagosPartidos = async () => {
     try {
-      const { data, error } = await supabase
-        .from('pagos_partidos')
-        .select('*');
-
-      if (error) throw error;
+      // Paginado: todos los totales "Pagado por Banco/Tobías/Caja" salen de
+      // acá. Cortado en 1000 filas, esas cifras quedan por debajo del real
+      // sin ningún error visible.
+      const data = await fetchAllRows<any>(
+        (from, to) => supabase
+          .from('pagos_partidos')
+          .select('*')
+          .order('id')
+          .range(from, to),
+        { label: 'pagos partidos' }
+      );
       setPagosPartidos(data || []);
     } catch (error) {
       console.error('Error fetching pagos partidos:', error);
@@ -116,12 +123,16 @@ export default function ModernDashboard() {
 
   const fetchFacturas = async () => {
     try {
-      const { data, error } = await supabase
-        .from('facturas')
-        .select('*')
-        .order('created_at', { ascending: false });
+      const data = await fetchAllRows<any>(
+        (from, to) => supabase
+          .from('facturas')
+          .select('*')
+          .order('created_at', { ascending: false })
+          .order('id')
+          .range(from, to),
+        { label: 'facturas (dashboard)' }
+      );
 
-      if (error) throw error;
       // Validar y filtrar datos válidos
       const validData = (data || []).filter(factura => factura && factura.id);
       console.log('ModernDashboard: facturas cargadas:', validData.length);
@@ -817,6 +828,7 @@ export default function ModernDashboard() {
                       onDelete={handleDelete}
                       onSistematizarClick={handleSistematizarClick}
                       onNotaCreditoClick={handleNotaCreditoClick}
+                      refreshData={fetchFacturas}
                       showSistematizarButton={true}
                     />
                   )}
@@ -1010,6 +1022,7 @@ export default function ModernDashboard() {
                       onDelete={handleDelete}
                       onSistematizarClick={handleSistematizarClick}
                       onNotaCreditoClick={handleNotaCreditoClick}
+                      refreshData={fetchFacturas}
                       showSistematizarButton={true}
                     />
                   )}

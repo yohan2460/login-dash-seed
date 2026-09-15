@@ -1,7 +1,9 @@
 import { useState, useMemo } from 'react';
 import { Navigate, Link } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
+import { useInvalidateFacturas } from '@/hooks/useInvalidateFacturas';
 import { supabase } from '@/integrations/supabase/client';
+import { fetchAllRows } from '@/integrations/supabase/fetchAll';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -101,31 +103,43 @@ const mapFacturasConUrgencia = (facturas: Factura[]): FacturaConUrgencia[] => {
 
 export default function PagosProximos() {
   const { user, loading } = useAuth();
+  const invalidarFacturas = useInvalidateFacturas();
   const { toast } = useToast();
-  const { data: queryData, isLoading: loadingData, refetch } = useSupabaseQuery<{
+  const { data: queryData, isLoading: loadingData } = useSupabaseQuery<{
     facturasConUrgencia: FacturaConUrgencia[];
     facturasSinFecha: Factura[];
   }>(
     ['facturas', 'pagos-proximos'],
     async () => {
-      const { data, error } = await supabase
-        .from('facturas')
-        .select('*')
-        .or('estado_mercancia.neq.pagada,estado_mercancia.is.null')
-        .not('fecha_vencimiento', 'is', null)
-        .neq('clasificacion', 'nota_credito')
-        .order('fecha_vencimiento', { ascending: true });
-
-      if (error) throw error;
-
-      const { data: sinFecha, error: errorSinFecha } = await supabase
-        .from('facturas')
-        .select('*')
-        .or('estado_mercancia.neq.pagada,estado_mercancia.is.null')
-        .is('fecha_vencimiento', null)
-        .neq('clasificacion', 'nota_credito');
-
-      if (errorSinFecha) throw errorSinFecha;
+      // Hoy estas dos consultas devuelven bastante menos de 1000 filas porque
+      // filtran a lo no pagado, así que todavía no truncan. Pero no tienen
+      // techo: el día que la cartera pendiente crezca, empezarían a ocultar
+      // vencimientos sin dar ningún error. Paginadas por las dudas.
+      const [data, sinFecha] = await Promise.all([
+        fetchAllRows<any>(
+          (from, to) => supabase
+            .from('facturas')
+            .select('*')
+            .or('estado_mercancia.neq.pagada,estado_mercancia.is.null')
+            .not('fecha_vencimiento', 'is', null)
+            .neq('clasificacion', 'nota_credito')
+            .order('fecha_vencimiento', { ascending: true })
+            .order('id')
+            .range(from, to),
+          { label: 'pagos próximos' }
+        ),
+        fetchAllRows<any>(
+          (from, to) => supabase
+            .from('facturas')
+            .select('*')
+            .or('estado_mercancia.neq.pagada,estado_mercancia.is.null')
+            .is('fecha_vencimiento', null)
+            .neq('clasificacion', 'nota_credito')
+            .order('id')
+            .range(from, to),
+          { label: 'facturas sin fecha de vencimiento' }
+        ),
+      ]);
 
       return {
         facturasConUrgencia: mapFacturasConUrgencia(data || []),
@@ -403,7 +417,7 @@ export default function PagosProximos() {
               Facturas pendientes organizadas por urgencia de pago
             </p>
           </div>
-          <Button onClick={() => refetch()} variant="outline">
+          <Button onClick={() => invalidarFacturas()} variant="outline">
             <TrendingUp className="w-4 h-4 mr-2" />
             Actualizar
           </Button>

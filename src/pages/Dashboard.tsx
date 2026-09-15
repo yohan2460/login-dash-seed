@@ -11,8 +11,10 @@ import { FacturasTable } from '@/components/FacturasTable';
 import { FacturaClassificationDialog } from '@/components/FacturaClassificationDialog';
 import { PaymentMethodDialog } from '@/components/PaymentMethodDialog';
 import { useAuth } from '@/hooks/useAuth';
+import { useInvalidateFacturas } from '@/hooks/useInvalidateFacturas';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
+import { fetchAllRows } from '@/integrations/supabase/fetchAll';
 import { Separator } from '@/components/ui/separator';
 import { CalendarIcon, Filter, Search, TrendingUp, TrendingDown, Calendar as CalendarLucide, Clock, DollarSign, FileText, Eye } from 'lucide-react';
 import { format } from 'date-fns';
@@ -50,22 +52,28 @@ interface Factura {
 
 export default function Dashboard() {
   const { user, loading, signOut } = useAuth();
+  const invalidarFacturas = useInvalidateFacturas();
   const { toast } = useToast();
 
   const queryClient = useQueryClient();
   const {
     data: facturasData,
-    isLoading: loadingFacturas,
-    refetch
+    isLoading: loadingFacturas
   } = useSupabaseQuery<Factura[]>(
     ['facturas', 'dashboard'],
     async () => {
-      const { data, error } = await supabase
-        .from('facturas')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
+      // Paginado: calculateStats() suma sobre este array. Sin paginar,
+      // PostgREST devolvía solo las primeras 1000 facturas y el "Monto Total"
+      // salía bajo sin que nada lo indicara.
+      const data = await fetchAllRows<Factura>(
+        (from, to) => supabase
+          .from('facturas')
+          .select('*')
+          .order('created_at', { ascending: false })
+          .order('id')
+          .range(from, to),
+        { label: 'facturas (dashboard)' }
+      );
 
       const validData = (data || []).filter(f => f && f.id && typeof f.id === 'string');
       console.log('Dashboard: facturas cargadas:', validData.length);
@@ -112,12 +120,12 @@ export default function Dashboard() {
   };
 
   const handleClassificationUpdated = async () => {
-    await refetch();
+    await invalidarFacturas();
     setIsClassificationDialogOpen(false);
   };
 
   const handlePaymentProcessed = () => {
-    refetch();
+    invalidarFacturas();
     setIsPaymentDialogOpen(false);
   };
 
