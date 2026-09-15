@@ -1,7 +1,11 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Navigate, Link } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
+import { useInvalidateFacturas } from '@/hooks/useInvalidateFacturas';
 import { supabase } from '@/integrations/supabase/client';
+import { fetchAllRows } from '@/integrations/supabase/fetchAll';
+import { PeriodoFilter } from '@/components/PeriodoFilter';
+import { obtenerAniosDisponibles, rangoDePeriodo, PERIODO_VACIO, type Periodo } from '@/utils/periodo';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -94,6 +98,7 @@ interface FilterState {
 
 export default function Informes() {
   const { user, loading } = useAuth();
+  const invalidarFacturas = useInvalidateFacturas();
   const { toast } = useToast();
   const [filteredFacturas, setFilteredFacturas] = useState<Factura[]>([]);
   const [selectedFacturas, setSelectedFacturas] = useState<string[]>([]);
@@ -185,6 +190,35 @@ export default function Informes() {
 
   const monthRange = getCurrentMonthRange();
 
+  const [periodo, setPeriodo] = useState<Periodo>(PERIODO_VACIO);
+
+  /**
+   * El período acá no se suma como filtro: REESCRIBE el rango de fechas, en
+   * los campos que correspondan según `tipoFecha`. Si se sumara, elegir un año
+   * distinto al del rango por defecto (mes actual) daría cero resultados y
+   * nadie entendería por qué.
+   */
+  const aplicarPeriodo = (nuevoPeriodo: Periodo) => {
+    setPeriodo(nuevoPeriodo);
+
+    const rango = rangoDePeriodo(nuevoPeriodo);
+
+    setFilters(prev => {
+      if (prev.tipoFecha === 'pago') {
+        return {
+          ...prev,
+          fechaPagoInicio: rango?.inicio ?? '',
+          fechaPagoFin: rango?.fin ?? '',
+        };
+      }
+      return {
+        ...prev,
+        fechaInicio: rango?.inicio ?? '',
+        fechaFin: rango?.fin ?? '',
+      };
+    });
+  };
+
   const [filters, setFilters] = useState<FilterState>({
     fechaInicio: monthRange.inicio,
     fechaFin: monthRange.fin,
@@ -200,24 +234,34 @@ export default function Informes() {
     ingresoSistema: ''
   });
 
-  const { data: queryData, isLoading: loadingData, refetch } = useSupabaseQuery(
+  const { data: queryData, isLoading: loadingData } = useSupabaseQuery(
     ['facturas', 'informes'],
     async () => {
-      const { data, error } = await supabase
-        .from('facturas')
-        .select(`
-          *,
-          ingresado_sistema
-        `)
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-
-      const { data: pagosData, error: pagosError } = await supabase
-        .from('pagos_partidos')
-        .select('*');
-
-      if (pagosError) throw pagosError;
+      // Esta página produce cifras contables. Sin paginar, PostgREST cortaba
+      // en 1000 filas sin avisar y el reporte salía incompleto en silencio:
+      // el peor error posible acá, porque nadie lo nota hasta la auditoría.
+      const [data, pagosData] = await Promise.all([
+        fetchAllRows<any>(
+          (from, to) => supabase
+            .from('facturas')
+            .select(`
+              *,
+              ingresado_sistema
+            `)
+            .order('created_at', { ascending: false })
+            .order('id')
+            .range(from, to),
+          { label: 'facturas (informes)' }
+        ),
+        fetchAllRows<any>(
+          (from, to) => supabase
+            .from('pagos_partidos')
+            .select('*')
+            .order('id')
+            .range(from, to),
+          { label: 'pagos partidos (informes)' }
+        ),
+      ]);
 
       return {
         facturas: data ?? [],
@@ -230,6 +274,11 @@ export default function Informes() {
   );
 
   const facturas = queryData?.facturas ?? [];
+
+  const aniosDisponibles = useMemo(
+    () => obtenerAniosDisponibles(facturas, (f: any) => f.fecha_emision || f.fecha_pago || f.created_at),
+    [facturas]
+  );
   const pagosPartidos = queryData?.pagosPartidos ?? [];
 
   // Escuchar cambios en tiempo real de la base de datos
@@ -246,7 +295,7 @@ export default function Informes() {
           table: 'facturas'
         },
         () => {
-          refetch();
+          invalidarFacturas();
         }
       )
       .subscribe();
@@ -254,7 +303,7 @@ export default function Informes() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [user, refetch]);
+  }, [user, invalidarFacturas]);
 
   // Refrescar datos cada 5 minutos para asegurar sincronización (solo si es necesario)
   // useEffect(() => {
@@ -748,7 +797,7 @@ export default function Informes() {
       if (error) throw error;
 
       // Refrescar los datos
-      await refetch();
+      await invalidarFacturas();
 
       toast({
         title: "Serie actualizada",
@@ -1409,6 +1458,16 @@ export default function Informes() {
                 </Select>
               </div>
 
+              {/* Atajo de período: escribe el rango de fechas de abajo */}
+              <div className="md:col-span-2">
+                <Label className="mb-1.5 block">Período rápido</Label>
+                <PeriodoFilter
+                  anios={aniosDisponibles}
+                  periodo={periodo}
+                  onChange={aplicarPeriodo}
+                />
+              </div>
+
               {/* Fechas de Emisión - Solo si tipoFecha es 'emision' */}
               {filters.tipoFecha === 'emision' && (
                 <>
@@ -1560,7 +1619,7 @@ export default function Informes() {
                 <RefreshCw className="w-4 h-4 mr-2" />
                 Limpiar Filtros
               </Button>
-              <Button variant="outline" onClick={() => refetch()}>
+              <Button variant="outline" onClick={() => invalidarFacturas()}>
                 <RefreshCw className="w-4 h-4 mr-2" />
                 Actualizar Datos
               </Button>

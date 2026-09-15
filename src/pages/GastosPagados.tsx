@@ -1,7 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Navigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
+import { useInvalidateFacturas } from '@/hooks/useInvalidateFacturas';
 import { supabase } from '@/integrations/supabase/client';
+import { fetchAllRows } from '@/integrations/supabase/fetchAll';
+import { PeriodoFilter } from '@/components/PeriodoFilter';
+import { filtrarPorPeriodo, obtenerAniosDisponibles, PERIODO_VACIO, type Periodo } from '@/utils/periodo';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -46,31 +50,38 @@ interface PagoPartido {
 
 export function GastosPagados() {
   const { user, loading } = useAuth();
+  const invalidarFacturas = useInvalidateFacturas();
   const [searchParams, setSearchParams] = useSearchParams();
   const {
     data: queryData,
-    isLoading,
-    refetch
+    isLoading
   } = useSupabaseQuery<{
     facturas: Factura[];
     pagosPartidos: PagoPartido[];
   }>(
     ['facturas', 'gastos-pagados'],
     async () => {
-      const { data, error } = await supabase
-        .from('facturas')
-        .select('*')
-        .eq('clasificacion', 'gasto')
-        .eq('estado_mercancia', 'pagada')
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-
-      const { data: pagosData, error: pagosError } = await supabase
-        .from('pagos_partidos')
-        .select('*');
-
-      if (pagosError) throw pagosError;
+      const [data, pagosData] = await Promise.all([
+        fetchAllRows<any>(
+          (from, to) => supabase
+            .from('facturas')
+            .select('*')
+            .eq('clasificacion', 'gasto')
+            .eq('estado_mercancia', 'pagada')
+            .order('created_at', { ascending: false })
+            .order('id')
+            .range(from, to),
+          { label: 'gastos pagados' }
+        ),
+        fetchAllRows<any>(
+          (from, to) => supabase
+            .from('pagos_partidos')
+            .select('*')
+            .order('id')
+            .range(from, to),
+          { label: 'pagos partidos' }
+        ),
+      ]);
 
       return {
         facturas: data || [],
@@ -83,6 +94,12 @@ export function GastosPagados() {
   const pagosPartidos = queryData?.pagosPartidos ?? [];
   const [dateFrom, setDateFrom] = useState<Date | undefined>(undefined);
   const [dateTo, setDateTo] = useState<Date | undefined>(undefined);
+  const [periodo, setPeriodo] = useState<Periodo>(PERIODO_VACIO);
+
+  const aniosDisponibles = useMemo(
+    () => obtenerAniosDisponibles(facturas, f => f.fecha_emision || f.created_at),
+    [facturas]
+  );
   const [sortByDate, setSortByDate] = useState<'newest' | 'oldest'>('newest');
   const [searchKeyword, setSearchKeyword] = useState('');
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
@@ -118,7 +135,7 @@ export function GastosPagados() {
   };
 
   const handleNotaCreditoCreated = () => {
-    refetch();
+    invalidarFacturas();
     setIsNotaCreditoDialogOpen(false);
     setSelectedFacturaForNotaCredito(null);
   };
@@ -160,10 +177,11 @@ export function GastosPagados() {
   };
 
   const getFilteredFacturas = () => {
-    let filtered = facturas;
+    // Filtro por período (año / mes). Se combina con el rango de fechas.
+    let filtered = filtrarPorPeriodo(facturas, periodo, f => f.fecha_emision || f.created_at);
 
     if (dateFrom || dateTo) {
-      filtered = facturas.filter(factura => {
+      filtered = filtered.filter(factura => {
         if (!factura.fecha_emision) return false;
         const facturaDate = new Date(factura.fecha_emision);
 
@@ -220,10 +238,16 @@ export function GastosPagados() {
           <CardHeader>
             <CardTitle>Filtros de Fecha</CardTitle>
             <CardDescription>
-              Filtra las facturas pagadas por rango de fechas de emisión
+              Filtra las facturas pagadas por año, mes o rango de fechas de emisión
             </CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-4">
+            <PeriodoFilter
+              anios={aniosDisponibles}
+              periodo={periodo}
+              onChange={setPeriodo}
+            />
+
             <div className="flex flex-wrap gap-4">
               <div className="flex flex-col space-y-2">
                 <label className="text-sm font-medium">Desde</label>
@@ -353,7 +377,7 @@ export function GastosPagados() {
               <FacturasTable
                 facturas={filteredFacturas}
                 onClassifyClick={() => {}}
-                refreshData={refetch}
+                refreshData={invalidarFacturas}
                 showActions={true}
                 showClassifyButton={false}
                 onNotaCreditoClick={handleNotaCredito}

@@ -1,6 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
+import { PeriodoFilter } from '@/components/PeriodoFilter';
+import { fetchAllRows } from '@/integrations/supabase/fetchAll';
+import { filtrarPorPeriodo, obtenerAniosDisponibles, PERIODO_VACIO, type Periodo } from '@/utils/periodo';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -300,6 +303,7 @@ export default function FacturasPorProveedor() {
   const [filteredFacturas, setFilteredFacturas] = useState<Factura[]>([]);
   const [loadingFacturas, setLoadingFacturas] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [periodo, setPeriodo] = useState<Periodo>(PERIODO_VACIO);
   const [selectedFactura, setSelectedFactura] = useState<Factura | null>(null);
   const [isClassificationDialogOpen, setIsClassificationDialogOpen] = useState(false);
   const [selectedPaymentFactura, setSelectedPaymentFactura] = useState<Factura | null>(null);
@@ -308,6 +312,11 @@ export default function FacturasPorProveedor() {
   const [currentPdfUrl, setCurrentPdfUrl] = useState<string | null>(null);
   const [currentPdfFactura, setCurrentPdfFactura] = useState<string>('');
 
+  const aniosDisponibles = useMemo(
+    () => obtenerAniosDisponibles(facturas, f => f.fecha_emision || f.created_at),
+    [facturas]
+  );
+
   useEffect(() => {
     if (user) {
       fetchFacturas();
@@ -315,17 +324,21 @@ export default function FacturasPorProveedor() {
   }, [user]);
 
   useEffect(() => {
-    if (searchTerm.trim() === '') {
-      setFilteredFacturas(facturas);
-    } else {
-      const filtered = facturas.filter(factura =>
-        factura.numero_factura.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        factura.emisor_nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    // El período se aplica antes que la búsqueda para que los totales de
+    // cabecera (totalFacturas / valorTotal) correspondan al año elegido.
+    let filtered = filtrarPorPeriodo(facturas, periodo, f => f.fecha_emision || f.created_at);
+
+    if (searchTerm.trim() !== '') {
+      const termino = searchTerm.toLowerCase();
+      filtered = filtered.filter(factura =>
+        factura.numero_factura.toLowerCase().includes(termino) ||
+        factura.emisor_nombre.toLowerCase().includes(termino) ||
         factura.emisor_nit.includes(searchTerm)
       );
-      setFilteredFacturas(filtered);
     }
-  }, [searchTerm, facturas]);
+
+    setFilteredFacturas(filtered);
+  }, [searchTerm, facturas, periodo]);
 
   if (!user && !loading) {
     return <Navigate to="/auth" replace />;
@@ -333,12 +346,19 @@ export default function FacturasPorProveedor() {
 
   const fetchFacturas = async () => {
     try {
-      const { data, error } = await supabase
-        .from('facturas')
-        .select('*')
-        .order('created_at', { ascending: false });
+      // Paginado: con la tabla truncada en 1000 filas no solo faltan facturas,
+      // además le faltan AÑOS al desplegable de período — se ofrecería filtrar
+      // solo por los años que entraron en esas primeras 1000.
+      const data = await fetchAllRows<Factura>(
+        (from, to) => supabase
+          .from('facturas')
+          .select('*')
+          .order('created_at', { ascending: false })
+          .order('id')
+          .range(from, to),
+        { label: 'facturas por proveedor' }
+      );
 
-      if (error) throw error;
       setFacturas(data || []);
     } catch (error) {
       toast({
@@ -483,6 +503,11 @@ export default function FacturasPorProveedor() {
               className="pl-9"
             />
           </div>
+          <PeriodoFilter
+            anios={aniosDisponibles}
+            periodo={periodo}
+            onChange={setPeriodo}
+          />
           <Button variant="outline" size="icon" onClick={fetchFacturas}>
             <RefreshCw className="w-4 h-4" />
           </Button>

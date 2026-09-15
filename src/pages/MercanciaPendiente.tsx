@@ -1,7 +1,11 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Navigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
+import { useInvalidateFacturas } from '@/hooks/useInvalidateFacturas';
+import { PeriodoFilter } from '@/components/PeriodoFilter';
+import { filtrarPorPeriodo, obtenerAniosDisponibles, PERIODO_VACIO, type Periodo } from '@/utils/periodo';
 import { supabase } from '@/integrations/supabase/client';
+import { fetchAllRows } from '@/integrations/supabase/fetchAll';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -47,24 +51,26 @@ interface Factura {
 
 export function MercanciaPendiente() {
   const { user, loading } = useAuth();
+  const invalidarFacturas = useInvalidateFacturas();
   const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
   const {
     data: facturasData,
-    isLoading,
-    refetch
+    isLoading
   } = useSupabaseQuery<Factura[]>(
     ['facturas', 'mercancia-pendiente'],
     async () => {
-      const { data, error } = await supabase
-        .from('facturas')
-        .select('*, ingresado_sistema')
-        .eq('clasificacion', 'mercancia')
-        .or('estado_mercancia.is.null,estado_mercancia.neq.pagada')
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-      return data || [];
+      return await fetchAllRows<Factura>(
+        (from, to) => supabase
+          .from('facturas')
+          .select('*, ingresado_sistema')
+          .eq('clasificacion', 'mercancia')
+          .or('estado_mercancia.is.null,estado_mercancia.neq.pagada')
+          .order('created_at', { ascending: false })
+          .order('id')
+          .range(from, to),
+        { label: 'mercancía pendiente' }
+      );
     },
     { enabled: !!user }
   );
@@ -74,6 +80,15 @@ export function MercanciaPendiente() {
   const [selectedFacturaForEdit, setSelectedFacturaForEdit] = useState<Factura | null>(null);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [sortByDate, setSortByDate] = useState<'newest' | 'oldest'>('newest');
+  const [periodo, setPeriodo] = useState<Periodo>(PERIODO_VACIO);
+  const [campoFecha, setCampoFecha] = useState<'emision' | 'vencimiento'>('emision');
+
+  const aniosDisponibles = useMemo(
+    () => obtenerAniosDisponibles(facturas, f =>
+      campoFecha === 'vencimiento' ? f.fecha_vencimiento : (f.fecha_emision || f.created_at)
+    ),
+    [facturas, campoFecha]
+  );
   const [searchKeyword, setSearchKeyword] = useState('');
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
   const [selectedFacturasForPayment, setSelectedFacturasForPayment] = useState<Factura[]>([]);
@@ -149,7 +164,7 @@ export function MercanciaPendiente() {
   };
 
   const handleNotaCreditoCreated = () => {
-    refetch();
+    invalidarFacturas();
     setIsNotaCreditoDialogOpen(false);
     setSelectedFacturaForNotaCredito(null);
   };
@@ -163,7 +178,13 @@ export function MercanciaPendiente() {
 
   // Memorizar las facturas filtradas
   const filteredFacturas = useMemo(() => {
-    let filtered = facturas;
+    // Filtro por período. En una pantalla de pendientes el campo importa:
+    // por emisión respondés "qué facturé en septiembre", por vencimiento
+    // respondés "qué tengo que pagar en septiembre". Las dos preguntas son
+    // válidas y dan conjuntos distintos, así que se elige cuál.
+    let filtered = filtrarPorPeriodo(facturas, periodo, f =>
+      campoFecha === 'vencimiento' ? f.fecha_vencimiento : (f.fecha_emision || f.created_at)
+    );
 
     // Filtro por palabra clave
     if (searchKeyword.trim()) {
@@ -189,7 +210,7 @@ export function MercanciaPendiente() {
     });
 
     return filtered;
-  }, [facturas, searchKeyword, sortByDate]);
+  }, [facturas, searchKeyword, sortByDate, periodo, campoFecha]);
 
   // Memorizar las estadísticas calculadas
   const stats = useMemo(() => {
@@ -274,12 +295,37 @@ export function MercanciaPendiente() {
                 </Select>
               </div>
 
+              <div className="flex flex-col space-y-2">
+                <label className="text-sm font-medium">Filtrar por</label>
+                <Select
+                  value={campoFecha}
+                  onValueChange={(value: 'emision' | 'vencimiento') => setCampoFecha(value)}
+                >
+                  <SelectTrigger className="w-[170px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="emision">Fecha de emisión</SelectItem>
+                    <SelectItem value="vencimiento">Fecha de vencimiento</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <PeriodoFilter
+                anios={aniosDisponibles}
+                periodo={periodo}
+                onChange={setPeriodo}
+                mostrarLimpiar={false}
+              />
+
               <div className="flex items-end">
                 <Button
                   variant="outline"
                   onClick={() => {
                     setSearchKeyword('');
                     setSortByDate('newest');
+                    setPeriodo(PERIODO_VACIO);
+                    setCampoFecha('emision');
                   }}
                 >
                   Limpiar Filtros
@@ -357,7 +403,7 @@ export function MercanciaPendiente() {
                 facturas={filteredFacturas}
                 onClassifyClick={() => {}}
                 onPayClick={handlePay}
-                refreshData={refetch}
+                refreshData={invalidarFacturas}
                 showClassifyButton={false}
                 showValorRealAPagar={true}
                 showIngresoSistema={true}
@@ -381,7 +427,7 @@ export function MercanciaPendiente() {
             setIsPaymentDialogOpen(false);
             setSelectedFactura(null);
           }}
-          onPaymentProcessed={refetch}
+          onPaymentProcessed={invalidarFacturas}
         />
 
         {/* Edit Factura Dialog */}
@@ -392,7 +438,7 @@ export function MercanciaPendiente() {
             setSelectedFacturaForEdit(null);
           }}
           factura={selectedFacturaForEdit}
-          onSave={refetch}
+          onSave={invalidarFacturas}
         />
 
         {/* Multiple Payment Dialog */}
@@ -403,7 +449,7 @@ export function MercanciaPendiente() {
             setSelectedFacturasForPayment([]);
           }}
           facturas={selectedFacturasForPayment}
-          onPaymentProcessed={refetch}
+          onPaymentProcessed={invalidarFacturas}
         />
 
         {/* Nota de Crédito Dialog */}
