@@ -1,7 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Navigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
+import { useInvalidateFacturas } from '@/hooks/useInvalidateFacturas';
 import { supabase } from '@/integrations/supabase/client';
+import { fetchAllRows } from '@/integrations/supabase/fetchAll';
+import { PeriodoFilter } from '@/components/PeriodoFilter';
+import { coincidePeriodo, obtenerAniosDisponibles, PERIODO_VACIO, TODOS, type Periodo } from '@/utils/periodo';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -49,44 +53,32 @@ const ESTADOS_DISPONIBLES = [
   { value: 'sin_estado', label: 'Sin estado', color: 'bg-gray-500' }
 ];
 
-const MESES = [
-  { value: '', label: 'Todos los meses' },
-  { value: '01', label: 'Enero' },
-  { value: '02', label: 'Febrero' },
-  { value: '03', label: 'Marzo' },
-  { value: '04', label: 'Abril' },
-  { value: '05', label: 'Mayo' },
-  { value: '06', label: 'Junio' },
-  { value: '07', label: 'Julio' },
-  { value: '08', label: 'Agosto' },
-  { value: '09', label: 'Septiembre' },
-  { value: '10', label: 'Octubre' },
-  { value: '11', label: 'Noviembre' },
-  { value: '12', label: 'Diciembre' }
-];
+// La lista de meses ahora vive en @/utils/periodo y la consume PeriodoFilter.
 
 const STORAGE_KEY = 'facturas-por-serie-filtros';
 
 export default function FacturasPorSerie() {
   const { user, loading: authLoading } = useAuth();
+  const invalidarFacturas = useInvalidateFacturas();
   const [searchParams, setSearchParams] = useSearchParams();
   const { toast } = useToast();
   const {
     data: facturasData,
-    isLoading: loading,
-    refetch
+    isLoading: loading
   } = useSupabaseQuery<Factura[]>(
     ['facturas', 'por-serie'],
     async () => {
-      const { data, error } = await supabase
-        .from('facturas')
-        .select('*')
-        .in('clasificacion', ['mercancia', 'sistematizada'])
-        .not('numero_serie', 'is', null)
-        .order('numero_serie', { ascending: true });
-
-      if (error) throw error;
-      return data || [];
+      return await fetchAllRows<Factura>(
+        (from, to) => supabase
+          .from('facturas')
+          .select('*')
+          .in('clasificacion', ['mercancia', 'sistematizada'])
+          .not('numero_serie', 'is', null)
+          .order('numero_serie', { ascending: true })
+          .order('id')
+          .range(from, to),
+        { label: 'facturas por serie' }
+      );
     },
     {
       enabled: !!user,
@@ -103,7 +95,14 @@ export default function FacturasPorSerie() {
   const facturas = facturasData ?? [];
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedEstados, setSelectedEstados] = useState<string[]>(['pagada', 'pendiente', 'sistematizada', 'sin_estado']);
-  const [selectedMes, setSelectedMes] = useState<string>('');
+  const [periodo, setPeriodo] = useState<Periodo>(PERIODO_VACIO);
+
+  // Los años salen de las facturas realmente cargadas, no de un rango fijo:
+  // así nunca se ofrece un año que al elegirlo deja la tabla vacía.
+  const aniosDisponibles = useMemo(
+    () => obtenerAniosDisponibles(facturas, f => f.fecha_emision || f.created_at),
+    [facturas]
+  );
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -133,22 +132,25 @@ export default function FacturasPorSerie() {
 
   useEffect(() => {
     saveFiltersToStorage();
-  }, [selectedEstados, selectedMes]);
+  }, [selectedEstados, periodo]);
 
   const loadFiltersFromStorage = () => {
+    const estadosPorDefecto = ['pagada', 'pendiente', 'sistematizada', 'sin_estado'];
     try {
       const savedFilters = localStorage.getItem(STORAGE_KEY);
       if (savedFilters) {
-        const { estados, mes } = JSON.parse(savedFilters);
-        setSelectedEstados(estados || ['pagada', 'pendiente', 'sistematizada', 'sin_estado']);
-        setSelectedMes(mes || '');
+        const { estados, mes, anio } = JSON.parse(savedFilters);
+        setSelectedEstados(estados || estadosPorDefecto);
+        // `mes: ''` es el formato viejo guardado antes de que existiera el año.
+        // Se normaliza a TODOS porque el Select de Radix no acepta value vacío.
+        setPeriodo({ anio: anio || TODOS, mes: mes || TODOS });
       } else {
-        setSelectedEstados(['pagada', 'pendiente', 'sistematizada', 'sin_estado']);
-        setSelectedMes('');
+        setSelectedEstados(estadosPorDefecto);
+        setPeriodo(PERIODO_VACIO);
       }
     } catch (error) {
-      setSelectedEstados(['pagada', 'pendiente', 'sistematizada', 'sin_estado']);
-      setSelectedMes('');
+      setSelectedEstados(estadosPorDefecto);
+      setPeriodo(PERIODO_VACIO);
     }
   };
 
@@ -156,7 +158,8 @@ export default function FacturasPorSerie() {
     try {
       const filters = {
         estados: selectedEstados,
-        mes: selectedMes
+        anio: periodo.anio,
+        mes: periodo.mes
       };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(filters));
     } catch (error) {
@@ -179,16 +182,12 @@ export default function FacturasPorSerie() {
 
       if (!estadoIncluido) return false;
 
-      // Filtro por mes
-      if (selectedMes) {
-        const fechaFactura = factura.fecha_emision || factura.created_at;
-        if (fechaFactura) {
-          const mesFactura = new Date(fechaFactura).getMonth() + 1;
-          const mesFacturaString = mesFactura.toString().padStart(2, '0');
-          if (mesFacturaString !== selectedMes) return false;
-        } else {
-          return false; // Excluir facturas sin fecha si se filtra por mes
-        }
+      // Filtro por período (año + mes).
+      // Antes esto comparaba SOLO el mes: elegir "Enero" traía enero de todos
+      // los años a la vez y los totales de la pantalla eran la suma de todos
+      // los eneros de la historia.
+      if (!coincidePeriodo(factura.fecha_emision || factura.created_at, periodo)) {
+        return false;
       }
 
       // Filtro por búsqueda
@@ -376,41 +375,12 @@ export default function FacturasPorSerie() {
                 </PopoverContent>
               </Popover>
 
-              {/* Filter by Month */}
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button variant="outline" className="gap-2">
-                    <Calendar className="w-4 h-4" />
-                    {selectedMes ? MESES.find(m => m.value === selectedMes)?.label : 'Todos los meses'}
-                    <ChevronDown className="w-4 h-4" />
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-56" align="end">
-                  <div className="space-y-4">
-                    <h4 className="font-medium text-sm">Filtrar por Mes</h4>
-                    <div className="space-y-2">
-                      {MESES.map((mes) => (
-                        <div key={mes.value} className="flex items-center space-x-2">
-                          <Checkbox
-                            id={mes.value}
-                            checked={selectedMes === mes.value}
-                            onCheckedChange={(checked) => {
-                              if (checked) {
-                                setSelectedMes(mes.value);
-                              } else {
-                                setSelectedMes('');
-                              }
-                            }}
-                          />
-                          <label htmlFor={mes.value} className="text-sm cursor-pointer">
-                            {mes.label}
-                          </label>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </PopoverContent>
-              </Popover>
+              {/* Filtro de período: año + mes */}
+              <PeriodoFilter
+                anios={aniosDisponibles}
+                periodo={periodo}
+                onChange={setPeriodo}
+              />
             </div>
           </CardContent>
         </Card>
@@ -506,7 +476,7 @@ export default function FacturasPorSerie() {
             <FacturasTable
               facturas={facturasFiltradas}
               onClassifyClick={() => {}}
-              refreshData={refetch}
+              refreshData={invalidarFacturas}
               highlightedId={highlightedId}
             />
           </CardContent>

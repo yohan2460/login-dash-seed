@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react';
 import { Navigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
+import { useInvalidateFacturas } from '@/hooks/useInvalidateFacturas';
 import { supabase } from '@/integrations/supabase/client';
+import { fetchAllRows } from '@/integrations/supabase/fetchAll';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -33,22 +35,24 @@ interface Factura {
 
 export function SinClasificar() {
   const { user, loading: authLoading } = useAuth();
+  const invalidarFacturas = useInvalidateFacturas();
   const [searchParams, setSearchParams] = useSearchParams();
   const {
     data: facturasData,
-    isLoading: facturasLoading,
-    refetch
+    isLoading: facturasLoading
   } = useSupabaseQuery<Factura[]>(
     ['facturas', 'sin-clasificar'],
     async () => {
-      const { data, error } = await supabase
-        .from('facturas')
-        .select('*')
-        .is('clasificacion', null)
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-      return data || [];
+      return await fetchAllRows<Factura>(
+        (from, to) => supabase
+          .from('facturas')
+          .select('*')
+          .is('clasificacion', null)
+          .order('created_at', { ascending: false })
+          .order('id')
+          .range(from, to),
+        { label: 'facturas sin clasificar' }
+      );
     },
     { enabled: !!user }
   );
@@ -297,7 +301,7 @@ export function SinClasificar() {
                 facturas={getFilteredFacturas()}
                 onClassifyClick={handleClassify}
                 onNotaCreditoClick={handleNotaCredito}
-                refreshData={refetch}
+                refreshData={invalidarFacturas}
                 highlightedId={highlightedId}
               />
             )}
@@ -315,7 +319,7 @@ export function SinClasificar() {
             setIsPdfViewerOpen(false);
             setPdfUrl(null);
           }}
-          onClassificationUpdated={refetch}
+          onClassificationUpdated={invalidarFacturas}
           sideBySide={true}
         />
 
@@ -336,7 +340,7 @@ export function SinClasificar() {
         <ManualFacturaDialog
           isOpen={isManualDialogOpen}
           onClose={() => setIsManualDialogOpen(false)}
-          onFacturaCreated={refetch}
+          onFacturaCreated={invalidarFacturas}
         />
 
         <NotaCreditoDialog
@@ -346,7 +350,7 @@ export function SinClasificar() {
             setIsNotaCreditoDialogOpen(false);
             setSelectedFacturaForNotaCredito(null);
           }}
-          onNotaCreditoCreated={refetch}
+          onNotaCreditoCreated={invalidarFacturas}
         />
       </div>
     </ModernLayout>

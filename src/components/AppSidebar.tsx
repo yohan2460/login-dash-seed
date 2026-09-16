@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import {
   FileText,
@@ -18,6 +18,8 @@ import {
   Layers
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { countRows, fetchAllRows } from "@/integrations/supabase/fetchAll";
+import { useSupabaseQuery } from "@/hooks/useSupabaseQuery";
 import {
   Sidebar,
   SidebarContent,
@@ -93,7 +95,9 @@ export function AppSidebar() {
   const navigate = useNavigate();
   const { user, signOut } = useAuth();
   const currentPath = location.pathname;
-  const [stats, setStats] = useState<FacturasStats>({
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
+
+  const STATS_VACIAS: FacturasStats = {
     total: 0,
     sinClasificar: 0,
     mercancia: 0,
@@ -105,36 +109,75 @@ export function AppSidebar() {
     proveedores: 0,
     sistematizadas: 0,
     notasCredito: 0
-  });
-  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
+  };
 
-  useEffect(() => {
-    fetchStats();
-  }, []);
+  // Los badges viven bajo el prefijo ['facturas'] a propósito.
+  //
+  // Antes esto era useState + useEffect con un fetch único al montar: el
+  // sidebar quedaba fuera de la caché de react-query, así que pagar o
+  // clasificar una factura no lo tocaba y los contadores seguían mostrando
+  // el número viejo hasta recargar la página entera.
+  //
+  // Compartiendo el prefijo, un invalidateQueries(['facturas']) desde
+  // cualquier pantalla los refresca junto con todo lo demás.
+  const { data: stats = STATS_VACIAS } = useSupabaseQuery<FacturasStats>(
+    ['facturas', 'sidebar-stats'],
+    () => fetchStats(),
+    { enabled: !!user }
+  );
 
-  const fetchStats = async () => {
+  const fetchStats = async (): Promise<FacturasStats> => {
+    // Antes acá había un `.from('facturas').select('*')` sin límite, en el
+    // sidebar, que se monta en TODAS las páginas: traía la tabla entera solo
+    // para hacerle .filter().length, y con más de 1000 facturas devolvía los
+    // badges mal sin dar ningún error. Ahora cada badge es un COUNT en
+    // Postgres: no viaja ni una fila y el número es exacto siempre.
+    const contar = (aplicarFiltros: (q: any) => any) =>
+      countRows(
+        aplicarFiltros(supabase.from('facturas').select('*', { count: 'exact', head: true })),
+        'facturas'
+      );
+
     try {
-      const { data: facturas, error } = await supabase
-        .from('facturas')
-        .select('*');
-      
-      if (error) throw error;
+      const [
+        total,
+        sinClasificar,
+        mercancia,
+        gastos,
+        sistematizadas,
+        notasCredito,
+        pendientes,
+        pagadas,
+        gastosPendientes,
+        gastosPagados,
+        nits,
+      ] = await Promise.all([
+        contar(q => q),
+        contar(q => q.is('clasificacion', null)),
+        contar(q => q.eq('clasificacion', 'mercancia')),
+        contar(q => q.eq('clasificacion', 'gasto')),
+        contar(q => q.eq('clasificacion', 'sistematizada')),
+        contar(q => q.eq('clasificacion', 'nota_credito')),
+        contar(q => q.eq('clasificacion', 'mercancia').neq('estado_mercancia', 'pagada')),
+        contar(q => q.eq('clasificacion', 'mercancia').eq('estado_mercancia', 'pagada')),
+        contar(q => q.eq('clasificacion', 'gasto').neq('estado_mercancia', 'pagada')),
+        contar(q => q.eq('clasificacion', 'gasto').eq('estado_mercancia', 'pagada')),
+        // Proveedores únicos necesita los valores, no un conteo. Traemos SOLO
+        // la columna emisor_nit (no la fila completa) y paginamos, para que el
+        // número siga siendo exacto pasadas las 1000 facturas.
+        fetchAllRows<{ emisor_nit: string }>(
+          (from, to) => supabase
+            .from('facturas')
+            .select('emisor_nit')
+            .order('emisor_nit')
+            .order('id')
+            .range(from, to),
+          { label: 'NITs de proveedores' }
+        ),
+      ]);
 
-      const sinClasificar = facturas?.filter(f => f.clasificacion === null).length || 0;
-      const mercancia = facturas?.filter(f => f.clasificacion === 'mercancia').length || 0;
-      const gastos = facturas?.filter(f => f.clasificacion === 'gasto').length || 0;
-      const sistematizadas = facturas?.filter(f => f.clasificacion === 'sistematizada').length || 0;
-      const notasCredito = facturas?.filter(f => f.clasificacion === 'nota_credito').length || 0;
-      const pendientes = facturas?.filter(f => f.clasificacion === 'mercancia' && f.estado_mercancia !== 'pagada').length || 0;
-      const pagadas = facturas?.filter(f => f.clasificacion === 'mercancia' && f.estado_mercancia === 'pagada').length || 0;
-      const gastosPendientes = facturas?.filter(f => f.clasificacion === 'gasto' && f.estado_mercancia !== 'pagada').length || 0;
-      const gastosPagados = facturas?.filter(f => f.clasificacion === 'gasto' && f.estado_mercancia === 'pagada').length || 0;
-
-      // Calcular proveedores únicos
-      const proveedoresUnicos = new Set(facturas?.map(f => f.emisor_nit)).size;
-
-      setStats({
-        total: facturas?.length || 0,
+      return {
+        total,
         sinClasificar,
         mercancia,
         gastos,
@@ -142,12 +185,17 @@ export function AppSidebar() {
         pagadas,
         gastosPendientes,
         gastosPagados,
-        proveedores: proveedoresUnicos,
+        proveedores: new Set(nits.map(f => f.emisor_nit)).size,
         sistematizadas,
-        notasCredito
-      });
+        notasCredito,
+      };
     } catch (error) {
+      // Se relanza en vez de tragarse el error: antes esto dejaba los badges
+      // en 0 para siempre y era imposible distinguir "no hay facturas
+      // pendientes" de "la consulta falló". Ahora react-query lo registra
+      // como error y reintenta.
       console.error('Error fetching stats:', error);
+      throw error;
     }
   };
 

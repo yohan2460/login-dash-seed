@@ -257,7 +257,14 @@ export function RegeneratePDFDialog({ factura, isOpen, onClose, onPDFRegenerated
       .limit(1)
       .maybeSingle();
 
-    if (errorComprobante || !comprobanteGrupal) return null;
+    // Un error real de base (red, RLS) no es lo mismo que "no hay comprobante
+    // grupal". Antes ambos devolvían null y el fallo quedaba invisible.
+    if (errorComprobante) {
+      console.error('Error buscando comprobante grupal:', errorComprobante);
+      throw new Error(`No se pudo consultar el comprobante grupal: ${errorComprobante.message}`);
+    }
+
+    if (!comprobanteGrupal) return null;
 
     const facturasIds = Array.isArray((comprobanteGrupal as any).facturas_ids)
       ? ((comprobanteGrupal as any).facturas_ids as string[])
@@ -994,7 +1001,15 @@ export function RegeneratePDFDialog({ factura, isOpen, onClose, onPDFRegenerated
         .order('created_at', { ascending: false });
 
       if (comprobanteError) {
+        // Antes acá solo se logueaba y el flujo seguía. Con `comprobantes`
+        // en undefined caía al branch de "no existe comprobante" y CREABA UNO
+        // NUEVO, duplicando el comprobante de pago de la factura. Un fallo de
+        // red o de RLS terminaba corrompiendo datos: hay que abortar.
         console.error('Error buscando comprobante:', comprobanteError);
+        throw new Error(
+          `No se pudo verificar si ya existe un comprobante para esta factura: ${comprobanteError.message}. ` +
+          `Se aborta la regeneración para no crear un comprobante duplicado.`
+        );
       }
 
       if (comprobantes && comprobantes.length > 0) {

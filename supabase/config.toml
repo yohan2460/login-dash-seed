@@ -1,4 +1,14 @@
 project_id = "tzftaefstlhiwpfxojpk"
 
 [functions.webhook-facturas]
+# verify_jwt queda en false a propósito: n8n no maneja sesiones de Supabase,
+# y activarlo tampoco protegería nada — verify_jwt acepta la anon key, que es
+# pública y está en el bundle del frontend.
+#
+# La autenticación real es el header x-webhook-secret, validado en tiempo
+# constante dentro de index.ts contra la variable WEBHOOK_FACTURAS_SECRET.
+# La función falla cerrado: si ese secreto no está configurado, responde 503.
+#
+# Configurar con:
+#   supabase secrets set WEBHOOK_FACTURAS_SECRET="$(openssl rand -hex 32)"
 verify_jwt = false

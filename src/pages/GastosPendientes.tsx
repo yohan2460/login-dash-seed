@@ -1,7 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Navigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
+import { useInvalidateFacturas } from '@/hooks/useInvalidateFacturas';
+import { PeriodoFilter } from '@/components/PeriodoFilter';
+import { filtrarPorPeriodo, obtenerAniosDisponibles, PERIODO_VACIO, type Periodo } from '@/utils/periodo';
 import { supabase } from '@/integrations/supabase/client';
+import { fetchAllRows } from '@/integrations/supabase/fetchAll';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -45,23 +49,25 @@ interface Factura {
 
 export function GastosPendientes() {
   const { user, loading } = useAuth();
+  const invalidarFacturas = useInvalidateFacturas();
   const [searchParams, setSearchParams] = useSearchParams();
   const {
     data: facturasData,
-    isLoading,
-    refetch
+    isLoading
   } = useSupabaseQuery<Factura[]>(
     ['facturas', 'gastos-pendientes'],
     async () => {
-      const { data, error } = await supabase
-        .from('facturas')
-        .select('*')
-        .eq('clasificacion', 'gasto')
-        .or('estado_mercancia.is.null,estado_mercancia.neq.pagada')
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-      return data || [];
+      return await fetchAllRows<Factura>(
+        (from, to) => supabase
+          .from('facturas')
+          .select('*')
+          .eq('clasificacion', 'gasto')
+          .or('estado_mercancia.is.null,estado_mercancia.neq.pagada')
+          .order('created_at', { ascending: false })
+          .order('id')
+          .range(from, to),
+        { label: 'gastos pendientes' }
+      );
     },
     { enabled: !!user }
   );
@@ -71,7 +77,16 @@ export function GastosPendientes() {
   const [selectedFacturaForEdit, setSelectedFacturaForEdit] = useState<Factura | null>(null);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [sortByDate, setSortByDate] = useState<'newest' | 'oldest'>('newest');
+  const [periodo, setPeriodo] = useState<Periodo>(PERIODO_VACIO);
+  const [campoFecha, setCampoFecha] = useState<'emision' | 'vencimiento'>('emision');
   const [searchKeyword, setSearchKeyword] = useState('');
+
+  const aniosDisponibles = useMemo(
+    () => obtenerAniosDisponibles(facturas, f =>
+      campoFecha === 'vencimiento' ? f.fecha_vencimiento : (f.fecha_emision || f.created_at)
+    ),
+    [facturas, campoFecha]
+  );
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
   const [selectedFacturasForPayment, setSelectedFacturasForPayment] = useState<Factura[]>([]);
   const [isMultiplePaymentDialogOpen, setIsMultiplePaymentDialogOpen] = useState(false);
@@ -120,7 +135,7 @@ export function GastosPendientes() {
   };
 
   const handleNotaCreditoCreated = () => {
-    refetch();
+    invalidarFacturas();
     setIsNotaCreditoDialogOpen(false);
     setSelectedFacturaForNotaCredito(null);
   };
@@ -132,20 +147,25 @@ export function GastosPendientes() {
     }).format(amount);
   };
 
-  const calcularTotalFacturas = () => {
-    return facturas.reduce((total, factura) => total + factura.total_a_pagar, 0);
+  // Estas cinco sumas alimentan las tarjetas de arriba. Reciben la lista ya
+  // filtrada a propósito: antes leían `facturas` sin filtrar, así que filtrar
+  // por período cambiaba la tabla pero las tarjetas seguían mostrando el total
+  // de TODO. Un filtro que no se refleja en los totales es peor que no tenerlo:
+  // parece que la plata no cuadra. MercanciaPendiente ya lo hacía bien.
+  const calcularTotalFacturas = (lista: Factura[]) => {
+    return lista.reduce((total, factura) => total + factura.total_a_pagar, 0);
   };
 
-  const calcularTotalImpuestos = () => {
-    return facturas.reduce((total, factura) => total + (factura.factura_iva || 0), 0);
+  const calcularTotalImpuestos = (lista: Factura[]) => {
+    return lista.reduce((total, factura) => total + (factura.factura_iva || 0), 0);
   };
 
-  const calcularTotalRetenciones = () => {
-    return facturas.reduce((total, factura) => total + calcularMontoRetencionReal(factura), 0);
+  const calcularTotalRetenciones = (lista: Factura[]) => {
+    return lista.reduce((total, factura) => total + calcularMontoRetencionReal(factura), 0);
   };
 
-  const calcularTotalProntoPago = () => {
-    return facturas
+  const calcularTotalProntoPago = (lista: Factura[]) => {
+    return lista
       .filter(f => f.porcentaje_pronto_pago && f.porcentaje_pronto_pago > 0)
       .reduce((total, factura) => {
         const montoBase = obtenerBaseSinIVAOriginal(factura);
@@ -154,12 +174,17 @@ export function GastosPendientes() {
       }, 0);
   };
 
-  const calcularTotalValorReal = () => {
-    return facturas.reduce((total, factura) => total + calcularValorRealAPagar(factura), 0);
+  const calcularTotalValorReal = (lista: Factura[]) => {
+    return lista.reduce((total, factura) => total + calcularValorRealAPagar(factura), 0);
   };
 
   const getFilteredFacturas = () => {
-    let filtered = facturas;
+    // Filtro por período. En pendientes el campo importa: por emisión
+    // respondés "qué facturé en septiembre", por vencimiento respondés
+    // "qué tengo que pagar en septiembre". Dan conjuntos distintos.
+    let filtered = filtrarPorPeriodo(facturas, periodo, f =>
+      campoFecha === 'vencimiento' ? f.fecha_vencimiento : (f.fecha_emision || f.created_at)
+    );
 
     // Filtro por palabra clave
     if (searchKeyword.trim()) {
@@ -186,6 +211,14 @@ export function GastosPendientes() {
 
     return filtered;
   };
+
+  // Una sola evaluación por render. Antes se llamaba a getFilteredFacturas()
+  // siete veces —cinco tarjetas más dos usos en el JSX— y cada llamada
+  // recorría y reordenaba la lista completa de nuevo.
+  const filteredFacturas = useMemo(
+    () => getFilteredFacturas(),
+    [facturas, periodo, campoFecha, searchKeyword, sortByDate]
+  );
 
   if (loading) {
     return <div>Cargando...</div>;
@@ -243,12 +276,37 @@ export function GastosPendientes() {
                 </Select>
               </div>
 
+              <div className="flex flex-col space-y-2">
+                <label className="text-sm font-medium">Filtrar por</label>
+                <Select
+                  value={campoFecha}
+                  onValueChange={(value: 'emision' | 'vencimiento') => setCampoFecha(value)}
+                >
+                  <SelectTrigger className="w-[170px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="emision">Fecha de emisión</SelectItem>
+                    <SelectItem value="vencimiento">Fecha de vencimiento</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <PeriodoFilter
+                anios={aniosDisponibles}
+                periodo={periodo}
+                onChange={setPeriodo}
+                mostrarLimpiar={false}
+              />
+
               <div className="flex items-end">
                 <Button
                   variant="outline"
                   onClick={() => {
                     setSearchKeyword('');
                     setSortByDate('newest');
+                    setPeriodo(PERIODO_VACIO);
+                    setCampoFecha('emision');
                   }}
                 >
                   Limpiar Filtros
@@ -262,31 +320,31 @@ export function GastosPendientes() {
         <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4">
           <ModernStatsCard
             title="Total Facturas"
-            value={facturas.length.toString()}
+            value={filteredFacturas.length.toString()}
             icon={CreditCard}
             color="green"
           />
           <ModernStatsCard
             title="Monto Total"
-            value={formatCurrency(calcularTotalFacturas())}
+            value={formatCurrency(calcularTotalFacturas(filteredFacturas))}
             icon={DollarSign}
             color="blue"
           />
           <ModernStatsCard
             title="Valor Real a Pagar"
-            value={formatCurrency(calcularTotalValorReal())}
+            value={formatCurrency(calcularTotalValorReal(filteredFacturas))}
             icon={DollarSign}
             color="red"
           />
           <ModernStatsCard
             title="Total Retenciones"
-            value={formatCurrency(calcularTotalRetenciones())}
+            value={formatCurrency(calcularTotalRetenciones(filteredFacturas))}
             icon={Calculator}
             color="orange"
           />
           <ModernStatsCard
             title="Ahorro Pronto Pago"
-            value={formatCurrency(calcularTotalProntoPago())}
+            value={formatCurrency(calcularTotalProntoPago(filteredFacturas))}
             icon={TrendingUp}
             color="purple"
           />
@@ -308,7 +366,7 @@ export function GastosPendientes() {
               <div className="text-center py-8">
                 <p>Cargando facturas...</p>
               </div>
-            ) : getFilteredFacturas().length === 0 ? (
+            ) : filteredFacturas.length === 0 ? (
               <div className="text-center py-8">
                 <CreditCard className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
                 <p className="text-muted-foreground">
@@ -317,10 +375,10 @@ export function GastosPendientes() {
               </div>
             ) : (
               <FacturasTable
-                facturas={getFilteredFacturas()}
+                facturas={filteredFacturas}
                 onClassifyClick={() => {}}
                 onPayClick={handlePay}
-                refreshData={refetch}
+                refreshData={invalidarFacturas}
                 showClassifyButton={false}
                 showValorRealAPagar={true}
                 showEditButton={true}
@@ -342,7 +400,7 @@ export function GastosPendientes() {
             setIsPaymentDialogOpen(false);
             setSelectedFactura(null);
           }}
-          onPaymentProcessed={refetch}
+          onPaymentProcessed={invalidarFacturas}
         />
 
         {/* Edit Factura Dialog */}
@@ -353,7 +411,7 @@ export function GastosPendientes() {
             setSelectedFacturaForEdit(null);
           }}
           factura={selectedFacturaForEdit}
-          onSave={refetch}
+          onSave={invalidarFacturas}
         />
 
         {/* Multiple Payment Dialog */}
@@ -364,7 +422,7 @@ export function GastosPendientes() {
             setSelectedFacturasForPayment([]);
           }}
           facturas={selectedFacturasForPayment}
-          onPaymentProcessed={refetch}
+          onPaymentProcessed={invalidarFacturas}
         />
 
         {/* Nota de Crédito Dialog */}

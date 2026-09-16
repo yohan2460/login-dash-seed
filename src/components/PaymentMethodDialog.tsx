@@ -11,7 +11,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { CreditCard, Building2, Percent, Banknote, Calendar, Download, Plus, Trash2, User, Wallet, CheckCircle, DollarSign } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
-import { calcularValorRealAPagar, obtenerBaseSinIVAOriginal, obtenerBaseSinIVADespuesNotasCredito } from '@/utils/calcularValorReal';
+import { calcularValorRealAPagar, obtenerBaseSinIVAOriginal, obtenerBaseSinIVADespuesNotasCredito, redondearMonto } from '@/utils/calcularValorReal';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
@@ -1266,7 +1266,7 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
             metodo_pago: 'Pago Partido',
             uso_pronto_pago: factura.porcentaje_pronto_pago && factura.porcentaje_pronto_pago > 0,
             fecha_pago: fechaPagoISO,
-            valor_real_a_pagar: Math.max(0, valorRealAPagar - totalSaldosAplicar)
+            valor_real_a_pagar: redondearMonto(Math.max(0, valorRealAPagar - totalSaldosAplicar))
           })
           .eq('id', factura.id);
 
@@ -1316,7 +1316,7 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
             metodo_pago: selectedPaymentMethod,
             uso_pronto_pago: usedProntoPago === 'yes',
             fecha_pago: fechaPagoISO,
-            valor_real_a_pagar: Math.max(0, valorRealAPagar - totalSaldosAplicar)
+            valor_real_a_pagar: redondearMonto(Math.max(0, valorRealAPagar - totalSaldosAplicar))
           })
           .eq('id', factura.id);
 

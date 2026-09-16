@@ -1,7 +1,11 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Navigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
+import { useInvalidateFacturas } from '@/hooks/useInvalidateFacturas';
 import { supabase } from '@/integrations/supabase/client';
+import { fetchAllRows } from '@/integrations/supabase/fetchAll';
+import { PeriodoFilter } from '@/components/PeriodoFilter';
+import { filtrarPorPeriodo, obtenerAniosDisponibles, PERIODO_VACIO, type Periodo } from '@/utils/periodo';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -50,10 +54,12 @@ interface PagoPartido {
 
 export function MercanciaPagada() {
   const { user, loading } = useAuth();
+  const invalidarFacturas = useInvalidateFacturas();
   const { toast } = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
   const [dateFrom, setDateFrom] = useState<Date | undefined>(undefined);
   const [dateTo, setDateTo] = useState<Date | undefined>(undefined);
+  const [periodo, setPeriodo] = useState<Periodo>(PERIODO_VACIO);
   const [sortByDate, setSortByDate] = useState<'newest' | 'oldest'>('newest');
   const [searchKeyword, setSearchKeyword] = useState('');
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
@@ -62,23 +68,30 @@ export function MercanciaPagada() {
   const [selectedFacturaForRegeneratePDF, setSelectedFacturaForRegeneratePDF] = useState<Factura | null>(null);
   const [isRegeneratePDFDialogOpen, setIsRegeneratePDFDialogOpen] = useState(false);
 
-  const { data: queryData, isLoading, refetch } = useSupabaseQuery(
+  const { data: queryData, isLoading } = useSupabaseQuery(
     ['facturas', 'mercancia', 'pagada'],
     async () => {
-      const { data, error } = await supabase
-        .from('facturas')
-        .select('*, ingresado_sistema, valor_real_a_pagar')
-        .eq('clasificacion', 'mercancia')
-        .eq('estado_mercancia', 'pagada')
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-
-      const { data: pagosData, error: pagosError } = await supabase
-        .from('pagos_partidos')
-        .select('*');
-
-      if (pagosError) throw pagosError;
+      const [data, pagosData] = await Promise.all([
+        fetchAllRows<any>(
+          (from, to) => supabase
+            .from('facturas')
+            .select('*, ingresado_sistema, valor_real_a_pagar')
+            .eq('clasificacion', 'mercancia')
+            .eq('estado_mercancia', 'pagada')
+            .order('created_at', { ascending: false })
+            .order('id')
+            .range(from, to),
+          { label: 'mercancía pagada' }
+        ),
+        fetchAllRows<any>(
+          (from, to) => supabase
+            .from('pagos_partidos')
+            .select('*')
+            .order('id')
+            .range(from, to),
+          { label: 'pagos partidos' }
+        ),
+      ]);
 
       return {
         facturas: data ?? [],
@@ -92,6 +105,11 @@ export function MercanciaPagada() {
 
   const facturas = queryData?.facturas ?? [];
   const pagosPartidos = queryData?.pagosPartidos ?? [];
+
+  const aniosDisponibles = useMemo(
+    () => obtenerAniosDisponibles(facturas, f => f.fecha_emision || f.created_at),
+    [facturas]
+  );
 
   useEffect(() => {
     const highlightId = searchParams.get('highlight');
@@ -164,6 +182,9 @@ export function MercanciaPagada() {
   const filteredFacturas = useMemo(() => {
     let filtered = facturas;
 
+    // Filtro por período (año / mes). Se combina con el rango de abajo.
+    filtered = filtrarPorPeriodo(filtered, periodo, f => f.fecha_emision || f.created_at);
+
     // Filtro por rango de fechas
     if (dateFrom || dateTo) {
       filtered = filtered.filter(factura => {
@@ -201,7 +222,7 @@ export function MercanciaPagada() {
     });
 
     return filtered;
-  }, [facturas, dateFrom, dateTo, searchKeyword, sortByDate]);
+  }, [facturas, periodo, dateFrom, dateTo, searchKeyword, sortByDate]);
 
   // Memorizar los totales calculados
   const stats = useMemo(() => {
@@ -241,7 +262,7 @@ export function MercanciaPagada() {
         description: `La factura ${factura.numero_factura} ha sido marcada como sistematizada.`,
       });
 
-      await refetch();
+      await invalidarFacturas();
     } catch (error) {
       console.error('Error sistematizando factura:', error);
       toast({
@@ -268,7 +289,7 @@ export function MercanciaPagada() {
         description: `La factura ${factura.numero_factura} ha sido actualizada.`,
       });
 
-      await refetch();
+      await invalidarFacturas();
     } catch (error) {
       console.error('Error actualizando estado:', error);
       toast({
@@ -285,7 +306,7 @@ export function MercanciaPagada() {
   };
 
   const handleNotaCreditoCreated = async () => {
-    await refetch();
+    await invalidarFacturas();
     setIsNotaCreditoDialogOpen(false);
     setSelectedFacturaForNotaCredito(null);
   };
@@ -324,10 +345,16 @@ export function MercanciaPagada() {
           <CardHeader>
             <CardTitle>Filtros de Fecha</CardTitle>
             <CardDescription>
-              Filtra las facturas pagadas por rango de fechas de emisión
+              Filtra las facturas pagadas por año, mes o rango de fechas de emisión
             </CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-4">
+            <PeriodoFilter
+              anios={aniosDisponibles}
+              periodo={periodo}
+              onChange={setPeriodo}
+            />
+
             <div className="flex flex-wrap gap-4">
               <div className="flex flex-col space-y-2">
                 <label className="text-sm font-medium">Desde</label>
@@ -493,7 +520,7 @@ export function MercanciaPagada() {
                 facturas={filteredFacturas}
                 onClassifyClick={() => {}}
                 onSistematizarClick={handleSistematizar}
-                refreshData={refetch}
+                refreshData={invalidarFacturas}
                 showActions={true}
                 showClassifyButton={false}
                 showSistematizarButton={true}

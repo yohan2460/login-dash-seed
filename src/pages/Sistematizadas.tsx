@@ -1,7 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Navigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
+import { fetchAllRows } from '@/integrations/supabase/fetchAll';
+import { PeriodoFilter } from '@/components/PeriodoFilter';
+import { filtrarPorPeriodo, hayPeriodoActivo, obtenerAniosDisponibles, PERIODO_VACIO, type Periodo } from '@/utils/periodo';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
@@ -56,27 +59,35 @@ export function Sistematizadas() {
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [fechaInicio, setFechaInicio] = useState<string>('');
   const [fechaFin, setFechaFin] = useState<string>('');
+  const [periodo, setPeriodo] = useState<Periodo>(PERIODO_VACIO);
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
   const [selectedFacturaForInfo, setSelectedFacturaForInfo] = useState<Factura | null>(null);
   const [isInfoDialogOpen, setIsInfoDialogOpen] = useState(false);
   const [isPDFViewerOpen, setIsPDFViewerOpen] = useState(false);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [selectedFacturaForPDF, setSelectedFacturaForPDF] = useState<Factura | null>(null);
-  const { data: facturasData, isLoading, refetch } = useSupabaseQuery<Factura[]>(
+  const { data: facturasData, isLoading } = useSupabaseQuery<Factura[]>(
     ['facturas', 'sistematizadas'],
     async () => {
-      const { data, error } = await supabase
-        .from('facturas')
-        .select('*')
-        .eq('clasificacion', 'sistematizada')
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-      return data || [];
+      return await fetchAllRows<Factura>(
+        (from, to) => supabase
+          .from('facturas')
+          .select('*')
+          .eq('clasificacion', 'sistematizada')
+          .order('created_at', { ascending: false })
+          .order('id')
+          .range(from, to),
+        { label: 'facturas sistematizadas' }
+      );
     },
     { enabled: !!user }
   );
   const facturas = facturasData || [];
+
+  const aniosDisponibles = useMemo(
+    () => obtenerAniosDisponibles(facturas, f => f.fecha_emision || f.created_at),
+    [facturas]
+  );
 
   useEffect(() => {
     const highlightId = searchParams.get('highlight');
@@ -107,7 +118,8 @@ export function Sistematizadas() {
   };
 
   const getFilteredFacturas = () => {
-    let filtered = facturas;
+    // Filtro por período (año / mes). Se combina con el rango de abajo.
+    let filtered = filtrarPorPeriodo(facturas, periodo, f => f.fecha_emision || f.created_at);
 
     // Filtro por tipo
     if (filtroTipo !== 'all') {
@@ -170,7 +182,11 @@ export function Sistematizadas() {
     setFechaInicio('');
     setFechaFin('');
     setFiltroTipo('all');
+    setPeriodo(PERIODO_VACIO);
   };
+
+  const hayFiltrosActivos =
+    !!searchTerm || !!fechaInicio || !!fechaFin || filtroTipo !== 'all' || hayPeriodoActivo(periodo);
 
   const calcularTotalSistematizadas = () => {
     return getFilteredFacturas().length;
@@ -480,7 +496,7 @@ export function Sistematizadas() {
           <CardHeader>
             <CardTitle className="flex items-center justify-between">
               <span>Filtros</span>
-              {(searchTerm || fechaInicio || fechaFin || filtroTipo !== 'all') && (
+              {hayFiltrosActivos && (
                 <Button
                   variant="ghost"
                   size="sm"
@@ -530,6 +546,14 @@ export function Sistematizadas() {
                   </Select>
                 </div>
 
+                {/* Filtro por período: año + mes */}
+                <PeriodoFilter
+                  anios={aniosDisponibles}
+                  periodo={periodo}
+                  onChange={setPeriodo}
+                  mostrarLimpiar={false}
+                />
+
                 {/* Filtro por fecha inicio */}
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-medium whitespace-nowrap">Desde:</span>
@@ -554,7 +578,7 @@ export function Sistematizadas() {
               </div>
 
               {/* Indicador de resultados */}
-              {(searchTerm || fechaInicio || fechaFin || filtroTipo !== 'all') && (
+              {hayFiltrosActivos && (
                 <div className="text-sm text-muted-foreground">
                   Mostrando {filteredFacturas.length} de {facturas.length} facturas
                 </div>

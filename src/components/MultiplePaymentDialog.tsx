@@ -12,7 +12,7 @@ import { Separator } from '@/components/ui/separator';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { CreditCard, Package, Calculator, X, CheckCircle, TrendingDown, Percent, CalendarIcon, Building2, User, Wallet, Download, Plus, Trash2, DollarSign } from 'lucide-react';
-import { calcularValorRealAPagar, calcularMontoRetencionReal, obtenerBaseSinIVADespuesNotasCredito, obtenerBaseSinIVAOriginal } from '@/utils/calcularValorReal';
+import { calcularValorRealAPagar, calcularMontoRetencionReal, obtenerBaseSinIVADespuesNotasCredito, obtenerBaseSinIVAOriginal, redondearMonto } from '@/utils/calcularValorReal';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
@@ -1585,7 +1585,7 @@ const [saldosSeleccionados, setSaldosSeleccionados] = useState<{[saldoId: string
               metodo_pago: 'Pago Partido', // Marcador especial
               fecha_pago: fechaPagoISO,
               uso_pronto_pago: facturasConProntoPago.has(factura.id),
-              valor_real_a_pagar: detalles.valorReal
+              valor_real_a_pagar: redondearMonto(detalles.valorReal)
             })
             .eq('id', factura.id);
         });
@@ -1630,7 +1630,7 @@ const [saldosSeleccionados, setSaldosSeleccionados] = useState<{[saldoId: string
             metodo_pago: metodoPago,
             fecha_pago: fechaPagoISO,
             uso_pronto_pago: facturasConProntoPago.has(factura.id),
-            valor_real_a_pagar: detalles.valorReal
+            valor_real_a_pagar: redondearMonto(detalles.valorReal)
           };
         });
 

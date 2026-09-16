@@ -11,7 +11,7 @@ import { Search, CreditCard, AlertTriangle, Calculator, FileText, Minus } from '
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
-import { calcularValorRealAPagar, calcularTotalReal } from '@/utils/calcularValorReal';
+import { calcularValorRealAPagar, calcularTotalReal, redondearMonto } from '@/utils/calcularValorReal';
 
 interface Factura {
   id: string;
@@ -435,7 +435,7 @@ export function NotaCreditoDialog({ factura, isOpen, onClose, onNotaCreditoCreat
         .update({
           total_a_pagar: Math.round(nuevoTotalAPagar),      // ✅ ACTUALIZAR total a pagar
           factura_iva: Math.round(nuevoIVA),                // ✅ ACTUALIZAR IVA
-          valor_real_a_pagar: Math.round(nuevoValorRealAPagar), // ✅ GUARDAR valor real a pagar considerando retención
+          valor_real_a_pagar: redondearMonto(nuevoValorRealAPagar), // ✅ GUARDAR valor real a pagar considerando retención
           total_con_descuento: Math.round(nuevoTotalAPagar),
           notas: notasStringified,
           estado_nota_credito: estadoNotaCredito,
@@ -452,7 +452,7 @@ export function NotaCreditoDialog({ factura, isOpen, onClose, onNotaCreditoCreat
         nuevo_total_a_pagar: Math.round(nuevoTotalAPagar),
         nuevo_iva: Math.round(nuevoIVA),
         nueva_retencion: Math.round(notasOriginal.retencion_actual || 0),
-        valor_real_a_pagar: Math.round(nuevoValorRealAPagar),
+        valor_real_a_pagar: redondearMonto(nuevoValorRealAPagar),
         estado: estadoNotaCredito || 'activa'
       });
 

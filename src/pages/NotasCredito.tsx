@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react';
 import { Navigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
+import { useInvalidateFacturas } from '@/hooks/useInvalidateFacturas';
 import { supabase } from '@/integrations/supabase/client';
+import { fetchAllRows } from '@/integrations/supabase/fetchAll';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -65,25 +67,28 @@ interface NotaCreditoConFactura {
 
 export default function NotasCredito() {
   const { user, loading } = useAuth();
+  const invalidarFacturas = useInvalidateFacturas();
   const { toast } = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
   const {
     data: notasData,
-    isLoading,
-    refetch
+    isLoading
   } = useSupabaseQuery<{
     notasCredito: Factura[];
     notasConFacturas: NotaCreditoConFactura[];
   }>(
     ['facturas', 'notas-credito'],
     async () => {
-      const { data, error } = await supabase
-        .from('facturas')
-        .select('*')
-        .eq('clasificacion', 'nota_credito')
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
+      const data = await fetchAllRows<Factura>(
+        (from, to) => supabase
+          .from('facturas')
+          .select('*')
+          .eq('clasificacion', 'nota_credito')
+          .order('created_at', { ascending: false })
+          .order('id')
+          .range(from, to),
+        { label: 'notas de crédito' }
+      );
 
       const notas = data || [];
       const numerosFactura = new Set<string>();
@@ -104,12 +109,15 @@ export default function NotasCredito() {
       let facturasMap: Record<string, Factura> = {};
 
       if (numerosFactura.size > 0) {
-        const { data: facturasRelacionadas, error: facturasError } = await supabase
-          .from('facturas')
-          .select('*')
-          .in('numero_factura', Array.from(numerosFactura));
-
-        if (facturasError) throw facturasError;
+        const facturasRelacionadas = await fetchAllRows<Factura>(
+          (from, to) => supabase
+            .from('facturas')
+            .select('*')
+            .in('numero_factura', Array.from(numerosFactura))
+            .order('id')
+            .range(from, to),
+          { label: 'facturas relacionadas a notas de crédito' }
+        );
 
         facturasMap = (facturasRelacionadas || []).reduce<Record<string, Factura>>((acc, factura) => {
           if (factura.numero_factura) {
@@ -212,7 +220,7 @@ export default function NotasCredito() {
         description: `La nota de crédito ${notaToDelete.numero_factura} ha sido eliminada correctamente`,
       });
 
-      await refetch();
+      await invalidarFacturas();
     } catch (error) {
       console.error('Error al eliminar nota:', error);
       toast({
@@ -325,7 +333,7 @@ export default function NotasCredito() {
                   <FacturasTable
                     facturas={[item.notaCredito]}
                     onClassifyClick={() => {}}
-                    refreshData={refetch}
+                    refreshData={invalidarFacturas}
                     showActions={false}
                     showClassifyButton={false}
                     showOriginalValueForNC={true}
@@ -337,7 +345,7 @@ export default function NotasCredito() {
                       <FacturasTable
                         facturas={[item.facturaAfectada]}
                         onClassifyClick={() => {}}
-                        refreshData={refetch}
+                        refreshData={invalidarFacturas}
                         showActions={false}
                         showClassifyButton={false}
                         highlightedId={highlightedId}
@@ -378,7 +386,7 @@ export default function NotasCredito() {
                   <FacturasTable
                     facturas={[item.notaCredito]}
                     onClassifyClick={() => {}}
-                    refreshData={refetch}
+                    refreshData={invalidarFacturas}
                     showActions={false}
                     showClassifyButton={false}
                     showOriginalValueForNC={true}
@@ -390,7 +398,7 @@ export default function NotasCredito() {
                       <FacturasTable
                         facturas={[item.facturaAfectada]}
                         onClassifyClick={() => {}}
-                        refreshData={refetch}
+                        refreshData={invalidarFacturas}
                         showActions={false}
                         showClassifyButton={false}
                         highlightedId={highlightedId}
@@ -431,7 +439,7 @@ export default function NotasCredito() {
                   <FacturasTable
                     facturas={[item.notaCredito]}
                     onClassifyClick={() => {}}
-                    refreshData={refetch}
+                    refreshData={invalidarFacturas}
                     showActions={true}
                     showClassifyButton={false}
                     showOriginalValueForNC={true}
@@ -443,7 +451,7 @@ export default function NotasCredito() {
                       <FacturasTable
                         facturas={[item.facturaAfectada]}
                         onClassifyClick={() => {}}
-                        refreshData={refetch}
+                        refreshData={invalidarFacturas}
                         showActions={false}
                         showClassifyButton={false}
                         highlightedId={highlightedId}
