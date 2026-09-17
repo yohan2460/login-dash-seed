@@ -1,4 +1,30 @@
 import { supabase } from '@/integrations/supabase/client';
+import { fetchAllRows } from '@/integrations/supabase/fetchAll';
+
+/**
+ * Tope de paginación para las consultas de series.
+ *
+ * El default de `fetchAllRows` (100.000) está pensado para listados que se
+ * renderizan. Acá solo acumulamos strings cortos de una sola columna para
+ * sacar un máximo, así que el techo puede ser mucho más alto sin costo real.
+ */
+const SERIES_MAX_ROWS = 5_000_000;
+
+/** Fila mínima que devuelven las consultas de series. */
+interface SerieRow {
+  numero_serie: string | null;
+}
+
+/**
+ * Extrae el número entero de una serie, o `null` si no lo tiene.
+ *
+ * `Number.isSafeInteger` descarta cadenas de dígitos tan largas que `parseInt`
+ * pierde precisión: un número que ya no es exacto no sirve como consecutivo.
+ */
+function parseSerieNumber(raw: string): number | null {
+  const num = Number.parseInt(raw, 10);
+  return Number.isSafeInteger(num) ? num : null;
+}
 
 export interface SeriePattern {
   prefix: string;
@@ -88,7 +114,11 @@ export class SerieNumberSuggestion {
   }
 
   /**
-   * Obtiene TODOS los números de serie existentes en la base de datos
+   * Obtiene una muestra de los números de serie más recientes.
+   *
+   * OJO: está acotada por `limit` a propósito (es para inspección, no para
+   * calcular máximos). Para el consecutivo usá `suggestNextSerie`, que pagina
+   * la tabla entera.
    */
   static async getAllSeries(limit: number = 100): Promise<string[]> {
     try {
@@ -122,16 +152,14 @@ export class SerieNumberSuggestion {
     let highestPattern: SeriePattern | null = null;
     let highestValue = 0;
 
-    console.log('🔍 Analizando series para encontrar el número más alto:', series);
-
+    // Sin log por serie: ahora esto puede recibir la tabla completa y un
+    // console.log por iteración tira la consola abajo.
     for (const serie of series) {
       const pattern = this.analyzePattern(serie);
-      console.log(`📊 Serie: "${serie}" → Patrón: prefix:"${pattern.prefix}", número:${pattern.numericPart}, suffix:"${pattern.suffix}"`);
 
       if (pattern.numericPart > highestValue) {
         highestValue = pattern.numericPart;
         highestPattern = pattern;
-        console.log(`📈 Nuevo número más alto: ${highestValue} (de la serie "${serie}")`);
       }
     }
 
@@ -216,54 +244,48 @@ export class SerieNumberSuggestion {
    */
   static async suggestNextSerie(emisorNit: string): Promise<string | null> {
     try {
-      // Obtener TODAS las series de la base de datos (sin límite de emisor)
-      console.log('🔍 Consultando TODAS las series en la base de datos...');
+      // Paginado obligatorio: sin `.range()` PostgREST corta en 1000 filas sin
+      // avisar, así que el "máximo" se calculaba sobre un recorte arbitrario de
+      // la tabla y el consecutivo se estancaba alrededor de 1000.
+      const rows = await fetchAllRows<SerieRow>(
+        (from, to) => supabase
+          .from('facturas')
+          .select('numero_serie')
+          .not('numero_serie', 'is', null)
+          // Orden único: sin él el paginado saltea o duplica filas entre páginas.
+          .order('id')
+          .range(from, to),
+        { label: 'series de facturas', maxRows: SERIES_MAX_ROWS }
+      );
 
-      const { data, error } = await supabase
-        .from('facturas')
-        .select('numero_serie')
-        .not('numero_serie', 'is', null)
-        .order('created_at', { ascending: false });
-
-      if (error) {
-        console.error('❌ Error obteniendo series:', error);
-        return '1';
-      }
-
-      // Filtrar valores válidos y convertir todo a string
-      const allSeries = data?.map(item => item.numero_serie)
-        .filter(serie => serie !== null && serie !== undefined && serie !== '')
-        .map(serie => String(serie)) || [];
-
-      if (allSeries.length === 0) {
-        console.log('📝 No hay series en la BD, sugiriendo: 1');
-        return '1';
-      }
-
-      console.log(`📋 Total de series encontradas: ${allSeries.length}`);
-
-      // Buscar el número más alto en TODAS las series
+      // Buscar el número más alto en TODAS las series.
+      // Se acumula en una variable en vez de `Math.max(...arr)`: el spread pasa
+      // un argumento por elemento y pasadas las ~65k series revienta con
+      // "Maximum call stack size exceeded".
       let maxNumber = 0;
+      let totalSeries = 0;
 
-      for (const serie of allSeries) {
-        // Extraer todos los números de cada serie
+      for (const { numero_serie } of rows) {
+        const serie = String(numero_serie ?? '').trim();
+        if (!serie) continue;
+        totalSeries++;
+
         const matches = serie.match(/\d+/g);
-        if (matches) {
-          for (const match of matches) {
-            const num = parseInt(match, 10);
-            if (num > maxNumber) {
-              maxNumber = num;
-              console.log(`📈 Nuevo máximo encontrado: ${maxNumber} en serie "${serie}"`);
-            }
-          }
+        if (!matches) continue;
+
+        for (const match of matches) {
+          const num = parseSerieNumber(match);
+          if (num !== null && num > maxNumber) maxNumber = num;
         }
       }
 
-      // Sugerir el siguiente número
-      const nextNumber = maxNumber + 1;
-      console.log(`🎯 Número más alto: ${maxNumber}, sugiriendo: ${nextNumber}`);
+      if (totalSeries === 0) return '1';
 
-      return nextNumber.toString();
+      // Un log por llamada, no uno por serie: con la tabla completa el log
+      // anterior escupía decenas de miles de líneas y congelaba la consola.
+      console.log(`🎯 Series analizadas: ${totalSeries} · máximo: ${maxNumber} · sugerencia: ${maxNumber + 1}`);
+
+      return (maxNumber + 1).toString();
 
     } catch (error) {
       console.error('Error in suggestNextSerie:', error);
@@ -278,17 +300,22 @@ export class SerieNumberSuggestion {
     try {
       console.log('🔧 === DEBUG DE SERIES ===');
 
-      // 1. Obtener TODAS las series
-      const { data: allData, error } = await supabase
-        .from('facturas')
-        .select('numero_serie, emisor_nombre, emisor_nit')
-        .not('numero_serie', 'is', null)
-        .order('created_at', { ascending: false });
-
-      if (error) {
-        console.error('❌ Error obteniendo series:', error);
-        return;
-      }
+      // 1. Obtener TODAS las series (paginado: si esto corta en 1000 el debug
+      //    diagnostica una tabla que no existe y manda a buscar el bug al lugar
+      //    equivocado)
+      const allData = await fetchAllRows<{
+        numero_serie: string | null;
+        emisor_nombre: string | null;
+        emisor_nit: string | null;
+      }>(
+        (from, to) => supabase
+          .from('facturas')
+          .select('numero_serie, emisor_nombre, emisor_nit')
+          .not('numero_serie', 'is', null)
+          .order('id')
+          .range(from, to),
+        { label: 'series (debug)', maxRows: SERIES_MAX_ROWS }
+      );
 
       console.log(`📊 Total de facturas con numero_serie: ${allData?.length || 0}`);
 
@@ -352,36 +379,43 @@ export class SerieNumberSuggestion {
    */
   static async getAvailableSeries(): Promise<number[]> {
     try {
-      // Obtener todas las series de mercancía (igual que en FacturasPorSerie)
-      const { data, error } = await supabase
-        .from('facturas')
-        .select('numero_serie')
-        .in('clasificacion', ['mercancia', 'sistematizada'])
-        .not('numero_serie', 'is', null);
+      // Mismo paginado que FacturasPorSerie: sin `.range()` esto veía solo 1000
+      // filas arbitrarias, el máximo quedaba clavado cerca de 1000 y la lista de
+      // "disponibles" inventaba huecos que en realidad ya estaban usados.
+      const rows = await fetchAllRows<SerieRow>(
+        (from, to) => supabase
+          .from('facturas')
+          .select('numero_serie')
+          .in('clasificacion', ['mercancia', 'sistematizada'])
+          .not('numero_serie', 'is', null)
+          .order('id')
+          .range(from, to),
+        { label: 'series de mercancía', maxRows: SERIES_MAX_ROWS }
+      );
 
-      if (error) {
-        console.error('Error fetching series:', error);
-        return [];
+      // Set en lugar de array: el `includes()` del loop de abajo es O(n) y
+      // corriendo n veces daba O(n²) — con 50k series son 2.500 millones de
+      // comparaciones y la pestaña se cuelga. Con Set cada lookup es O(1).
+      const usadas = new Set<number>();
+      let maxSerie = 0;
+
+      for (const { numero_serie } of rows) {
+        const serie = String(numero_serie ?? '').trim();
+        if (!serie || serie === 'Sin serie') continue;
+
+        const num = parseSerieNumber(serie);
+        if (num === null || num < 1) continue;
+
+        usadas.add(num);
+        if (num > maxSerie) maxSerie = num;
       }
 
-      // Extraer solo números válidos (igual que en FacturasPorSerie)
-      const seriesNumericas = data
-        ?.map(item => item.numero_serie)
-        .filter(serie => serie && serie !== 'Sin serie' && !isNaN(parseInt(String(serie))))
-        .map(serie => parseInt(String(serie)))
-        .sort((a, b) => a - b) || [];
-
-      if (seriesNumericas.length === 0) return [];
-
-      // Encontrar el máximo
-      const maxSerie = Math.max(...seriesNumericas);
+      if (usadas.size === 0) return [];
 
       // Encontrar las series faltantes del 1 al máximo
       const seriesFaltantes: number[] = [];
       for (let i = 1; i <= maxSerie; i++) {
-        if (!seriesNumericas.includes(i)) {
-          seriesFaltantes.push(i);
-        }
+        if (!usadas.has(i)) seriesFaltantes.push(i);
       }
 
       return seriesFaltantes;
