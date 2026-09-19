@@ -237,20 +237,29 @@ export default function FacturasPorSerie() {
 
   const totalSeries = seriesUnicas.size;
 
-  // Analizar series numéricas faltantes
-  const seriesNumericas = Array.from(seriesUnicas)
-    .filter(serie => serie !== 'Sin serie' && !isNaN(parseInt(serie)))
-    .map(serie => parseInt(serie))
-    .sort((a, b) => a - b);
+  // Analizar series numéricas faltantes.
+  // Set en vez de array ordenado: el `includes()` del loop de abajo es O(n) y
+  // corre una vez por número hasta el máximo, o sea O(n²). Y el máximo se
+  // acumula en un let en vez de `Math.max(...arr)`, porque el spread pasa un
+  // argumento por elemento y pasadas las ~65k series tira
+  // "Maximum call stack size exceeded".
+  const seriesNumericas = new Set<number>();
+  let maxSerie = 0;
 
-  const maxSerie = seriesNumericas.length > 0 ? Math.max(...seriesNumericas) : 0;
-  const seriesFaltantes = [];
+  for (const serie of seriesUnicas) {
+    if (serie === 'Sin serie') continue;
+    const num = parseInt(serie, 10);
+    if (!Number.isSafeInteger(num) || num < 1) continue;
 
-  if (maxSerie > 0) {
-    for (let i = 1; i <= maxSerie; i++) {
-      if (!seriesNumericas.includes(i)) {
-        seriesFaltantes.push(i);
-      }
+    seriesNumericas.add(num);
+    if (num > maxSerie) maxSerie = num;
+  }
+
+  const seriesFaltantes: number[] = [];
+
+  for (let i = 1; i <= maxSerie; i++) {
+    if (!seriesNumericas.has(i)) {
+      seriesFaltantes.push(i);
     }
   }
 
