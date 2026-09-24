@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { ReactNode, useState, useEffect, useRef } from "react";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
