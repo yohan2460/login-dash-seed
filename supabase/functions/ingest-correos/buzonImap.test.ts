@@ -43,6 +43,22 @@ describe('buzonImap (con cliente falso)', () => {
     expect(r[0]).toMatchObject({ asunto: 's3', adjuntos: [{ nombre: 'x.zip', parte: '1' }] });
   });
 
+  it('procesada también lleva Extraido_IA (la convención de n8n); rechazada e ignorada no', async () => {
+    const aplicadas: string[][] = [];
+    const cliente = {
+      getMailboxLock: async () => ({ release() {} }),
+      messageFlagsAdd: async (_r: number[], etiquetas: string[]) => {
+        aplicadas.push(etiquetas);
+        return true;
+      },
+    } as unknown as ClienteImap;
+    const b = crearBuzonImap(cliente, { desde: 'x' });
+    await b.etiquetar(1, 'Ferrotodo/procesada');
+    await b.etiquetar(2, 'Ferrotodo/rechazada');
+    await b.etiquetar(3, 'Ferrotodo/ignorada');
+    expect(aplicadas).toEqual([['Ferrotodo/procesada', 'Extraido_IA'], ['Ferrotodo/rechazada'], ['Ferrotodo/ignorada']]);
+  });
+
   it('descarga sin contenido = 0 bytes; etiquetar lanza si Gmail devuelve false', async () => {
     const cliente = {
       getMailboxLock: async () => ({ release() {} }),

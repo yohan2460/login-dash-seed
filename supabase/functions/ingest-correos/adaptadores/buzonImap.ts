@@ -44,6 +44,12 @@ export interface OpcionesBuzon {
 
 const PREFIJO_ETIQUETA = 'Ferrotodo/';
 
+// Etiqueta que ponía n8n a cada factura cargada; el equipo la usa en Gmail para
+// saber qué ya se extrajo, así que la seguimos poniendo junto a la nuestra.
+const ETIQUETA_LEGADO_N8N = 'Extraido_IA';
+const etiquetasAAplicar = (e: Etiqueta): string[] =>
+  e === 'Ferrotodo/procesada' ? [e, ETIQUETA_LEGADO_N8N] : [e];
+
 // Gmail a veces manda el ZIP sin Content-Disposition: attachment; por eso se mira
 // también el parámetro "name" del Content-Type.
 export function listarAdjuntos(nodo: NodoMime | undefined, acc: AdjuntoCorreo[] = []): AdjuntoCorreo[] {
@@ -112,7 +118,7 @@ export function crearBuzonImap(cliente: ClienteImap, op: OpcionesBuzon): Buzon &
     async etiquetar(uid: number, etiqueta: Etiqueta): Promise<void> {
       await abrir();
       // messageFlagsAdd devuelve false (sin lanzar) si no pudo aplicar; lo volvemos error.
-      const ok = await cliente.messageFlagsAdd([uid], [etiqueta], { uid: true, useLabels: true });
+      const ok = await cliente.messageFlagsAdd([uid], etiquetasAAplicar(etiqueta), { uid: true, useLabels: true });
       if (!ok) throw new Error(`Gmail no aplicó la etiqueta ${etiqueta} al uid ${uid}`);
     },
 
