@@ -12,3 +12,10 @@ project_id = "tzftaefstlhiwpfxojpk"
 # Configurar con:
 #   supabase secrets set WEBHOOK_FACTURAS_SECRET="$(openssl rand -hex 32)"
 verify_jwt = false
+
+[functions.ingest-correos]
+# verify_jwt queda en false a propósito, igual que webhook-facturas: el cron
+# que la invoca no maneja sesiones de Supabase, y activarlo tampoco protegería
+# nada (acepta la anon key, que es pública). La auth real es el header
+# x-ingest-secret contra INGEST_CORREOS_SECRET, comparado en tiempo constante.
+verify_jwt = false
