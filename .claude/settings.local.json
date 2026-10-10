@@ -9,7 +9,9 @@
       "Bash(sudo tee:*)",
       "Bash(sudo sysctl:*)",
       "Bash(npm run build:*)",
-      "Bash(git rev-list *)"
+      "Bash(git rev-list *)",
+      "Bash(engram save *)",
+      "Bash(git merge *)"
     ],
     "deny": [],
     "ask": []
