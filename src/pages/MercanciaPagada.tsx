@@ -19,6 +19,7 @@ import { ModernStatsCard } from '@/components/ModernStatsCard';
 import { FacturasTable } from '@/components/FacturasTable';
 import { NotaCreditoDialog } from '@/components/NotaCreditoDialog';
 import { RegeneratePDFDialog } from '@/components/RegeneratePDFDialog';
+import { ReversarPagoDialog } from '@/components/ReversarPagoDialog';
 import { ModernLayout } from '@/components/ModernLayout';
 import { useToast } from '@/hooks/use-toast';
 import { useSupabaseQuery } from '@/hooks/useSupabaseQuery';
@@ -67,6 +68,7 @@ export function MercanciaPagada() {
   const [isNotaCreditoDialogOpen, setIsNotaCreditoDialogOpen] = useState(false);
   const [selectedFacturaForRegeneratePDF, setSelectedFacturaForRegeneratePDF] = useState<Factura | null>(null);
   const [isRegeneratePDFDialogOpen, setIsRegeneratePDFDialogOpen] = useState(false);
+  const [facturaParaReversar, setFacturaParaReversar] = useState<{ id: string; numero_factura: string } | null>(null);
 
   const { data: queryData, isLoading } = useSupabaseQuery(
     ['facturas', 'mercancia', 'pagada'],
@@ -529,6 +531,8 @@ export function MercanciaPagada() {
                 onNotaCreditoClick={handleNotaCredito}
                 showRegeneratePDF={true}
                 onRegeneratePDFClick={handleRegeneratePDF}
+                showReversarPago={true}
+                onReversarPagoClick={setFacturaParaReversar}
                 highlightedId={highlightedId}
               />
             )}
@@ -544,6 +548,13 @@ export function MercanciaPagada() {
             setSelectedFacturaForNotaCredito(null);
           }}
           onNotaCreditoCreated={handleNotaCreditoCreated}
+        />
+
+        {/* Reversar pago Dialog (la mutación invalida las queries de facturas) */}
+        <ReversarPagoDialog
+          factura={facturaParaReversar}
+          isOpen={facturaParaReversar !== null}
+          onClose={() => setFacturaParaReversar(null)}
         />
 
         {/* Regenerar PDF Dialog */}

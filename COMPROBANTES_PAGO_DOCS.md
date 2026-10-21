@@ -332,6 +332,12 @@ ORDER BY created_at DESC;
    - Una factura puede tener **múltiples comprobantes** (si se re-paga)
    - Siempre se obtiene el comprobante más reciente
 
+5. **Reversión de pagos**:
+   - `comprobantes_pago.estado` es `activo` o `reversado` (soft-delete: nunca se borra el comprobante).
+   - Toda lectura de comprobantes debe filtrar `.eq('estado', 'activo')`.
+   - Se reversa con la RPC `reversar_pago` (hook `useReversarPago`, diálogo `ReversarPagoDialog`, botón en Mercancía/Gastos pagados). Un pago múltiple se reversa completo.
+   - Quedan guardados `reversado_at`, `reversado_por`, `motivo_reversion` y `snapshot_reversion`.
+
 ---
 
 **Desarrollado con ❤️ para el sistema de gestión de facturas Ferrotodo**
