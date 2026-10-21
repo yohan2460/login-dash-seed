@@ -251,6 +251,7 @@ export function RegeneratePDFDialog({ factura, isOpen, onClose, onPDFRegenerated
       .from('comprobantes_pago')
       .select('id, facturas_ids, pdf_file_path, metodo_pago, fecha_pago, detalles, cantidad_facturas, tipo_comprobante')
       .contains('facturas_ids', [facturaId])
+      .eq('estado', 'activo')
       .eq('tipo_comprobante', 'pago_multiple')
       .gt('cantidad_facturas', 1)
       .order('created_at', { ascending: false })
@@ -998,6 +999,7 @@ export function RegeneratePDFDialog({ factura, isOpen, onClose, onPDFRegenerated
         .from('comprobantes_pago')
         .select('id, pdf_file_path, tipo_comprobante, cantidad_facturas')
         .contains('facturas_ids', [facturaParaPDF.id])
+        .eq('estado', 'activo')
         .order('created_at', { ascending: false });
 
       if (comprobanteError) {
