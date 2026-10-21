@@ -12,6 +12,7 @@ import { CreditCard, Building2, Percent, Banknote, Calendar, Download, Plus, Tra
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { calcularValorRealConDecision, obtenerBaseSinIVAOriginal, obtenerBaseSinIVADespuesNotasCredito, redondearMonto } from '@/utils/calcularValorReal';
+import { hoyColombia } from '@/utils/fechaColombia';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
@@ -74,7 +75,7 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<string>('');
   const [usedProntoPago, setUsedProntoPago] = useState<string>('');
   const [amountPaid, setAmountPaid] = useState<string>('');
-  const [paymentDate, setPaymentDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [paymentDate, setPaymentDate] = useState<string>(hoyColombia());
 
   // Estados para pagos partidos
   const [usarPagoPartido, setUsarPagoPartido] = useState(false);
@@ -1387,7 +1388,7 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
       setSelectedPaymentMethod('');
       setUsedProntoPago('');
       setAmountPaid('');
-      setPaymentDate(new Date().toISOString().split('T')[0]);
+      setPaymentDate(hoyColombia());
       setUsarPagoPartido(false);
       setMetodosPago([{ metodo: '', monto: 0 }]);
       setSaldosSeleccionados({});

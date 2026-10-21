@@ -13,6 +13,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { CreditCard, Package, Calculator, X, CheckCircle, TrendingDown, Percent, CalendarIcon, Building2, User, Wallet, Download, Plus, Trash2, DollarSign } from 'lucide-react';
 import { calcularValorRealAPagar, calcularMontoRetencionReal, obtenerBaseSinIVADespuesNotasCredito, obtenerBaseSinIVAOriginal, redondearMonto } from '@/utils/calcularValorReal';
+import { hoyColombia } from '@/utils/fechaColombia';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
@@ -72,7 +73,7 @@ export function MultiplePaymentDialog({
   onPaymentProcessed
 }: MultiplePaymentDialogProps) {
   const [metodoPago, setMetodoPago] = useState<string>('');
-  const [fechaPago, setFechaPago] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [fechaPago, setFechaPago] = useState<string>(hoyColombia());
   const [isProcessing, setIsProcessing] = useState(false);
   // Estado para controlar qué facturas usan pronto pago (por defecto todas las que lo tienen disponible)
   const [facturasConProntoPago, setFacturasConProntoPago] = useState<Set<string>>(
@@ -2292,7 +2293,7 @@ const [saldosSeleccionados, setSaldosSeleccionados] = useState<{[saldoId: string
                   type="date"
                   value={fechaPago}
                   onChange={(e) => setFechaPago(e.target.value)}
-                  max={new Date().toISOString().split('T')[0]}
+                  max={hoyColombia()}
                 />
               </div>
             </CardContent>
