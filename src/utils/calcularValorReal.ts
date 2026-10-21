@@ -211,6 +211,18 @@ export function calcularValorRealAPagar(factura: FacturaData): number {
   return redondearMonto(Math.max(0, valorReal));
 }
 
+/**
+ * Valor real a pagar según la DECISIÓN del usuario sobre el pronto pago.
+ *
+ * calcularValorRealAPagar exige `uso_pronto_pago` para restar el descuento, pero
+ * en una factura pendiente ese flag es false hasta que se paga. Los diálogos de
+ * pago deben pasar por acá para que la elección ("Sí, con descuento" / "No")
+ * gobierne el monto sugerido, el guardado y el PDF.
+ */
+export function calcularValorRealConDecision(factura: FacturaData, usaProntoPago: boolean): number {
+  return calcularValorRealAPagar({ ...factura, uso_pronto_pago: usaProntoPago });
+}
+
 export function calcularTotalReal(factura: FacturaData): number {
   // NUEVO: Si es nota de crédito aplicada o anulada, mostrar $0
   if (factura.estado_nota_credito === 'aplicada' || factura.estado_nota_credito === 'anulada') {

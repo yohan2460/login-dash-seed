@@ -8,10 +8,10 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
-import { CreditCard, Building2, Percent, Banknote, Calendar, Download, Plus, Trash2, User, Wallet, CheckCircle, DollarSign } from 'lucide-react';
+import { CreditCard, Building2, Percent, Banknote, Calendar, Download, Plus, Trash2, User, Wallet, CheckCircle, DollarSign, X } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
-import { calcularValorRealAPagar, obtenerBaseSinIVAOriginal, obtenerBaseSinIVADespuesNotasCredito, redondearMonto } from '@/utils/calcularValorReal';
+import { calcularValorRealConDecision, obtenerBaseSinIVAOriginal, obtenerBaseSinIVADespuesNotasCredito, redondearMonto } from '@/utils/calcularValorReal';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
@@ -173,40 +173,33 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
     }
   };
 
-  // Obtener valor real disponible - SIEMPRE recalcular para incluir descuentos
-  const obtenerValorRealDisponible = (factura: Factura) => {
-    // Si los saldos ya fueron aplicados, usar el valor_real_a_pagar de la base de datos
-    if (saldosAplicados && factura.valor_real_a_pagar !== null && factura.valor_real_a_pagar !== undefined) {
-      return factura.valor_real_a_pagar;
+  // Decisión efectiva de pronto pago: en pago partido se aplica siempre que exista
+  // porcentaje (coherente con el uso_pronto_pago que se guarda); en pago normal
+  // manda la elección del usuario y, sin elegir aún, se muestra sin descuento.
+  const decidirProntoPago = (factura: Factura): boolean => {
+    if (usarPagoPartido) {
+      return !!factura.porcentaje_pronto_pago && factura.porcentaje_pronto_pago > 0;
     }
+    return usedProntoPago === 'yes';
+  };
 
+  // Obtener valor real disponible - SIEMPRE recalcular para incluir descuentos
+  const obtenerValorRealDisponible = (factura: Factura, usaProntoPago: boolean = decidirProntoPago(factura)) => {
+    // No se usa el valor_real_a_pagar de la BD aunque haya saldos preparados: la
+    // factura sigue pendiente (sin pronto pago) y los saldos se restan aparte.
     // IMPORTANTE: Siempre recalcular para asegurar que los descuentos estén incluidos
-    // La función calcularValorRealAPagar maneja: descuentos + retención + pronto pago
-    return calcularValorRealAPagar(factura);
+    // Maneja: descuentos + retención + pronto pago según la decisión del usuario
+    return calcularValorRealConDecision(factura, usaProntoPago);
   };
 
   // Obtener valor base SIN considerar saldos (para cálculos internos)
   const obtenerValorBase = (factura: Factura) => {
-    // Si el usuario no ha seleccionado aún, usar el valor de la BD
-    if (!usedProntoPago) {
-      return obtenerValorRealDisponible(factura);
+    // "No, sin descuento": recalcular SIN el descuento de pronto pago
+    if (!usarPagoPartido && usedProntoPago === 'no') {
+      return calcularValorRealConDecision(factura, false);
     }
-    // Si el usuario seleccionó "Sí, con descuento", usar el valor real a pagar (que ya incluye descuento)
-    if (usedProntoPago === 'yes') {
-      return obtenerValorRealDisponible(factura);
-    }
-    // Si el usuario seleccionó "No, sin descuento", recalcular SIN el descuento de pronto pago
-    if (usedProntoPago === 'no') {
-      // Calcular dinámicamente sin el descuento de pronto pago
-      const facturaParaCalculo = {
-        ...factura,
-        porcentaje_pronto_pago: null // Anular el pronto pago
-      };
-
-      return calcularValorRealAPagar(facturaParaCalculo);
-    }
-
-    return obtenerValorRealDisponible(factura);
+    // 'yes', pago partido o sin selección: según la decisión efectiva
+    return obtenerValorRealDisponible(factura, decidirProntoPago(factura));
   };
 
   // Obtener valor final basado en la selección del usuario (considerando saldos aplicados)
@@ -1232,19 +1225,8 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
     setProcessing(true);
     try {
       // Calcular el valor real a pagar basado en la decisión final del usuario
-      let valorRealAPagar: number;
-
-      if (usarPagoPartido) {
-        // En pago partido, siempre usar el valor con descuento de pronto pago si existe
-        valorRealAPagar = calcularValorRealAPagar(factura);
-      } else {
-        // En pago normal, respetar la decisión del usuario
-        const facturaParaCalculo = {
-          ...factura,
-          porcentaje_pronto_pago: usedProntoPago === 'yes' ? factura.porcentaje_pronto_pago : null
-        };
-        valorRealAPagar = calcularValorRealAPagar(facturaParaCalculo);
-      }
+      // La decisión del usuario gobierna el monto guardado (pago partido: porcentaje > 0)
+      const valorRealAPagar = calcularValorRealConDecision(factura, decidirProntoPago(factura));
 
       // PASO 1: Generar y guardar el comprobante PDF
       console.log('🎯 PASO 1: Generando y guardando comprobante PDF...');
@@ -1610,7 +1592,7 @@ export function PaymentMethodDialog({ factura, isOpen, onClose, onPaymentProcess
                 <div className="mt-3 p-3 bg-red-50 dark:bg-red-900/20 rounded-lg border-l-4 border-red-500">
                   <div className="text-red-700 dark:text-red-300">
                     <div className="font-bold text-base">
-                      Valor Real a Pagar: {formatCurrency(obtenerValorRealDisponible(factura))}
+                      Valor Real a Pagar: {formatCurrency(obtenerValorRealDisponible(factura, !!factura.porcentaje_pronto_pago && factura.porcentaje_pronto_pago > 0))}
                     </div>
                     <p className="text-xs mt-1">
                       (Valor óptimo con retenciones{factura.porcentaje_pronto_pago ? ' y descuento por pronto pago aplicados' : ' aplicadas'})
