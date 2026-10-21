@@ -253,7 +253,7 @@ export function ReversarPagoDialog({ factura, isOpen, onClose, onReversed }: Rev
                 </div>
                 {saldos.hayCancelados && (
                   <div className="text-amber-700">
-                    Algunos saldos estaban cancelados y se reactivarán al reversar.
+                    Algunos saldos están cancelados: se les devolverá el monto, pero seguirán cancelados.
                   </div>
                 )}
               </div>
