@@ -19,6 +19,7 @@ import { ModernStatsCard } from '@/components/ModernStatsCard';
 import { FacturasTable } from '@/components/FacturasTable';
 import { NotaCreditoDialog } from '@/components/NotaCreditoDialog';
 import { RegeneratePDFDialog } from '@/components/RegeneratePDFDialog';
+import { ReversarPagoDialog } from '@/components/ReversarPagoDialog';
 import { ModernLayout } from '@/components/ModernLayout';
 import { useSupabaseQuery } from '@/hooks/useSupabaseQuery';
 
@@ -107,6 +108,7 @@ export function GastosPagados() {
   const [isNotaCreditoDialogOpen, setIsNotaCreditoDialogOpen] = useState(false);
   const [selectedFacturaForRegeneratePDF, setSelectedFacturaForRegeneratePDF] = useState<Factura | null>(null);
   const [isRegeneratePDFDialogOpen, setIsRegeneratePDFDialogOpen] = useState(false);
+  const [facturaParaReversar, setFacturaParaReversar] = useState<{ id: string; numero_factura: string } | null>(null);
 
   useEffect(() => {
     const highlightId = searchParams.get('highlight');
@@ -383,6 +385,8 @@ export function GastosPagados() {
                 onNotaCreditoClick={handleNotaCredito}
                 showRegeneratePDF={true}
                 onRegeneratePDFClick={handleRegeneratePDF}
+                showReversarPago={true}
+                onReversarPagoClick={setFacturaParaReversar}
                 highlightedId={highlightedId}
               />
             )}
@@ -398,6 +402,13 @@ export function GastosPagados() {
             setSelectedFacturaForNotaCredito(null);
           }}
           onNotaCreditoCreated={handleNotaCreditoCreated}
+        />
+
+        {/* Reversar pago Dialog (la mutación invalida las queries de facturas) */}
+        <ReversarPagoDialog
+          factura={facturaParaReversar}
+          isOpen={facturaParaReversar !== null}
+          onClose={() => setFacturaParaReversar(null)}
         />
 
         {/* Regenerar PDF Dialog */}

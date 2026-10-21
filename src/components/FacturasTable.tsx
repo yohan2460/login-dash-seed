@@ -5,7 +5,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { resumirSeleccion, sistematizarEnLote } from '@/utils/sistematizarEnLote';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Eye, Tag, CreditCard, Calendar, Clock, AlertTriangle, CheckCircle, Trash2, FileCheck, Download, Minus, Archive, Edit, Percent, Paperclip, Building2, FileText, RefreshCw, Layers } from 'lucide-react';
+import { Eye, Tag, CreditCard, Calendar, Clock, AlertTriangle, CheckCircle, Trash2, FileCheck, Download, Minus, Archive, Edit, Percent, Paperclip, Building2, FileText, RefreshCw, Layers, Undo2 } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
@@ -82,9 +82,11 @@ interface FacturasTableProps {
   onViewPDFClick?: (factura: Factura) => void;
   showRegeneratePDF?: boolean;
   onRegeneratePDFClick?: (factura: Factura) => void;
+  showReversarPago?: boolean;
+  onReversarPagoClick?: (factura: Factura) => void;
 }
 
-export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPaymentInfo = false, onDelete, onSistematizarClick, showSistematizarButton = false, allowDelete = true, showOriginalClassification = false, onNotaCreditoClick, refreshData, showActions = true, showClassifyButton = true, showValorRealAPagar = false, showOriginalValueForNC = false, showIngresoSistema = false, onIngresoSistemaClick, showEditButton = false, onEditClick, showMultiplePayment = false, onMultiplePayClick, highlightedId = null, showViewButtons = false, onViewInfoClick, onViewPDFClick, showRegeneratePDF = false, onRegeneratePDFClick }: FacturasTableProps) {
+export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPaymentInfo = false, onDelete, onSistematizarClick, showSistematizarButton = false, allowDelete = true, showOriginalClassification = false, onNotaCreditoClick, refreshData, showActions = true, showClassifyButton = true, showValorRealAPagar = false, showOriginalValueForNC = false, showIngresoSistema = false, onIngresoSistemaClick, showEditButton = false, onEditClick, showMultiplePayment = false, onMultiplePayClick, highlightedId = null, showViewButtons = false, onViewInfoClick, onViewPDFClick, showRegeneratePDF = false, onRegeneratePDFClick, showReversarPago = false, onReversarPagoClick }: FacturasTableProps) {
   const { toast } = useToast();
   const { user } = useAuth();
   const [selectedFacturas, setSelectedFacturas] = useState<string[]>([]);
@@ -263,6 +265,7 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
     const { data: comprobantes, error } = await supabase
       .from('comprobantes_pago')
       .select('*')
+      .eq('estado', 'activo')
       .filter('facturas_ids', 'cs', `{${factura.id}}`)
       .order('created_at', { ascending: false });
 
@@ -1236,6 +1239,19 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
                       </Button>
                     )}
 
+                    {/* Botón Reversar pago - solo facturas pagadas */}
+                    {showReversarPago && onReversarPagoClick && factura.estado_mercancia === 'pagada' && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => onReversarPagoClick(factura)}
+                        className="flex-1 border-red-200 text-red-700 hover:bg-red-50"
+                      >
+                        <Undo2 className="w-4 h-4 mr-1" />
+                        Reversar pago
+                      </Button>
+                    )}
+
                     {/* Botón Editar */}
                     {showEditButton && onEditClick && (
                       <Button
@@ -1588,6 +1604,19 @@ export function FacturasTable({ facturas, onClassifyClick, onPayClick, showPayme
                           title="Regenerar PDF"
                         >
                           <RefreshCw className="w-3 h-3 text-orange-600" />
+                        </Button>
+                      )}
+
+                      {/* Botón Reversar pago - solo facturas pagadas */}
+                      {showReversarPago && onReversarPagoClick && factura.estado_mercancia === 'pagada' && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => onReversarPagoClick(factura)}
+                          className="h-7 w-7 p-0 hover:bg-red-50"
+                          title="Reversar pago"
+                        >
+                          <Undo2 className="w-3 h-3 text-red-600" />
                         </Button>
                       )}
 

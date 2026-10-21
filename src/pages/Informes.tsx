@@ -670,6 +670,7 @@ export default function Informes() {
     const { data: comprobantes, error } = await supabase
       .from('comprobantes_pago')
       .select('*')
+      .eq('estado', 'activo')
       .filter('facturas_ids', 'cs', `{${facturaId}}`)
       .order('created_at', { ascending: false })
       .limit(1);
