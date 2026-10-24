@@ -7,6 +7,7 @@ export { extraerArchivosZip, type ArchivosZip } from './zip.ts';
 export { parsearAttachedDocument, type DatosFactura, type ResultadoFactura, type MotivoRechazo } from './factura.ts';
 export { mapearAWebhook, type PayloadWebhookFacturas } from './mapearAWebhook.ts';
 export { parsearMontoDian } from './monto.ts';
+export { construirPayloadEnvio, nombreCarpeta, type PayloadEnvio } from './payloadEnvio.ts';
 export { ErrorParserDian, type CodigoErrorDian } from './errores.ts';
 
 export type ResultadoZip =
