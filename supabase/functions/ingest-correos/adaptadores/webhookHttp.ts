@@ -26,8 +26,10 @@ export async function mapearRespuesta(res: Response): Promise<ResultadoEnvio> {
     .filter((x) => typeof x === 'string' && x)
     .join(' | ') || `HTTP ${res.status}`;
 
-  if (res.status === 201) return { tipo: 'creado' };
-  if (res.status === 200) return cuerpo.duplicate === true ? { tipo: 'duplicado' } : { tipo: 'creado' };
+  const factura = cuerpo.factura && typeof cuerpo.factura === 'object' ? (cuerpo.factura as Record<string, unknown>) : undefined;
+  const conFactura = <T extends 'creado' | 'duplicado'>(tipo: T) => (factura ? { tipo, factura } : { tipo });
+  if (res.status === 201) return conFactura('creado');
+  if (res.status === 200) return cuerpo.duplicate === true ? conFactura('duplicado') : conFactura('creado');
   if (res.status === 409) return { tipo: 'duplicado' };
   if (res.status >= 400 && res.status < 500 && !ESTADOS_TRANSITORIOS.has(res.status)) {
     return { tipo: 'rechazado', estado: res.status, detalle };

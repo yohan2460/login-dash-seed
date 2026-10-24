@@ -13,7 +13,7 @@ import { calcularMontoRetencionReal, obtenerBaseSinIVAOriginal } from '@/utils/c
 import { format } from 'date-fns';
 import { 
   FileText, Package, CreditCard, TrendingUp, Receipt, 
-  Calculator, Minus, Percent, Filter, CalendarIcon, Banknote, DollarSign, CheckCircle, Plus
+  Calculator, Minus, Percent, Filter, CalendarIcon, Banknote, DollarSign, CheckCircle, Plus, Upload
 } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ModernStatsCard } from '@/components/ModernStatsCard';
@@ -21,6 +21,7 @@ import { FacturasTable } from '@/components/FacturasTable';
 import { FacturaClassificationDialog } from '@/components/FacturaClassificationDialog';
 import { PaymentMethodDialog } from '@/components/PaymentMethodDialog';
 import { ManualFacturaDialog } from '@/components/ManualFacturaDialog';
+import { SubirFacturaZipDialog } from '@/components/SubirFacturaZipDialog';
 import { NotaCreditoDialog } from '@/components/NotaCreditoDialog';
 import { ModernLayout } from '@/components/ModernLayout';
 import { useToast } from '@/hooks/use-toast';
@@ -78,6 +79,7 @@ export default function ModernDashboard() {
   const [selectedPaymentFactura, setSelectedPaymentFactura] = useState<Factura | null>(null);
   const [isPaymentDialogOpen, setIsPaymentDialogOpen] = useState(false);
   const [isManualFacturaDialogOpen, setIsManualFacturaDialogOpen] = useState(false);
+  const [isSubirZipDialogOpen, setIsSubirZipDialogOpen] = useState(false);
   const [selectedNotaCreditoFactura, setSelectedNotaCreditoFactura] = useState<Factura | null>(null);
   const [isNotaCreditoDialogOpen, setIsNotaCreditoDialogOpen] = useState(false);
   const [dateFrom, setDateFrom] = useState<Date | undefined>(undefined);
@@ -507,7 +509,11 @@ export default function ModernDashboard() {
       subtitle="Gestión completa de facturas y proveedores"
     >
       {/* Botón para agregar factura manual */}
-      <div className="flex justify-end mb-6">
+      <div className="flex justify-end gap-2 mb-6">
+        <Button variant="outline" onClick={() => setIsSubirZipDialogOpen(true)}>
+          <Upload className="w-4 h-4 mr-2" />
+          Subir ZIP
+        </Button>
         <Button 
           onClick={() => setIsManualFacturaDialogOpen(true)}
           className="bg-primary hover:bg-primary/90"
@@ -1129,6 +1135,12 @@ export default function ModernDashboard() {
         isOpen={isPaymentDialogOpen}
         onClose={() => setIsPaymentDialogOpen(false)}
         onPaymentProcessed={handlePaymentProcessed}
+      />
+
+      <SubirFacturaZipDialog
+        isOpen={isSubirZipDialogOpen}
+        onClose={() => setIsSubirZipDialogOpen(false)}
+        onFacturaCreated={fetchFacturas}
       />
 
       <ManualFacturaDialog

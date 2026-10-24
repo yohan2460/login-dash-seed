@@ -14,6 +14,14 @@ describe('mapearRespuesta (contrato real de webhook-facturas)', () => {
   it('200 sin duplicate -> creado', async () => {
     expect(await mapearRespuesta(json({ success: true }, 200))).toEqual({ tipo: 'creado' });
   });
+  it('201 conserva la factura devuelta por el webhook', async () => {
+    const factura = { id: 'f1', pdf_file_path: 'facturas/u/a.pdf' };
+    expect(await mapearRespuesta(json({ success: true, factura }, 201))).toEqual({ tipo: 'creado', factura });
+  });
+  it('200 duplicate:true conserva la factura existente', async () => {
+    const factura = { id: 'f2' };
+    expect(await mapearRespuesta(json({ duplicate: true, factura }, 200))).toEqual({ tipo: 'duplicado', factura });
+  });
   it('409 (23505, carrera) -> duplicado', async () => {
     expect(await mapearRespuesta(json({ error: 'Factura already exists' }, 409))).toEqual({ tipo: 'duplicado' });
   });

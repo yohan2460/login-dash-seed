@@ -1,8 +1,10 @@
 // Orquestación PURA de la ingesta de facturas desde el buzón. Sin red ni Deno:
 // todo lo externo entra por puertos (Buzon, WebhookFacturas) y por un reloj
 // inyectado, para poder probar cada rama en Vitest.
-import { ErrorParserDian, parsearAsuntoDian, parsearZipFactura } from '../_shared/dian/index.ts';
-import type { ArchivosZip, PayloadWebhookFacturas } from '../_shared/dian/index.ts';
+import { ErrorParserDian, construirPayloadEnvio, parsearAsuntoDian, parsearZipFactura } from '../_shared/dian/index.ts';
+import type { ArchivosZip, PayloadEnvio } from '../_shared/dian/index.ts';
+
+export type { PayloadEnvio };
 
 export type Etiqueta = 'Ferrotodo/procesada' | 'Ferrotodo/rechazada' | 'Ferrotodo/ignorada';
 
@@ -24,15 +26,9 @@ export interface Buzon {
   etiquetar(uid: number, etiqueta: Etiqueta): Promise<void>;
 }
 
-export type PayloadEnvio = PayloadWebhookFacturas & {
-  user_id: string;
-  fecha_vencimiento: string;
-  nombre_carpeta_factura: string;
-};
-
 export type ResultadoEnvio =
-  | { tipo: 'creado' }
-  | { tipo: 'duplicado' }
+  | { tipo: 'creado'; factura?: Record<string, unknown> }
+  | { tipo: 'duplicado'; factura?: Record<string, unknown> }
   | { tipo: 'rechazado'; estado: number; detalle: string } // 4xx permanente
   | { tipo: 'error'; detalle: string }; // 5xx / red / config: transitorio
 
@@ -67,19 +63,10 @@ export interface ResumenLote {
 
 const LIMITE_POR_DEFECTO = 8;
 const PRESUPUESTO_POR_DEFECTO_MS = 100_000;
-const OFFSET_BOGOTA_MS = -5 * 3600_000;
 
 // La extensión es lo único estable: los nombres reales son z…, ad…, numéricos o
 // UUID, y el MIME varía (application/zip, octet-stream, x-zip-compressed).
 const esZip = (nombre: string | null): boolean => !!nombre && /\.zip$/i.test(nombre.trim());
-
-// Formato legado de n8n: M/D/YYYY sin ceros, con la fecha de PROCESO. Bogotá es
-// UTC-5 fijo (sin horario de verano), así que alcanza con desplazar el epoch y
-// leer en UTC; no depende de ICU del runtime.
-function nombreCarpeta(ahoraMs: number, numero: string): string {
-  const d = new Date(ahoraMs + OFFSET_BOGOTA_MS);
-  return `${d.getUTCMonth() + 1}/${d.getUTCDate()}/${d.getUTCFullYear()}_${numero}`;
-}
 
 const mensaje = (e: unknown): string => (e instanceof Error ? e.message : String(e));
 
@@ -140,14 +127,7 @@ async function decidir(
   }
 
   const p = parseo.payload;
-  const payload: PayloadEnvio = {
-    ...p,
-    user_id: userId,
-    // DECISIÓN: una factura de contado no trae vencimiento y vence el día de su
-    // emisión. webhook-facturas lo guarda tal cual, así que lo completamos acá.
-    fecha_vencimiento: p.fecha_vencimiento ?? p.fecha_emision,
-    nombre_carpeta_factura: nombreCarpeta(ahoraMs, p.numero_factura),
-  };
+  const payload = construirPayloadEnvio(p, { userId, ahoraMs });
 
   let envio: ResultadoEnvio;
   try {

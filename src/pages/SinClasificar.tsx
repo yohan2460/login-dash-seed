@@ -8,11 +8,12 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { FileText, Plus, Search, SortAsc } from 'lucide-react';
+import { FileText, Plus, Search, SortAsc, Upload } from 'lucide-react';
 import { ModernStatsCard } from '@/components/ModernStatsCard';
 import { FacturasTable } from '@/components/FacturasTable';
 import { FacturaClassificationDialog } from '@/components/FacturaClassificationDialog';
 import { ManualFacturaDialog } from '@/components/ManualFacturaDialog';
+import { SubirFacturaZipDialog } from '@/components/SubirFacturaZipDialog';
 import { NotaCreditoDialog } from '@/components/NotaCreditoDialog';
 import { PDFViewer } from '@/components/PDFViewer';
 import { ModernLayout } from '@/components/ModernLayout';
@@ -60,6 +61,7 @@ export function SinClasificar() {
   const [selectedFactura, setSelectedFactura] = useState<Factura | null>(null);
   const [isClassificationDialogOpen, setIsClassificationDialogOpen] = useState(false);
   const [isManualDialogOpen, setIsManualDialogOpen] = useState(false);
+  const [isSubirZipDialogOpen, setIsSubirZipDialogOpen] = useState(false);
   const [selectedFacturaForNotaCredito, setSelectedFacturaForNotaCredito] = useState<Factura | null>(null);
   const [isNotaCreditoDialogOpen, setIsNotaCreditoDialogOpen] = useState(false);
   const [sortByDate, setSortByDate] = useState<'newest' | 'oldest'>('newest');
@@ -190,13 +192,23 @@ export function SinClasificar() {
               Gestiona las facturas que aún no han sido clasificadas como mercancía o gasto.
             </p>
           </div>
-          <Button
-            onClick={() => setIsManualDialogOpen(true)}
-            className="flex items-center gap-2"
-          >
-            <Plus className="w-4 h-4" />
-            Crear Factura Manual
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setIsSubirZipDialogOpen(true)}
+              className="flex items-center gap-2"
+            >
+              <Upload className="w-4 h-4" />
+              Subir ZIP
+            </Button>
+            <Button
+              onClick={() => setIsManualDialogOpen(true)}
+              className="flex items-center gap-2"
+            >
+              <Plus className="w-4 h-4" />
+              Crear Factura Manual
+            </Button>
+          </div>
         </div>
 
         {/* Filtros */}
@@ -335,6 +347,12 @@ export function SinClasificar() {
           descuentosAntesIva={selectedFactura?.descuentos_antes_iva}
           totalAPagar={selectedFactura?.total_a_pagar}
           totalSinIva={selectedFactura?.total_sin_iva}
+        />
+
+        <SubirFacturaZipDialog
+          isOpen={isSubirZipDialogOpen}
+          onClose={() => setIsSubirZipDialogOpen(false)}
+          onFacturaCreated={invalidarFacturas}
         />
 
         <ManualFacturaDialog
